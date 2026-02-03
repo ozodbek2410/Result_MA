@@ -512,3 +512,65 @@ client/src/
 ---
 
 **Muvaffaqiyatli tekshirish!** 🎉
+
+## 🚀 VPS'ga Deploy Qilish
+
+### Python O'rnatish
+
+VPS'da OMR tizimi ishlashi uchun Python va kutubxonalar kerak:
+
+```bash
+# Tezkor o'rnatish
+sudo apt update
+sudo apt install python3 python3-pip -y
+pip3 install opencv-python-headless numpy pyzbar pillow
+```
+
+📖 **To'liq qo'llanma:** `PYTHON_VPS_INSTALL.md`
+
+### Deploy Qilish
+
+```bash
+# Local kompyuterdan
+./deploy.sh
+```
+
+Deploy script avtomatik:
+- ✅ Python va kutubxonalarni o'rnatadi
+- ✅ Papkalarni yaratadi
+- ✅ Python scriptlarni nusxalaydi
+- ✅ PM2 bilan server'ni ishga tushiradi
+- ✅ Nginx va SSL sozlaydi
+
+### Muammolarni Hal Qilish
+
+Agar `/api/omr/check-answers` 500 xatolik bersa:
+
+```bash
+# VPS'da diagnostika
+cd /var/www/mathacademy
+bash check-vps-setup.sh
+```
+
+📖 **Qo'llanmalar:**
+- `VPS_QUICK_FIX.md` - Tezkor yechimlar (5 daqiqa)
+- `VPS_TROUBLESHOOTING.md` - To'liq troubleshooting
+- `VPS_COMMANDS.md` - Foydali buyruqlar
+- `PYTHON_VPS_INSTALL.md` - Python o'rnatish
+
+### Tez-tez Ishlatiladigan Buyruqlar
+
+```bash
+# Loglarni ko'rish
+pm2 logs mathacademy-server
+
+# Server'ni qayta ishga tushirish
+pm2 restart mathacademy-server
+
+# Python tekshirish
+python3 -c "import cv2, numpy; print('OK')"
+```
+
+---
+
+**Muvaffaqiyatli tekshirish!** 🎉

@@ -225,7 +225,8 @@ export default function OMRCheckerPage() {
 
   const getAnnotatedImageUrl = () => {
     if (!result?.annotated_image) return null;
-    return `http://localhost:5000/uploads/omr/${result.annotated_image}`;
+    // Use relative URL so it works in production
+    return `/uploads/omr/${result.annotated_image}`;
   };
 
   return (

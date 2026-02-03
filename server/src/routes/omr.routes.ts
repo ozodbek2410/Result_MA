@@ -82,8 +82,15 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     
     try {
       // QR-scanner skriptini ishlatish
-      const qrScriptPath = path.join(__dirname, '../../python/qr_scanner.py');
-      const qrCommand = `python "${qrScriptPath}" "${imagePath}"`;
+      const isDev = process.env.NODE_ENV !== 'production';
+      const qrScriptPath = isDev
+        ? path.join(__dirname, '../../python/qr_scanner.py')
+        : path.join(__dirname, '../../../python/qr_scanner.py');
+      
+      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+      const qrCommand = `${pythonCmd} "${qrScriptPath}" "${imagePath}"`;
+      
+      console.log('🔍 QR scanner command:', qrCommand);
       const { stdout: qrOutput } = await execAsync(qrCommand, { timeout: 10000 });
       
       const qrResult = JSON.parse(qrOutput.trim());
@@ -301,8 +308,19 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     console.log('🔍 2-bosqich: Javoblarni aniqlash...');
 
     // 2. Javoblarni aniqlash (omr_color.py - rangli blanklar uchun)
-    const pythonScript = path.join(__dirname, '../../python/omr_color.py');
-    const command = `python "${pythonScript}" "${imagePath}"`;
+    // Production'da __dirname dist papkasida bo'ladi, shuning uchun to'g'ri yo'lni topish kerak
+    const isDev = process.env.NODE_ENV !== 'production';
+    const pythonScript = isDev 
+      ? path.join(__dirname, '../../python/omr_color.py')
+      : path.join(__dirname, '../../../python/omr_color.py');
+    
+    // Python3 ni ishlatish (ko'p Linux serverlarida python3 bo'ladi)
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
+    
+    console.log('🐍 Python command:', command);
+    console.log('📁 Python script path:', pythonScript);
+    console.log('📸 Image path:', imagePath);
 
     let result: any;
     try {
@@ -609,12 +627,27 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
       stderr: error.stderr,
       stdout: error.stdout
     });
+    
+    // VPS'da debug uchun qo'shimcha ma'lumotlar
+    console.error('❌ Environment:', {
+      NODE_ENV: process.env.NODE_ENV,
+      platform: process.platform,
+      __dirname: __dirname,
+      cwd: process.cwd()
+    });
+    
     res.status(500).json({ 
       success: false,
       error: 'Javoblarni aniqlashda xatolik',
       details: error.message,
       stderr: error.stderr,
-      stdout: error.stdout
+      stdout: error.stdout,
+      // Production'da faqat muhim ma'lumotlarni yuborish
+      debug: process.env.NODE_ENV !== 'production' ? {
+        code: error.code,
+        platform: process.platform,
+        nodeVersion: process.version
+      } : undefined
     });
   }
 });

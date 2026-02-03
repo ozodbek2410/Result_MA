@@ -41,7 +41,11 @@ echo -e "${GREEN}✅ Build successful${NC}"
 echo -e "${YELLOW}📁 Creating deployment directory...${NC}"
 sudo mkdir -p $DEPLOY_PATH
 sudo mkdir -p $DEPLOY_PATH/logs
+sudo mkdir -p $DEPLOY_PATH/server/uploads/omr
+sudo mkdir -p $DEPLOY_PATH/server/uploads
 sudo chown -R $USER:$USER $DEPLOY_PATH
+
+echo -e "${GREEN}✅ Directories created${NC}"
 
 # Step 3: Copy files
 echo -e "${YELLOW}📋 Copying files...${NC}"
@@ -75,6 +79,48 @@ npm install --production
 cd -
 
 echo -e "${GREEN}✅ Dependencies installed${NC}"
+
+# Step 4.5: Setup Python environment
+echo -e "${YELLOW}🐍 Setting up Python environment...${NC}"
+
+# Check if Python3 is installed
+if ! command -v python3 &> /dev/null; then
+    echo -e "${RED}❌ Python3 is not installed. Installing...${NC}"
+    sudo apt update
+    sudo apt install python3 python3-pip -y
+fi
+
+# Check Python version
+PYTHON_VERSION=$(python3 --version)
+echo -e "${GREEN}✅ Python installed: $PYTHON_VERSION${NC}"
+
+# Install Python dependencies
+if [ -f "$DEPLOY_PATH/server/python/requirements.txt" ]; then
+    echo -e "${YELLOW}Installing Python packages...${NC}"
+    pip3 install -r $DEPLOY_PATH/server/python/requirements.txt
+    echo -e "${GREEN}✅ Python packages installed${NC}"
+else
+    echo -e "${YELLOW}⚠️  requirements.txt not found, installing common packages...${NC}"
+    pip3 install opencv-python-headless numpy pyzbar pillow
+    echo -e "${GREEN}✅ Python packages installed${NC}"
+fi
+
+# Verify Python packages
+echo -e "${YELLOW}Verifying Python packages...${NC}"
+python3 -c "import cv2; import numpy; print('✅ OpenCV and NumPy are working')" || {
+    echo -e "${RED}❌ Python packages verification failed${NC}"
+    exit 1
+}
+
+# Copy Python scripts
+echo -e "${YELLOW}Copying Python scripts...${NC}"
+mkdir -p $DEPLOY_PATH/python
+rsync -av server/python/ $DEPLOY_PATH/python/
+
+# Make Python scripts executable
+chmod +x $DEPLOY_PATH/python/*.py
+
+echo -e "${GREEN}✅ Python scripts copied${NC}"
 
 # Step 5: Setup environment file
 echo -e "${YELLOW}⚙️  Setting up environment...${NC}"
