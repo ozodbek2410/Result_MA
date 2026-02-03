@@ -9,6 +9,7 @@ import Direction from '../models/Direction';
 import Subject from '../models/Subject';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
+import { cacheMiddleware, invalidateCache } from '../middleware/cache';
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, cacheMiddleware(120), async (req: AuthRequest, res) => {
   try {
     const { groupId, classNumber } = req.query;
     
@@ -185,6 +186,9 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       .populate('directionId')
       .populate('subjectIds');
     
+    // Инвалидируем кэш студентов
+    await invalidateCache('/api/students');
+    
     res.status(201).json({
       student: populatedStudent,
       profileUrl: `/p/${profileToken}`
@@ -204,6 +208,10 @@ router.put('/:id', authenticate, async (req, res) => {
     if (!student) {
       return res.status(404).json({ message: 'O\'quvchi topilmadi' });
     }
+    
+    // Инвалидируем кэш студентов
+    await invalidateCache('/api/students');
+    
     res.json(student);
   } catch (error: any) {
     console.error('Error updating student:', error);
@@ -293,6 +301,9 @@ router.delete('/:id', authenticate, async (req, res) => {
     
     // Also delete student groups
     await StudentGroup.deleteMany({ studentId: req.params.id });
+    
+    // Инвалидируем кэш студентов
+    await invalidateCache('/api/students');
     
     res.json({ message: 'O\'quvchi o\'chirildi' });
   } catch (error: any) {

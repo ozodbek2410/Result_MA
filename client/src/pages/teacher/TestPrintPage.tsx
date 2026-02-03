@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Settings } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import AnswerSheet from '@/components/AnswerSheet';
 
@@ -14,6 +14,8 @@ export default function TestPrintPage() {
   const [loading, setLoading] = useState(true);
   const [selectedStudents, setSelectedStudents] = useState<any[]>([]);
   const [variants, setVariants] = useState<any[]>([]);
+  const [columnsCount, setColumnsCount] = useState(2);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     fetchTest();
@@ -203,9 +205,6 @@ export default function TestPrintPage() {
             variant
           });
           
-          // Определяем количество колонок в зависимости от количества вопросов
-          const columns = test.questions.length <= 20 ? 2 : 3;
-          
           return (
             <div key={student._id} className="page-break">
               <AnswerSheet
@@ -221,7 +220,7 @@ export default function TestPrintPage() {
                 }}
                 questions={test.questions.length}
                 qrData={variantCode}
-                columns={columns}
+                columns={columnsCount}
               />
             </div>
           );
@@ -308,11 +307,62 @@ export default function TestPrintPage() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Orqaga
           </Button>
+          {type === 'sheets' && (
+            <Button variant="outline" onClick={() => setShowSettings(!showSettings)}>
+              <Settings className="w-4 h-4 mr-2" />
+              Sozlamalar
+            </Button>
+          )}
           <Button onClick={handlePrint}>
             <Printer className="w-4 h-4 mr-2" />
             Chop etish
           </Button>
         </div>
+
+        {/* Settings Panel */}
+        {showSettings && type === 'sheets' && (
+          <div className="no-print fixed top-20 right-4 z-50 bg-white border-2 border-gray-300 rounded-lg shadow-xl p-4 w-72">
+            <h3 className="font-bold text-lg mb-4">Chop etish sozlamalari</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">
+                Ustunlar soni
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setColumnsCount(2)}
+                  className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                    columnsCount === 2
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                  }`}
+                >
+                  2 ustun
+                </button>
+                <button
+                  onClick={() => setColumnsCount(3)}
+                  className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                    columnsCount === 3
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                  }`}
+                >
+                  3 ustun
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {columnsCount === 2 ? '60 tagacha savol uchun qulay' : '60 dan ortiq savol uchun qulay'}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowSettings(false)}
+              className="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded font-medium"
+            >
+              Yopish
+            </button>
+          </div>
+        )}
 
         <div className="max-w-4xl mx-auto bg-white">
           {type === 'questions' && renderQuestions()}

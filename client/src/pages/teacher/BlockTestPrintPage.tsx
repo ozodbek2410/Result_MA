@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Settings } from 'lucide-react';
 
 export default function BlockTestPrintPage() {
   const { id, type } = useParams<{ id: string; type: string }>();
@@ -12,6 +12,8 @@ export default function BlockTestPrintPage() {
   const [loading, setLoading] = useState(true);
   const [selectedStudents, setSelectedStudents] = useState<any[]>([]);
   const [variants, setVariants] = useState<any[]>([]);
+  const [columnsCount, setColumnsCount] = useState(1);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     fetchTest();
@@ -89,7 +91,7 @@ export default function BlockTestPrintPage() {
   );
 
   const renderQuestionsContent = () => (
-    <div className="space-y-8">
+    <div className={`space-y-8 ${columnsCount === 2 ? 'columns-2 gap-4' : ''}`}>
       {test.subjectTests?.map((subjectTest: any, subjectIndex: number) => (
         <div key={subjectIndex} className="mb-8">
           <h3 className="text-xl font-bold mb-4 bg-gray-100 p-3 rounded">
@@ -268,6 +270,11 @@ export default function BlockTestPrintPage() {
             margin: 1cm;
             padding: 0;
           }
+          
+          .columns-2 {
+            column-count: 2;
+            column-gap: 1rem;
+          }
         }
       `}</style>
       
@@ -277,11 +284,62 @@ export default function BlockTestPrintPage() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Orqaga
           </Button>
+          {type === 'questions' && (
+            <Button variant="outline" onClick={() => setShowSettings(!showSettings)}>
+              <Settings className="w-4 h-4 mr-2" />
+              Sozlamalar
+            </Button>
+          )}
           <Button onClick={handlePrint}>
             <Printer className="w-4 h-4 mr-2" />
             Chop etish
           </Button>
         </div>
+
+        {/* Settings Panel */}
+        {showSettings && type === 'questions' && (
+          <div className="no-print fixed top-20 right-4 z-50 bg-white border-2 border-gray-300 rounded-lg shadow-xl p-4 w-72">
+            <h3 className="font-bold text-lg mb-4">Chop etish sozlamalari</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">
+                Ustunlar soni
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setColumnsCount(1)}
+                  className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                    columnsCount === 1
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                  }`}
+                >
+                  1 ustun
+                </button>
+                <button
+                  onClick={() => setColumnsCount(2)}
+                  className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                    columnsCount === 2
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                  }`}
+                >
+                  2 ustun
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {columnsCount === 1 ? 'Katta shrift uchun qulay' : 'Ko\'proq savol sig\'adi'}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowSettings(false)}
+              className="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded font-medium"
+            >
+              Yopish
+            </button>
+          </div>
+        )}
 
         <div className="max-w-4xl mx-auto">
           {selectedStudents.length === 0 && (

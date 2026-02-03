@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Printer } from 'lucide-react';
+import { Printer, Settings } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 
 interface StudentVariant {
@@ -21,6 +21,8 @@ export default function BlockTestPrintAnswersPage() {
   const [loading, setLoading] = useState(true);
   const [blockTest, setBlockTest] = useState<any>(null);
   const [studentVariants, setStudentVariants] = useState<StudentVariant[]>([]);
+  const [columnsCount, setColumnsCount] = useState(2);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -158,18 +160,64 @@ export default function BlockTestPrintAnswersPage() {
 
   return (
     <div className="min-h-screen bg-white print-view-mode">
-      <div className="print:hidden fixed top-4 right-4 z-50">
+      <div className="print:hidden fixed top-4 right-4 z-50 flex gap-2">
+        <Button variant="outline" onClick={() => setShowSettings(!showSettings)}>
+          <Settings className="w-5 h-5 mr-2" />
+          Sozlamalar
+        </Button>
         <Button onClick={handlePrint} size="lg">
           <Printer className="w-5 h-5 mr-2" />
           Chop etish
         </Button>
       </div>
 
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="print:hidden fixed top-20 right-4 z-50 bg-white border-2 border-gray-300 rounded-lg shadow-xl p-4 w-72">
+          <h3 className="font-bold text-lg mb-4">Chop etish sozlamalari</h3>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">
+              Ustunlar soni
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setColumnsCount(2)}
+                className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                  columnsCount === 2
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                }`}
+              >
+                2 ustun
+              </button>
+              <button
+                onClick={() => setColumnsCount(3)}
+                className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                  columnsCount === 3
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                }`}
+              >
+                3 ustun
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              {columnsCount === 2 ? '60 tagacha savol uchun qulay' : '60 dan ortiq savol uchun qulay'}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowSettings(false)}
+            className="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded font-medium"
+          >
+            Yopish
+          </button>
+        </div>
+      )}
+
       <div className="space-y-8">
         {studentVariants.map((variant) => {
-          // Определяем количество колонок в зависимости от количества вопросов
-          const columns = variant.questions.length <= 20 ? 2 : 3;
-          
           return (
             <div key={variant.student._id} className="page-break">
               <AnswerSheet
@@ -185,7 +233,7 @@ export default function BlockTestPrintAnswersPage() {
                 }}
                 questions={variant.questions.length}
                 qrData={variant.qrPayload}
-                columns={columns}
+                columns={columnsCount}
               />
             </div>
           );

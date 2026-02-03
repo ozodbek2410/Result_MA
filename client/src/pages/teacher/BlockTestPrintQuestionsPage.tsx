@@ -288,14 +288,31 @@ export default function BlockTestPrintQuestionsPage() {
             <label className="block text-sm font-medium mb-2">
               Ustunlar soni
             </label>
-            <select
-              value={columnsCount}
-              onChange={(e) => setColumnsCount(Number(e.target.value))}
-              className="w-full p-2 border rounded"
-            >
-              <option value="1">1 ustun</option>
-              <option value="2">2 ustun</option>
-            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setColumnsCount(1)}
+                className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                  columnsCount === 1
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                }`}
+              >
+                1 ustun
+              </button>
+              <button
+                onClick={() => setColumnsCount(2)}
+                className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                  columnsCount === 2
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                }`}
+              >
+                2 ustun
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              {columnsCount === 1 ? 'Katta shrift uchun qulay' : 'Ko\'proq savol sig\'adi'}
+            </p>
           </div>
 
           {/* Show Subject Labels */}

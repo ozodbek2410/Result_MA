@@ -3,6 +3,7 @@ import BlockTest from '../models/BlockTest';
 import Student from '../models/Student';
 import StudentVariant from '../models/StudentVariant';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { cacheMiddleware, invalidateCache } from '../middleware/cache';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
@@ -118,7 +119,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, cacheMiddleware(180), async (req: AuthRequest, res) => {
   try {
     const blockTests = await BlockTest.find({ branchId: req.user?.branchId })
       .populate('subjectTests.subjectId', 'nameUzb nameRu')
@@ -141,7 +142,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.get('/:id', authenticate, async (req: AuthRequest, res) => {
+router.get('/:id', authenticate, cacheMiddleware(300), async (req: AuthRequest, res) => {
   try {
     console.log(`Fetching block test by ID: ${req.params.id}`);
     

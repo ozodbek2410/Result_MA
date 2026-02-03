@@ -3,10 +3,17 @@ import { useAuthStore } from '../store/authStore';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000, // 30 секунд таймаут
+  timeout: 30000,
   headers: {
-    'Content-Type': 'application/json'
-  }
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
+  // Оптимизации
+  maxRedirects: 5,
+  maxContentLength: 50 * 1024 * 1024, // 50MB
+  maxBodyLength: 50 * 1024 * 1024,
+  // Включаем сжатие
+  decompress: true,
 });
 
 // Request interceptor

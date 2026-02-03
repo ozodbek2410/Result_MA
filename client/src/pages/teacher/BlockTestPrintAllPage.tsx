@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Printer } from 'lucide-react';
+import { Printer, Settings } from 'lucide-react';
 import MathText from '@/components/MathText';
 
 interface StudentVariant {
@@ -21,6 +21,8 @@ export default function BlockTestPrintAllPage() {
   const [blockTest, setBlockTest] = useState<any>(null);
   const [studentVariants, setStudentVariants] = useState<StudentVariant[]>([]);
   const [fontSize] = useState(fontSizeParam ? parseInt(fontSizeParam) : 12);
+  const [columnsCount, setColumnsCount] = useState(1);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -172,18 +174,67 @@ export default function BlockTestPrintAllPage() {
 
   return (
     <div className="min-h-screen bg-white print-view-mode">
-      <div className="print:hidden fixed top-4 right-4 z-50">
+      <div className="print:hidden fixed top-4 right-4 z-50 flex gap-2">
+        <Button variant="outline" onClick={() => setShowSettings(!showSettings)}>
+          <Settings className="w-5 h-5 mr-2" />
+          Sozlamalar
+        </Button>
         <Button onClick={handlePrint} size="lg">
           <Printer className="w-5 h-5 mr-2" />
           Chop etish
         </Button>
       </div>
 
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="print:hidden fixed top-20 right-4 z-50 bg-white border-2 border-gray-300 rounded-lg shadow-xl p-4 w-72">
+          <h3 className="font-bold text-lg mb-4">Chop etish sozlamalari</h3>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">
+              Savollar ustunlari
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setColumnsCount(1)}
+                className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                  columnsCount === 1
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                }`}
+              >
+                1 ustun
+              </button>
+              <button
+                onClick={() => setColumnsCount(2)}
+                className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                  columnsCount === 2
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                }`}
+              >
+                2 ustun
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              {columnsCount === 1 ? 'Katta shrift uchun qulay' : 'Ko\'proq savol sig\'adi'}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowSettings(false)}
+            className="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded font-medium"
+          >
+            Yopish
+          </button>
+        </div>
+      )}
+
       <div className="p-4" style={{ fontSize: `${fontSize}px` }}>
         {studentVariants.map((variant, index) => (
           <React.Fragment key={variant.student._id}>
             {/* Test Questions for Student */}
-            <div className="mb-4" style={{ pageBreakAfter: 'always' }}>
+            <div className={`mb-4 ${columnsCount === 2 ? 'columns-2 gap-4' : ''}`} style={{ pageBreakAfter: 'always' }}>
               <div className="mb-3 border-b border-gray-300 pb-2">
                 <h1 className="font-bold text-center mb-1" style={{ fontSize: `${fontSize + 4}px` }}>
                   BLOK TEST
@@ -313,6 +364,11 @@ export default function BlockTestPrintAllPage() {
           body {
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
+          }
+          
+          .columns-2 {
+            column-count: 2;
+            column-gap: 1rem;
           }
           
           /* Убираем сайдбар и навигацию */

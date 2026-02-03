@@ -112,7 +112,7 @@ app.use('/api/observer', observerRoutes);
 connectDB().then(() => {
   // Подключаем Redis (опционально)
   connectRedis().catch(err => {
-    console.log('Redis not available, continuing without cache');
+    // Redis опционален, продолжаем без него
   });
   
   // Регистрируем обработчики очередей
@@ -123,6 +123,8 @@ connectDB().then(() => {
   initScheduler();
   
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 API: http://localhost:${PORT}/api`);
   });
 });

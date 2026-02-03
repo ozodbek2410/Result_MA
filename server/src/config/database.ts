@@ -5,11 +5,15 @@ export const connectDB = async () => {
   try {
     // Оптимизированные настройки подключения
     const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/education_system', {
-      maxPoolSize: 10, // Максимальное количество соединений в пуле
-      minPoolSize: 2,  // Минимальное количество соединений
-      socketTimeoutMS: 45000, // Таймаут сокета
-      serverSelectionTimeoutMS: 5000, // Таймаут выбора сервера
-      family: 4 // Использовать IPv4
+      maxPoolSize: 50, // Увеличено для большей нагрузки
+      minPoolSize: 5,  // Увеличено минимальное количество
+      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 5000,
+      family: 4,
+      // Оптимизации производительности
+      maxIdleTimeMS: 30000, // Закрывать неактивные соединения через 30 сек
+      compressors: ['zlib'], // Сжатие данных между клиентом и сервером
+      zlibCompressionLevel: 6 // Уровень сжатия (1-9)
     });
 
     // Включаем автоматическое создание индексов в development
@@ -17,11 +21,18 @@ export const connectDB = async () => {
     
     // Включаем строгий режим для запросов
     mongoose.set('strictQuery', true);
+    
+    // Включаем кэширование запросов
+    mongoose.set('bufferCommands', false); // Отключаем буферизацию для быстрого fail
+    
+    // Оптимизация для чтения
+    mongoose.set('debug', process.env.NODE_ENV === 'development'); // Логи только в dev
 
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    console.log('Database optimization enabled');
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    console.log(`📊 Pool size: ${conn.connection.client.options.maxPoolSize}`);
+    console.log('⚡ Database optimization enabled');
   } catch (error) {
-    console.error('Error connecting to MongoDB:', error);
+    console.error('❌ Error connecting to MongoDB:', error);
     process.exit(1);
   }
 };

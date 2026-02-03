@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
+import { cacheMiddleware, invalidateCache } from '../middleware/cache';
 import multer from 'multer';
 import path from 'path';
 import { TestImportService } from '../services/testImportService';
@@ -39,7 +40,7 @@ const upload = multer({
   }
 });
 
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, cacheMiddleware(180), async (req: AuthRequest, res) => {
   try {
     const filter: any = {};
     
@@ -71,7 +72,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, cacheMiddleware(300), async (req, res) => {
   try {
     const test = await Test.findById(req.params.id)
       .populate('groupId', 'name classNumber letter')
@@ -99,6 +100,10 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       createdBy: req.user?.id
     });
     await test.save();
+    
+    // Инвалидируем кэш списка тестов
+    await invalidateCache('/api/tests');
+    
     res.status(201).json(test);
   } catch (error) {
     res.status(500).json({ message: 'Server xatosi' });
@@ -171,6 +176,9 @@ router.put('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Test topilmadi' });
     }
     
+    // Инвалидируем кэш
+    await invalidateCache('/api/tests');
+    
     console.log('Test updated:', test._id);
     res.json(test);
   } catch (error: any) {
@@ -189,6 +197,9 @@ router.delete('/:id', authenticate, async (req, res) => {
     
     // Also delete related student variants
     await StudentVariant.deleteMany({ testId: req.params.id });
+    
+    // Инвалидируем кэш
+    await invalidateCache('/api/tests');
     
     console.log('Test deleted:', req.params.id);
     res.json({ message: 'Test o\'chirildi' });

@@ -142,7 +142,7 @@ export default function AnswerSheet({ student, test, questions, qrData, columns 
               </div>
             </div>
             {qrData && (
-              <div className="flex flex-col items-center gap-1 ml-3 p-2 bg-white border-2 border-gray-900 rounded">
+              <div className="flex flex-col items-center gap-1 ml-3 p-2 bg-white">
                 <canvas ref={qrRef} className="block"></canvas>
                 <p className="text-[8px] text-gray-900 font-mono font-bold">{student.variantCode}</p>
               </div>
