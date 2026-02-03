@@ -36,7 +36,7 @@ export const connectRedis = async () => {
 
     redisClient.on('error', (err) => {
       // Логируем только первую ошибку
-      if (!redisClient.status || redisClient.status === 'connecting') {
+      if (redisClient && (!redisClient.status || redisClient.status === 'connecting')) {
         console.error('❌ Redis connection error:', err.message);
         console.log('ℹ️  Continuing without Redis cache');
       }

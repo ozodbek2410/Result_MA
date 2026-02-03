@@ -7,15 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Перенаправляем use-sync-external-store на встроенный React 18 hook
-      'use-sync-external-store/shim/index.js': 'react',
-      'use-sync-external-store/shim/with-selector.js': path.resolve(__dirname, './use-sync-external-store-shim.js'),
-      'use-sync-external-store/shim/with-selector': path.resolve(__dirname, './use-sync-external-store-shim.js'),
-      'use-sync-external-store/shim': 'react',
     }
-  },
-  ssr: {
-    noExternal: ['use-sync-external-store']
   },
   server: {
     host: '0.0.0.0',
@@ -48,16 +40,8 @@ export default defineConfig({
       '@tanstack/react-query',
     ],
     exclude: ['@tiptap/react', '@tiptap/starter-kit'],
-    esbuildOptions: {
-      mainFields: ['module', 'main'],
-      resolveExtensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
-    }
   },
   build: {
-    commonjsOptions: {
-      include: [/use-sync-external-store/, /node_modules/],
-      transformMixedEsModules: true,
-    },
     target: 'es2015',
     minify: 'terser',
     terserOptions: {

@@ -29,7 +29,7 @@ export const connectDB = async () => {
     mongoose.set('debug', process.env.NODE_ENV === 'development'); // Логи только в dev
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-    console.log(`📊 Pool size: ${conn.connection.client.options.maxPoolSize}`);
+    console.log(`📊 Pool size: ${(conn.connection as any).client?.options?.maxPoolSize || 'default'}`);
     console.log('⚡ Database optimization enabled');
   } catch (error) {
     console.error('❌ Error connecting to MongoDB:', error);
