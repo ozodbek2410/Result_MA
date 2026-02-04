@@ -87,11 +87,24 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
         ? path.join(__dirname, '../../python/qr_scanner.py')
         : path.join(__dirname, '../../../python/qr_scanner.py');
       
-      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+      const pythonCmd = process.env.PYTHON_PATH || 
+                       (process.platform === 'win32' ? 'python' : 'python3');
       const qrCommand = `${pythonCmd} "${qrScriptPath}" "${imagePath}"`;
       
       console.log('🔍 QR scanner command:', qrCommand);
-      const { stdout: qrOutput } = await execAsync(qrCommand, { timeout: 10000 });
+      
+      // Verify QR script exists
+      try {
+        await fs.access(qrScriptPath);
+      } catch (err) {
+        console.error('❌ QR scanner script not found at:', qrScriptPath);
+        throw new Error(`QR scanner script not found: ${qrScriptPath}`);
+      }
+      
+      const { stdout: qrOutput } = await execAsync(qrCommand, { 
+        timeout: 10000,
+        env: { ...process.env }
+      });
       
       const qrResult = JSON.parse(qrOutput.trim());
       if (qrResult.found) {
@@ -264,18 +277,31 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
       : path.join(__dirname, '../../../python/omr_color.py');
     
     // Python3 ni ishlatish (ko'p Linux serverlarida python3 bo'ladi)
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    // Allow override via environment variable for production
+    const pythonCmd = process.env.PYTHON_PATH || 
+                     (process.platform === 'win32' ? 'python' : 'python3');
     const command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
     
     console.log('🐍 Python command:', command);
     console.log('📁 Python script path:', pythonScript);
     console.log('📸 Image path:', imagePath);
+    console.log('🔧 Python executable:', pythonCmd);
+    
+    // Verify script exists
+    try {
+      await fs.access(pythonScript);
+      console.log('✅ Python script exists');
+    } catch (err) {
+      console.error('❌ Python script not found at:', pythonScript);
+      throw new Error(`Python script not found: ${pythonScript}`);
+    }
 
     let result: any;
     try {
       const { stdout, stderr } = await execAsync(command, { 
         timeout: 30000,
-        maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large output
+        maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large output
+        env: { ...process.env } // Pass environment variables
       });
 
       // Log stderr only if it contains errors (not DEBUG messages)
@@ -289,22 +315,52 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
         }
       }
 
+      // Check if stdout is empty
+      if (!stdout || stdout.trim().length === 0) {
+        console.error('❌ Python script produced no output');
+        console.error('❌ stderr:', stderr);
+        throw new Error('Python script produced no output. Check if Python dependencies are installed.');
+      }
+
       // Parse Python natijasi
-      result = JSON.parse(stdout);
+      try {
+        result = JSON.parse(stdout);
+      } catch (parseError: any) {
+        console.error('❌ Failed to parse Python output:', parseError.message);
+        console.error('❌ stdout:', stdout);
+        throw new Error(`Invalid JSON from Python script: ${parseError.message}`);
+      }
     } catch (execError: any) {
       console.error('❌ Python execution error:', execError.message);
+      console.error('❌ Error code:', execError.code);
+      console.error('❌ stdout:', execError.stdout);
+      console.error('❌ stderr:', execError.stderr);
+      
+      // Provide helpful error messages
+      if (execError.code === 'ENOENT') {
+        throw new Error(`Python executable not found: ${pythonCmd}. Install Python 3 or set PYTHON_PATH environment variable.`);
+      }
       
       // Try to parse stdout even if there was an error
-      if (execError.stdout) {
+      if (execError.stdout && execError.stdout.trim().length > 0) {
         try {
           result = JSON.parse(execError.stdout);
           console.log('✅ Successfully parsed result from error output');
         } catch (parseError) {
-          console.error('❌ Failed to parse Python output');
-          throw new Error('Python script failed to execute properly');
+          console.error('❌ Failed to parse Python output from error');
+          throw new Error(`Python script failed: ${execError.message}. Check if dependencies (opencv-python, numpy) are installed.`);
         }
       } else {
-        throw new Error('Python script failed with no output');
+        // Check if it's a dependency issue
+        if (execError.stderr && (
+          execError.stderr.includes('ModuleNotFoundError') ||
+          execError.stderr.includes('ImportError') ||
+          execError.stderr.includes('No module named')
+        )) {
+          throw new Error('Python dependencies missing. Run: pip3 install -r server/python/requirements.txt');
+        }
+        
+        throw new Error(`Python script failed with no output. Error: ${execError.message}. Check server logs and verify Python installation.`);
       }
     }
     
