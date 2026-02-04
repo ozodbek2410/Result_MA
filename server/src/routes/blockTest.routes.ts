@@ -2,6 +2,7 @@ import express from 'express';
 import BlockTest from '../models/BlockTest';
 import Student from '../models/Student';
 import StudentVariant from '../models/StudentVariant';
+import StudentTestConfig from '../models/StudentTestConfig';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { cacheMiddleware, invalidateCache } from '../middleware/cache';
 import { v4 as uuidv4 } from 'uuid';
@@ -387,19 +388,49 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
     for (const studentId of studentIds) {
       const variantCode = uuidv4().substring(0, 8).toUpperCase();
       
+      // ВАЖНО: Получаем конфигурацию студента (какие предметы он выбрал)
+      const studentConfig = await StudentTestConfig.findOne({ studentId })
+        .populate('subjects.subjectId');
+      
+      if (!studentConfig) {
+        console.log(`⚠️ Student ${studentId}: No config found, skipping`);
+        continue; // Пропускаем студента без конфигурации
+      }
+      
+      console.log(`📋 Student ${studentId}: Config found with ${studentConfig.subjects.length} subjects`);
+      
       // Shuffle questions WITHIN each subject (not across subjects)
+      // ТОЛЬКО для предметов, которые выбрал студент!
       const shuffledQuestions: any[] = [];
       
-      for (const subjectTest of blockTest.subjectTests) {
-        if (subjectTest.questions && subjectTest.questions.length > 0) {
-          // Shuffle questions within this subject
-          const subjectQuestions = shuffleArray([...subjectTest.questions]);
-          
-          // Shuffle answer variants for each question
-          for (const question of subjectQuestions) {
-            const shuffled = shuffleVariants(question);
-            shuffledQuestions.push(shuffled);
-          }
+      for (const subjectConfig of studentConfig.subjects) {
+        const subjectId = (subjectConfig.subjectId._id || subjectConfig.subjectId).toString();
+        const questionCount = subjectConfig.questionCount;
+        
+        // Находим этот предмет в блок-тесте
+        const subjectTest = blockTest.subjectTests.find(
+          (st: any) => (st.subjectId._id || st.subjectId).toString() === subjectId
+        );
+        
+        if (!subjectTest || !subjectTest.questions || subjectTest.questions.length === 0) {
+          console.log(`⚠️ Subject ${subjectId}: No questions found in block test`);
+          continue;
+        }
+        
+        // Берем только нужное количество вопросов
+        const questionsToTake = Math.min(questionCount, subjectTest.questions.length);
+        
+        console.log(`📝 Subject ${(subjectConfig.subjectId as any).nameUzb}: Taking ${questionsToTake} questions`);
+        
+        // Shuffle questions within this subject
+        const subjectQuestions = shuffleArray([...subjectTest.questions]).slice(0, questionsToTake);
+        
+        // Shuffle answer variants for each question
+        for (const question of subjectQuestions) {
+          const shuffled = shuffleVariants(question);
+          // Сохраняем subjectId для каждого вопроса
+          shuffled.subjectId = subjectTest.subjectId;
+          shuffledQuestions.push(shuffled);
         }
       }
       

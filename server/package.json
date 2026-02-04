@@ -17,7 +17,9 @@
     "migrate-teachers": "tsx src/scripts/migrateTeachersToUsers.ts",
     "check-db": "tsx src/scripts/checkDatabase.ts",
     "clean-db": "tsx src/scripts/cleanDatabase.ts",
-    "promote-students": "tsx src/scripts/promoteStudents.ts"
+    "promote-students": "tsx src/scripts/promoteStudents.ts",
+    "check-variants": "tsx src/scripts/checkVariants.ts",
+    "update-variants": "tsx src/scripts/updateBlockTestVariants.ts"
   },
   "dependencies": {
     "@types/compression": "^1.8.1",
