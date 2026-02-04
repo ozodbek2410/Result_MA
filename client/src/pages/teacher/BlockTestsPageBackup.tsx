@@ -956,7 +956,7 @@ export default function BlockTestsPage() {
         {groupedArray.length > 0 ? (
           <>
             {viewMode === 'grid' ? (
-              /* Grid View - Premium Cards */
+              // Grid View - Premium Cards
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
                 {groupedArray.map((group: any, groupIndex: number) => {
                   const firstTest = group.tests[0];
@@ -1069,7 +1069,7 @@ export default function BlockTestsPage() {
                 })}
               </div>
             ) : (
-              /* List View - Compact & Professional */
+              // List View - Compact & Professional
               <div className="space-y-3 sm:space-y-4">
                 {groupedArray.map((group: any, groupIndex: number) => {
                   const firstTest = group.tests[0];
@@ -1163,7 +1163,7 @@ export default function BlockTestsPage() {
             )}
           </>
         ) : (
-          /* Empty State - Premium Design */
+          // Empty State - Premium Design
           <div className="bg-white/80 backdrop-blur-xl border-2 border-slate-200/80 rounded-3xl shadow-xl overflow-hidden">
             <div className="py-16 sm:py-20 lg:py-24 text-center px-4">
               <div className="relative inline-block mb-8">
