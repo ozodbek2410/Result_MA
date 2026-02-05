@@ -25,7 +25,7 @@ interface BranchStats {
   studentsCount: number;
   teachersCount: number;
   groupsCount: number;
-  fillPercentage: number;
+  averageScore: number;
 }
 
 interface Statistics {
@@ -68,10 +68,10 @@ export default function DashboardPage() {
     }
   };
 
-  // Calculate overall fill percentage across all branches
+  // Calculate overall average score across all branches
   const calculateOverallPercentage = () => {
     if (!stats.branches.length) return 0;
-    const totalPercentage = stats.branches.reduce((sum, branch) => sum + branch.fillPercentage, 0);
+    const totalPercentage = stats.branches.reduce((sum, branch) => sum + branch.averageScore, 0);
     return Math.round(totalPercentage / stats.branches.length);
   };
 
@@ -179,7 +179,6 @@ export default function DashboardPage() {
           icon={Building2}
           color="blue"
           gradient={true}
-          trend={{ value: "+12%", isPositive: true }}
           subtitle="Jami faol filiallar"
         />
         
@@ -189,7 +188,6 @@ export default function DashboardPage() {
           icon={BookOpen}
           color="green"
           gradient={true}
-          trend={{ value: "+8%", isPositive: true }}
           subtitle="O'quv fanlari"
         />
         
@@ -199,7 +197,6 @@ export default function DashboardPage() {
           icon={GraduationCap}
           color="purple"
           gradient={true}
-          trend={{ value: "+23%", isPositive: true }}
           subtitle="Ro'yxatdan o'tgan"
         />
         
@@ -209,20 +206,19 @@ export default function DashboardPage() {
           icon={Users}
           color="orange"
           gradient={true}
-          trend={{ value: "+5%", isPositive: true }}
           subtitle="Faol o'qituvchilar"
         />
         
         <StatsCard
-          title="To'ldirilganlik"
+          title="O'rtacha foiz"
           value={`${calculateOverallPercentage()}%`}
           icon={Percent}
           color={
-            calculateOverallPercentage() >= 100 ? 'red' :
-            calculateOverallPercentage() >= 80 ? 'orange' : 'green'
+            calculateOverallPercentage() >= 80 ? 'green' :
+            calculateOverallPercentage() >= 60 ? 'orange' : 'red'
           }
           gradient={true}
-          subtitle="O'rtacha guruhlar"
+          subtitle="Test natijalari"
         />
       </div>
 
@@ -303,17 +299,17 @@ export default function DashboardPage() {
                   <div className="pt-3 sm:pt-4 border-t border-gray-100">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        To'ldirilganlik
+                        O'rtacha foiz
                       </span>
                       <span className={`text-xs sm:text-sm font-bold ${
-                        branch.fillPercentage >= 100 ? 'text-red-600' :
-                        branch.fillPercentage >= 80 ? 'text-orange-600' :
-                        'text-green-600'
+                        branch.averageScore >= 80 ? 'text-green-600' :
+                        branch.averageScore >= 60 ? 'text-orange-600' :
+                        'text-red-600'
                       }`}>
-                        {branch.fillPercentage}%
+                        {branch.averageScore}%
                       </span>
                     </div>
-                    <Progress value={branch.fillPercentage} className="h-2.5" />
+                    <Progress value={branch.averageScore} className="h-2.5" />
                   </div>
                 </div>
 

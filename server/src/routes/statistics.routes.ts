@@ -4,7 +4,7 @@ import { UserRole } from '../models/User';
 import Branch from '../models/Branch';
 import Subject from '../models/Subject';
 import Student from '../models/Student';
-import Teacher from '../models/Teacher';
+import User from '../models/User';
 import Test from '../models/Test';
 import TestResult from '../models/TestResult';
 import Group from '../models/Group';
@@ -210,11 +210,11 @@ router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthR
       Branch.countDocuments(),
       Subject.countDocuments(),
       Student.countDocuments(),
-      Teacher.countDocuments(),
+      User.countDocuments({ role: UserRole.TEACHER, isActive: true }),
       Test.countDocuments(),
       TestResult.countDocuments(),
       TestResult.aggregate([
-        { $group: { _id: null, avgScore: { $avg: '$score' } } }
+        { $group: { _id: null, avgScore: { $avg: '$percentage' } } }
       ]),
       Branch.find().lean()
     ]);
@@ -222,40 +222,29 @@ router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthR
     const averageScore = avgScoreResult.length > 0 ? avgScoreResult[0].avgScore : 0;
 
     // Use aggregation to get branch statistics efficiently
-    const [studentsByBranch, teachersByBranch, groupsByBranch, groupCapacityByBranch, studentGroupsByBranch] = await Promise.all([
+    const [studentsByBranch, teachersByBranch, groupsByBranch, testResultsByBranch] = await Promise.all([
       Student.aggregate([
         { $group: { _id: '$branchId', count: { $sum: 1 } } }
       ]),
-      Teacher.aggregate([
-        { $group: { _id: '$branchId', count: { $sum: 1 } } }
-      ]),
-      Group.aggregate([
-        { $group: { _id: '$branchId', count: { $sum: 1 } } }
-      ]),
-      // Get total capacity per branch
-      Group.aggregate([
+      User.aggregate([
         { 
-          $group: { 
-            _id: '$branchId', 
-            totalCapacity: { $sum: { $ifNull: ['$capacity', 20] } }
+          $match: { 
+            role: UserRole.TEACHER,
+            isActive: true
           } 
-        }
-      ]),
-      // Get total students in groups per branch
-      StudentGroup.aggregate([
-        {
-          $lookup: {
-            from: 'groups',
-            localField: 'groupId',
-            foreignField: '_id',
-            as: 'group'
-          }
         },
-        { $unwind: '$group' },
+        { $group: { _id: '$branchId', count: { $sum: 1 } } }
+      ]),
+      Group.aggregate([
+        { $group: { _id: '$branchId', count: { $sum: 1 } } }
+      ]),
+      // Get average test percentage per branch
+      TestResult.aggregate([
         {
           $group: {
-            _id: '$group.branchId',
-            totalStudents: { $sum: 1 }
+            _id: '$branchId',
+            avgPercentage: { $avg: '$percentage' },
+            count: { $sum: 1 }
           }
         }
       ])
@@ -265,17 +254,13 @@ router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthR
     const studentsMap = new Map(studentsByBranch.map(item => [item._id?.toString(), item.count]));
     const teachersMap = new Map(teachersByBranch.map(item => [item._id?.toString(), item.count]));
     const groupsMap = new Map(groupsByBranch.map(item => [item._id?.toString(), item.count]));
-    const capacityMap = new Map(groupCapacityByBranch.map(item => [item._id?.toString(), item.totalCapacity]));
-    const groupStudentsMap = new Map(studentGroupsByBranch.map(item => [item._id?.toString(), item.totalStudents]));
+    const testResultsMap = new Map(testResultsByBranch.map(item => [item._id?.toString(), { avg: item.avgPercentage, count: item.count }]));
 
     // Build branch stats efficiently
     const branchStats = branches.map(branch => {
       const branchId = branch._id.toString();
-      const totalCapacity = capacityMap.get(branchId) || 0;
-      const totalStudentsInGroups = groupStudentsMap.get(branchId) || 0;
-      const fillPercentage = totalCapacity > 0 
-        ? Math.round((totalStudentsInGroups / totalCapacity) * 100) 
-        : 0;
+      const testData = testResultsMap.get(branchId);
+      const averageScore = testData ? Math.round(testData.avg) : 0;
 
       return {
         _id: branch._id,
@@ -283,7 +268,7 @@ router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthR
         studentsCount: studentsMap.get(branchId) || 0,
         teachersCount: teachersMap.get(branchId) || 0,
         groupsCount: groupsMap.get(branchId) || 0,
-        fillPercentage,
+        averageScore,
       };
     });
 

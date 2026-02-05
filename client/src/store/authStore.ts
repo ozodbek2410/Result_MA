@@ -25,8 +25,8 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (user, token) => set({ user, token }),
       logout: () => {
         set({ user: null, token: null });
-        // Redirect to login page
-        window.location.href = '/login';
+        // Redirect to landing page
+        window.location.href = '/';
       },
     }),
     {

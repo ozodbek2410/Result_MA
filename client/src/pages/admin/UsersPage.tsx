@@ -96,9 +96,12 @@ export default function UsersPage() {
       return;
     }
     
-    if (!formData.username || (!editingUser && !formData.password)) {
-      error('Login va parol majburiy');
-      return;
+    // Для учеников логин и пароль не требуются
+    if (formData.role !== 'STUDENT') {
+      if (!formData.username || (!editingUser && !formData.password)) {
+        error('Login va parol majburiy');
+        return;
+      }
     }
     
     // Super Admin uchun filial majburiy emas
@@ -114,6 +117,16 @@ export default function UsersPage() {
     
     if (formData.role === 'STUDENT' && !formData.fullName) {
       error('F.I.Sh majburiy (o\'quvchi uchun)');
+      return;
+    }
+    
+    if (formData.role === 'STUDENT' && !formData.phone) {
+      error('Telefon majburiy (o\'quvchi uchun)');
+      return;
+    }
+    
+    if (formData.role === 'STUDENT' && !formData.parentPhone) {
+      error('Ota-ona telefoni majburiy (o\'quvchi uchun)');
       return;
     }
     
@@ -239,31 +252,39 @@ export default function UsersPage() {
         </DialogHeader>
         <DialogContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Login"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                required
-                placeholder="username"
-              />
-              <Input
-                label="Parol"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required={!editingUser}
-                placeholder={editingUser ? "Bo'sh qoldiring (o'zgartirmaslik uchun)" : "********"}
-              />
-            </div>
+            {formData.role !== 'STUDENT' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Login"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  required
+                  placeholder="username"
+                />
+                <Input
+                  label="Parol"
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required={!editingUser}
+                  placeholder={editingUser ? "Bo'sh qoldiring (o'zgartirmaslik uchun)" : "********"}
+                />
+              </div>
+            )}
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Rol"
-                value={formData.role && roles.some(r => r.name === formData.role) ? formData.role : roles[0]?.name || ''}
+                value={formData.role}
                 onChange={(e) => {
                   console.log('Role changed to:', e.target.value);
-                  setFormData({ ...formData, role: e.target.value });
+                  const newRole = e.target.value;
+                  setFormData({ 
+                    ...formData, 
+                    role: newRole,
+                    // Автоматически выбираем филиал при выборе STUDENT
+                    ...(newRole === 'STUDENT' ? { branchId: formData.branchId || branches[0]?._id || '' } : {})
+                  });
                 }}
                 required
               >
@@ -331,18 +352,27 @@ export default function UsersPage() {
                   placeholder="Aliyev Ali Alijon o'g'li"
                 />
                 <PhoneInput
+                  label="Telefon"
+                  value={formData.phone}
+                  onChange={(value) => setFormData({ ...formData, phone: value })}
+                  required
+                />
+                <PhoneInput
                   label="Ota-ona telefoni"
                   value={formData.parentPhone || ''}
                   onChange={(value) => setFormData({ ...formData, parentPhone: value })}
+                  required
                 />
               </>
             )}
 
-            <PhoneInput
-              label="Telefon"
-              value={formData.phone}
-              onChange={(value) => setFormData({ ...formData, phone: value })}
-            />
+            {formData.role !== 'STUDENT' && formData.role === 'TEACHER' && (
+              <PhoneInput
+                label="Telefon"
+                value={formData.phone}
+                onChange={(value) => setFormData({ ...formData, phone: value })}
+              />
+            )}
 
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
               <Button type="submit" loading={loading} fullWidth className="sm:flex-1">

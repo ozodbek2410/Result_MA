@@ -77,6 +77,7 @@ export default function BranchesPage() {
       <PageNavbar
         title="Filiallar"
         description="Barcha filiallarni boshqarish"
+        badge={`${branches.length} ta`}
         showSearch={true}
         searchPlaceholder="Filial yoki manzil bo'yicha qidirish..."
         searchValue={searchQuery}
@@ -85,51 +86,6 @@ export default function BranchesPage() {
         addButtonText="Filial qo'shish"
         onAddClick={() => setShowForm(true)}
       />
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs sm:text-sm text-gray-600 font-medium mb-1">Jami filiallar</p>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{branches.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-50 rounded-xl flex items-center justify-center">
-                <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs sm:text-sm text-gray-600 font-medium mb-1">Faol filiallar</p>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{branches.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs sm:text-sm text-gray-600 font-medium mb-1">Yangi (bu oy)</p>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900">0</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Dialog */}
       <Dialog open={showForm} onClose={() => setShowForm(false)}>

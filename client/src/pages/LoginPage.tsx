@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api from '../lib/api';
-import { Lock, User, AlertCircle } from 'lucide-react';
+import { Lock, User, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -56,19 +56,29 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-md relative z-10">
-        {/* Login Card */}
+        {/* Login Card - White card on all devices */}
         <div className="bg-white/95 backdrop-blur-sm shadow-2xl rounded-2xl p-8 border border-gray-100 animate-fade-in">
+          {/* Back Button */}
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="mb-6 flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-all group"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm font-semibold">Orqaga</span>
+          </button>
+
           {/* Logo & Title */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center mb-6">
               <img 
                 src="/logo.png" 
                 alt="Logo" 
-                className="w-24 h-24 object-contain drop-shadow-lg"
+                className="w-28 h-28 object-contain drop-shadow-2xl"
               />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Xush kelibsiz</h1>
-            <p className="text-gray-600 text-sm">Tizimga kirish uchun ma'lumotlaringizni kiriting</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Xush kelibsiz</h1>
+            <p className="text-gray-600 text-sm md:text-base">Tizimga kirish uchun ma'lumotlaringizni kiriting</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -85,10 +95,10 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   required
                   placeholder="Loginni kiriting"
-                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl 
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-xl 
                     focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white
                     outline-none transition-all text-gray-900 placeholder:text-gray-400
-                    hover:border-gray-300"
+                    hover:border-gray-300 shadow-sm"
                 />
               </div>
             </div>
@@ -106,10 +116,10 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="Parolni kiriting"
-                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl 
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-xl 
                     focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white
                     outline-none transition-all text-gray-900 placeholder:text-gray-400
-                    hover:border-gray-300"
+                    hover:border-gray-300 shadow-sm"
                 />
               </div>
             </div>
@@ -126,11 +136,11 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold py-3.5 rounded-xl 
-                transition-all duration-200 shadow-lg hover:shadow-xl 
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-xl 
+                transition-all duration-200 shadow-lg hover:shadow-2xl 
                 disabled:opacity-50 disabled:cursor-not-allowed
                 hover:from-blue-700 hover:to-indigo-700
-                active:scale-[0.98]"
+                active:scale-[0.98] mt-6"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -145,7 +155,7 @@ export default function LoginPage() {
           </form>
 
           {/* Footer */}
-          <div className="mt-6 text-center">
+          <div className="mt-8 text-center">
             <p className="text-xs text-gray-500">
               © 2025 Test Platform. Barcha huquqlar himoyalangan.
             </p>

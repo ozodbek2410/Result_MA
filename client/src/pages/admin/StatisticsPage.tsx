@@ -27,7 +27,7 @@ interface Statistics {
     studentsCount: number;
     teachersCount: number;
     groupsCount: number;
-    fillPercentage?: number;
+    averageScore?: number;
   }>;
 }
 
@@ -182,14 +182,14 @@ export default function StatisticsPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <Activity className="w-4 h-4 text-blue-600" />
                           <span className={`text-lg font-bold ${
-                            (branch.fillPercentage || 0) >= 100 ? 'text-red-600' :
-                            (branch.fillPercentage || 0) >= 80 ? 'text-orange-600' :
-                            'text-green-600'
+                            (branch.averageScore || 0) >= 80 ? 'text-green-600' :
+                            (branch.averageScore || 0) >= 60 ? 'text-orange-600' :
+                            'text-red-600'
                           }`}>
-                            {branch.fillPercentage || 0}%
+                            {branch.averageScore || 0}%
                           </span>
                         </div>
-                        <p className="text-xs text-gray-600">To'ldirilganlik</p>
+                        <p className="text-xs text-gray-600">O'rtacha foiz</p>
                       </div>
                     </div>
                   </div>
@@ -240,14 +240,14 @@ export default function StatisticsPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <Activity className="w-5 h-5 text-blue-600" />
                           <span className={`text-2xl font-bold ${
-                            (branch.fillPercentage || 0) >= 100 ? 'text-red-600' :
-                            (branch.fillPercentage || 0) >= 80 ? 'text-orange-600' :
-                            'text-green-600'
+                            (branch.averageScore || 0) >= 80 ? 'text-green-600' :
+                            (branch.averageScore || 0) >= 60 ? 'text-orange-600' :
+                            'text-red-600'
                           }`}>
-                            {branch.fillPercentage || 0}%
+                            {branch.averageScore || 0}%
                           </span>
                         </div>
-                        <p className="text-xs text-gray-600">To'ldirilganlik</p>
+                        <p className="text-xs text-gray-600">O'rtacha foiz</p>
                       </div>
                     </div>
                   </div>

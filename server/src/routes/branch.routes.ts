@@ -2,9 +2,10 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Branch from '../models/Branch';
 import Student from '../models/Student';
-import Teacher from '../models/Teacher';
+import User from '../models/User';
 import Group from '../models/Group';
 import StudentGroup from '../models/StudentGroup';
+import TestResult from '../models/TestResult';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
 
@@ -72,10 +73,10 @@ router.get('/:id/statistics', authenticate, async (req, res) => {
     const branchId = req.params.id;
 
     // Run all queries in parallel
-    const [branch, studentsCount, teachersCount, groups, studentGroupCounts] = await Promise.all([
+    const [branch, studentsCount, teachersCount, groups, studentGroupCounts, testResults] = await Promise.all([
       Branch.findById(branchId).lean(),
       Student.countDocuments({ branchId }),
-      Teacher.countDocuments({ branchId }),
+      User.countDocuments({ branchId, role: UserRole.TEACHER, isActive: true }),
       Group.find({ branchId }).select('_id name capacity').lean(),
       StudentGroup.aggregate([
         {
@@ -98,6 +99,30 @@ router.get('/:id/statistics', authenticate, async (req, res) => {
             count: { $sum: 1 }
           }
         }
+      ]),
+      // Get test results for students in this branch
+      TestResult.aggregate([
+        {
+          $match: {
+            branchId: new mongoose.Types.ObjectId(branchId)
+          }
+        },
+        {
+          $lookup: {
+            from: 'studentgroups',
+            localField: 'studentId',
+            foreignField: 'studentId',
+            as: 'studentGroups'
+          }
+        },
+        { $unwind: { path: '$studentGroups', preserveNullAndEmptyArrays: false } },
+        {
+          $group: {
+            _id: '$studentGroups.groupId',
+            avgPercentage: { $avg: '$percentage' },
+            count: { $sum: 1 }
+          }
+        }
       ])
     ]);
 
@@ -105,18 +130,28 @@ router.get('/:id/statistics', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Filial topilmadi' });
     }
 
-    // Create a map for quick lookup
+    // Create maps for quick lookup
     const studentCountMap = new Map(
       studentGroupCounts.map(item => [item._id.toString(), item.count])
     );
+    
+    const testResultsMap = new Map(
+      testResults.map(item => [item._id?.toString(), { avg: item.avgPercentage, count: item.count }])
+    );
 
-    // Calculate student counts for groups efficiently
-    const groupsWithCounts = groups.map(group => ({
-      _id: group._id,
-      name: group.name,
-      capacity: group.capacity || 20,
-      studentsCount: studentCountMap.get(group._id.toString()) || 0
-    }));
+    // Calculate student counts and average percentages for groups efficiently
+    const groupsWithCounts = groups.map(group => {
+      const groupId = group._id.toString();
+      const testData = testResultsMap.get(groupId);
+      
+      return {
+        _id: group._id,
+        name: group.name,
+        capacity: group.capacity || 20,
+        studentsCount: studentCountMap.get(groupId) || 0,
+        averageScore: testData ? Math.round(testData.avg) : 0
+      };
+    });
 
     res.json({
       branch: {

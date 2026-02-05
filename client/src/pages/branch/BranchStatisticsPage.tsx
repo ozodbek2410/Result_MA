@@ -43,30 +43,47 @@ export default function BranchStatisticsPage() {
 
   const fetchStatistics = async () => {
     try {
-      const [groupsRes, studentsRes, teachersRes, testResultsRes] = await Promise.all([
+      const [groupsRes, studentsRes, teachersRes, testResultsRes, studentGroupsRes] = await Promise.all([
         api.get('/groups'),
         api.get('/students'),
         api.get('/teachers'),
-        api.get('/test-results').catch(() => ({ data: [] }))
+        api.get('/test-results').catch(() => ({ data: [] })),
+        api.get('/observer/student-groups').catch(() => ({ data: [] }))
       ]);
 
       const testResults = testResultsRes.data;
+      const studentGroups = studentGroupsRes.data;
+
+      // Create a map of studentId to groupIds
+      const studentToGroupMap: Record<string, string[]> = {};
+      studentGroups.forEach((sg: any) => {
+        const studentId = sg.studentId?._id || sg.studentId;
+        const groupId = sg.groupId?._id || sg.groupId;
+        if (!studentToGroupMap[studentId]) {
+          studentToGroupMap[studentId] = [];
+        }
+        studentToGroupMap[studentId].push(groupId);
+      });
 
       // Calculate average score for each group
       const groupScores: Record<string, { total: number; count: number }> = {};
       
       testResults.forEach((result: any) => {
-        const groupId = result.groupId?._id || result.groupId;
-        if (!groupId) return;
+        const studentId = result.studentId?._id || result.studentId;
+        if (!studentId) return;
 
-        if (!groupScores[groupId]) {
-          groupScores[groupId] = { total: 0, count: 0 };
-        }
+        const groupIds = studentToGroupMap[studentId] || [];
+        
+        groupIds.forEach((groupId: string) => {
+          if (!groupScores[groupId]) {
+            groupScores[groupId] = { total: 0, count: 0 };
+          }
 
-        if (result.score !== undefined && result.score !== null) {
-          groupScores[groupId].total += result.score;
-          groupScores[groupId].count += 1;
-        }
+          if (result.percentage !== undefined && result.percentage !== null) {
+            groupScores[groupId].total += result.percentage;
+            groupScores[groupId].count += 1;
+          }
+        });
       });
 
       const groups = groupsRes.data.map((group: any) => {
@@ -85,8 +102,8 @@ export default function BranchStatisticsPage() {
       let validResults = 0;
       
       testResults.forEach((result: any) => {
-        if (result.score !== undefined && result.score !== null) {
-          totalScore += result.score;
+        if (result.percentage !== undefined && result.percentage !== null) {
+          totalScore += result.percentage;
           validResults++;
         }
       });

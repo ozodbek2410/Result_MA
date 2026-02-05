@@ -33,6 +33,7 @@ interface BranchStatistics {
     name: string;
     capacity: number;
     studentsCount: number;
+    averageScore?: number;
   }>;
 }
 
@@ -76,9 +77,20 @@ export default function BranchStatisticsPage() {
 
   const calculateOverallPercentage = () => {
     if (!stats || !stats.groups.length) return 0;
-    const totalCapacity = stats.groups.reduce((sum, g) => sum + g.capacity, 0);
-    const totalStudents = stats.groups.reduce((sum, g) => sum + g.studentsCount, 0);
-    return totalCapacity > 0 ? Math.round((totalStudents / totalCapacity) * 100) : 0;
+    
+    // Calculate average test percentage across all groups
+    let totalPercentage = 0;
+    let groupsWithTests = 0;
+    
+    stats.groups.forEach(group => {
+      const groupAvg = group.averageScore || 0;
+      if (groupAvg > 0) {
+        totalPercentage += groupAvg;
+        groupsWithTests++;
+      }
+    });
+    
+    return groupsWithTests > 0 ? Math.round(totalPercentage / groupsWithTests) : 0;
   };
 
   if (loading) {
@@ -252,7 +264,7 @@ export default function BranchStatisticsPage() {
                     )}
                   </div>
                   <div>
-                    <p className="text-blue-100 font-medium mb-1 sm:mb-2 text-sm sm:text-base">To'ldirilganlik</p>
+                    <p className="text-blue-100 font-medium mb-1 sm:mb-2 text-sm sm:text-base">O'rtacha foiz</p>
                     <p className="text-3xl sm:text-4xl font-bold text-white">{overallPercentage}%</p>
                   </div>
                 </div>
@@ -282,11 +294,10 @@ export default function BranchStatisticsPage() {
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6"
             >
               {stats.groups.map((group, index) => {
-                const fillPercentage = group.capacity > 0 
-                  ? Math.round((group.studentsCount / group.capacity) * 100) 
-                  : 0;
-                const isNearFull = fillPercentage >= 80 && fillPercentage < 100;
-                const isFull = fillPercentage >= 100;
+                const avgPercentage = (group as any).averagePercentage || 0;
+                const isGood = avgPercentage >= 80;
+                const isAverage = avgPercentage >= 60 && avgPercentage < 80;
+                const isPoor = avgPercentage < 60;
 
                 return (
                   <motion.div
@@ -297,9 +308,9 @@ export default function BranchStatisticsPage() {
                   >
                     <Card className="relative overflow-hidden bg-white border-gray-200 shadow-lg hover:shadow-2xl transition-all duration-300">
                       <div className={`absolute top-0 left-0 right-0 h-1 ${
-                        isFull ? 'bg-gradient-to-r from-red-500 to-pink-500' :
-                        isNearFull ? 'bg-gradient-to-r from-orange-500 to-yellow-500' :
-                        'bg-gradient-to-r from-green-500 to-emerald-500'
+                        isGood ? 'bg-gradient-to-r from-green-500 to-emerald-500' :
+                        isAverage ? 'bg-gradient-to-r from-orange-500 to-yellow-500' :
+                        'bg-gradient-to-r from-red-500 to-pink-500'
                       }`}></div>
                       
                       <CardContent className="p-4 sm:p-5 lg:p-6">
@@ -309,9 +320,9 @@ export default function BranchStatisticsPage() {
                             animate={{ scale: 1 }}
                             transition={{ delay: index * 0.05, type: "spring" }}
                             className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg ${
-                              isFull ? 'bg-gradient-to-br from-red-500 to-pink-500' :
-                              isNearFull ? 'bg-gradient-to-br from-orange-500 to-yellow-500' :
-                              'bg-gradient-to-br from-blue-500 to-indigo-500'
+                              isGood ? 'bg-gradient-to-br from-green-500 to-emerald-500' :
+                              isAverage ? 'bg-gradient-to-br from-orange-500 to-yellow-500' :
+                              'bg-gradient-to-br from-red-500 to-pink-500'
                             }`}
                           >
                             <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
@@ -332,33 +343,45 @@ export default function BranchStatisticsPage() {
                           
                           <div>
                             <div className="flex items-center justify-between mb-2 sm:mb-3">
-                              <span className="text-xs sm:text-sm font-medium text-gray-600">To'ldirilganlik</span>
+                              <span className="text-xs sm:text-sm font-medium text-gray-600">O'rtacha foiz</span>
                               <span className={`text-base sm:text-lg font-bold ${
-                                isFull ? 'text-red-600' : 
-                                isNearFull ? 'text-orange-600' : 
-                                'text-green-600'
+                                isGood ? 'text-green-600' : 
+                                isAverage ? 'text-orange-600' : 
+                                'text-red-600'
                               }`}>
-                                {fillPercentage}%
+                                {avgPercentage}%
                               </span>
                             </div>
                             <div className="relative">
                               <Progress 
-                                value={fillPercentage} 
+                                value={avgPercentage} 
                                 className="h-2.5 sm:h-3"
                               />
                             </div>
                           </div>
 
-                          {isFull && (
-                            <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-red-50 border border-red-200 rounded-lg sm:rounded-xl">
-                              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 flex-shrink-0" />
-                              <span className="text-xs font-medium text-red-700">Guruh to'lgan</span>
+                          {avgPercentage === 0 && (
+                            <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg sm:rounded-xl">
+                              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600 flex-shrink-0" />
+                              <span className="text-xs font-medium text-gray-700">Test natijalari yo'q</span>
                             </div>
                           )}
-                          {isNearFull && (
+                          {isGood && avgPercentage > 0 && (
+                            <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-green-50 border border-green-200 rounded-lg sm:rounded-xl">
+                              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
+                              <span className="text-xs font-medium text-green-700">A'lo natija</span>
+                            </div>
+                          )}
+                          {isAverage && (
                             <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-orange-50 border border-orange-200 rounded-lg sm:rounded-xl">
                               <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 flex-shrink-0" />
-                              <span className="text-xs font-medium text-orange-700">Deyarli to'lgan</span>
+                              <span className="text-xs font-medium text-orange-700">O'rtacha natija</span>
+                            </div>
+                          )}
+                          {isPoor && avgPercentage > 0 && (
+                            <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-red-50 border border-red-200 rounded-lg sm:rounded-xl">
+                              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 flex-shrink-0" />
+                              <span className="text-xs font-medium text-red-700">Yaxshilash kerak</span>
                             </div>
                           )}
                         </div>
