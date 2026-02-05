@@ -105,7 +105,7 @@ router.get('/', authenticate, cacheMiddleware(120), async (req: AuthRequest, res
       const studentGroups = await StudentGroup.find({ groupId })
         .populate({
           path: 'studentId',
-          select: 'fullName classNumber phone directionId subjectIds branchId',
+          select: 'fullName classNumber phone directionId subjectIds branchId profileToken',
           populate: [
             { path: 'directionId', select: 'nameUzb nameRu' },
             { path: 'subjectIds', select: 'nameUzb nameRu' },

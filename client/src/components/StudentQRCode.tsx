@@ -39,7 +39,7 @@ export default function StudentQRCode({ student, onClose }: StudentQRCodeProps) 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ margin: 0, width: '100vw', height: '100vh', left: 0, top: 0 }}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
         {onClose && (
           <button
@@ -59,8 +59,8 @@ export default function StudentQRCode({ student, onClose }: StudentQRCodeProps) 
           </p>
         </div>
 
-        <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 mb-6">
-          <div className="bg-white rounded-lg p-4 inline-block">
+        <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 mb-6 flex justify-center items-center">
+          <div className="bg-white rounded-lg p-4">
             <QRCodeSVG
               id={`qr-${student._id}`}
               value={profileUrl}
