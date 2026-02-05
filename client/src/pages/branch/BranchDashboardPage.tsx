@@ -60,7 +60,10 @@ export default function BranchDashboardPage() {
         totalTestResults: 0,
         averageScore: 0,
         fillPercentage,
-        topStudents: dashboardRes.data.topStudents || []
+        topStudents: (dashboardRes.data.topStudents || []).map((student: any, index: number) => ({
+          ...student,
+          rank: student.rank || index + 1 // Ensure rank is set, fallback to index + 1
+        }))
       });
     } catch (error) {
       console.error('Error fetching stats:', error);

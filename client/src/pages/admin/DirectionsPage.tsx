@@ -16,6 +16,7 @@ export default function DirectionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingDirection, setEditingDirection] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({ 
     nameUzb: '', 
     subjects: [] as any[]
@@ -175,6 +176,12 @@ export default function DirectionsPage() {
     setSelectedSubjects({});
   };
 
+  // Фильтрация по поиску
+  const filteredDirections = directions.filter(direction => {
+    const searchLower = searchQuery.toLowerCase();
+    return direction.nameUzb?.toLowerCase().includes(searchLower);
+  });
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -196,6 +203,11 @@ export default function DirectionsPage() {
       <PageNavbar
         title="Yo'nalishlar"
         description="O'quv yo'nalishlarini boshqarish"
+        badge={`${filteredDirections.length} ta`}
+        showSearch={true}
+        searchPlaceholder="Yo'nalish nomi bo'yicha qidirish..."
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
         showAddButton={true}
         addButtonText="Yo'nalish qo'shish"
         onAddClick={() => setShowForm(true)}
@@ -302,7 +314,7 @@ export default function DirectionsPage() {
       </Dialog>
 
       <div className="grid gap-3 sm:gap-4 lg:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {directions.map((direction) => (
+        {filteredDirections.map((direction) => (
           <Card key={direction._id} className="hover:shadow-xl transition-all hover:-translate-y-1">
             <CardContent className="p-4 sm:p-5 lg:p-6">
               <div className="flex items-start justify-between mb-3 sm:mb-4">
@@ -365,6 +377,20 @@ export default function DirectionsPage() {
               <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Yo'nalish qo'shish
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {filteredDirections.length === 0 && searchQuery && (
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardContent className="py-12 sm:py-16 text-center px-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <Compass className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Yo'nalishlar topilmadi</h3>
+            <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 max-w-md mx-auto">
+              Qidiruv bo'yicha hech narsa topilmadi. Boshqa so'z bilan qidiring.
+            </p>
           </CardContent>
         </Card>
       )}

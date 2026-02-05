@@ -255,11 +255,22 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
 
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const group = await Group.findByIdAndDelete(req.params.id);
+    const group = await Group.findById(req.params.id);
     if (!group) {
       return res.status(404).json({ message: 'Guruh topilmadi' });
     }
-    res.json({ message: 'Guruh o\'chirildi' });
+    
+    // Каскадное удаление связанных данных
+    const groupId = req.params.id;
+    
+    // Удаляем связи студентов с группой
+    const StudentGroup = require('../models/StudentGroup').default;
+    await StudentGroup.deleteMany({ groupId });
+    
+    // Удаляем саму группу
+    await Group.findByIdAndDelete(req.params.id);
+    
+    res.json({ message: 'Guruh va unga tegishli barcha ma\'lumotlar o\'chirildi' });
   } catch (error: any) {
     console.error('Error deleting group:', error);
     res.status(500).json({ message: 'Server xatosi', error: error.message });

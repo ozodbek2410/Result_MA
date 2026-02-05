@@ -41,12 +41,18 @@ router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res)
   }
 });
 
-router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res) => {
+router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthRequest, res) => {
   try {
+    console.log('=== ОБНОВЛЕНИЕ ФИЛИАЛА ===');
+    console.log('Branch ID:', req.params.id);
+    console.log('User role:', req.user?.role);
+    console.log('Update data:', req.body);
+    
     const branch = await Branch.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!branch) {
       return res.status(404).json({ message: 'Filial topilmadi' });
     }
+    console.log('✅ Филиал обновлен:', branch);
     res.json(branch);
   } catch (error: any) {
     console.error('Error updating branch:', error);
@@ -54,12 +60,17 @@ router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, re
   }
 });
 
-router.delete('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res) => {
+router.delete('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthRequest, res) => {
   try {
+    console.log('=== УДАЛЕНИЕ ФИЛИАЛА ===');
+    console.log('Branch ID:', req.params.id);
+    console.log('User role:', req.user?.role);
+    
     const branch = await Branch.findByIdAndUpdate(req.params.id, { isActive: false });
     if (!branch) {
       return res.status(404).json({ message: 'Filial topilmadi' });
     }
+    console.log('✅ Филиал удален:', branch);
     res.json({ message: 'Filial o\'chirildi' });
   } catch (error: any) {
     console.error('Error deleting branch:', error);

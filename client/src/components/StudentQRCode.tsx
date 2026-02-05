@@ -40,7 +40,7 @@ export default function StudentQRCode({ student, onClose }: StudentQRCodeProps) 
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ margin: 0, width: '100vw', height: '100vh', left: 0, top: 0 }}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
         {onClose && (
           <button
             onClick={onClose}

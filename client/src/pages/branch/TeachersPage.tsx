@@ -134,24 +134,15 @@ export default function TeachersPage() {
       <PageNavbar
         title="O'qituvchilar"
         description="O'qituvchilarni boshqarish va guruhlar tayinlash"
+        badge={`${filteredTeachers.length} ta`}
+        showSearch={teachers.length > 0}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="O'qituvchi ismini qidirish..."
         showAddButton={true}
         addButtonText="O'qituvchi qo'shish"
         onAddClick={() => setShowForm(true)}
       />
-
-      {/* Search Input */}
-      {teachers.length > 0 && (
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="O'qituvchi ismini qidirish..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-          />
-        </div>
-      )}
 
       <Dialog open={showForm} onClose={handleCloseForm}>
         <DialogHeader>

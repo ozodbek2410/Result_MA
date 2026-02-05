@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { PageNavbar } from '@/components/ui/PageNavbar';
 import { 
   Plus, 
   ClipboardList,
@@ -89,40 +90,19 @@ export default function AssignmentsPage() {
   return (
     <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-24 sm:pb-24">
       {/* Header */}
-      <div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/30">
-              <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900">Topshiriqlar</h1>
-              <p className="text-xs sm:text-sm text-slate-600 hidden sm:block">Topshiriqlarni yaratish va boshqarish</p>
-            </div>
-          </div>
-          <Button 
-            size="lg"
-            onClick={() => navigate('/teacher/assignments/create')}
-            className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 shadow-lg shadow-orange-500/30 w-full sm:w-auto"
-          >
-            <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-            <span className="hidden xs:inline">Topshiriq qo'shish</span>
-            <span className="xs:hidden">Qo'shish</span>
-          </Button>
-        </div>
-
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Topshiriq yoki guruh bo'yicha qidirish..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-white border-2 border-slate-200 rounded-xl sm:rounded-2xl focus:outline-none focus:border-orange-500 transition-colors text-sm sm:text-base text-slate-900 placeholder:text-slate-400"
-          />
-        </div>
-      </div>
+      <PageNavbar
+        title="Topshiriqlar"
+        description="Topshiriqlarni yaratish va boshqarish"
+        badge={`${filteredAssignments.length} ta`}
+        showSearch={assignments.length > 0}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Topshiriq yoki guruh bo'yicha qidirish..."
+        showAddButton={true}
+        addButtonText="Topshiriq qo'shish"
+        onAddClick={() => navigate('/teacher/assignments/create')}
+        gradient={true}
+      />
 
       {/* Assignments Grid */}
       {filteredAssignments.length > 0 ? (

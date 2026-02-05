@@ -104,8 +104,17 @@ router.delete('/groups/:id', authenticate, requirePermission('delete_groups'), a
       return res.status(403).json({ message: 'Access denied' });
     }
     
+    // Каскадное удаление связанных данных
+    const groupId = req.params.id;
+    
+    // Удаляем связи студентов с группой
+    const StudentGroup = require('../models/StudentGroup').default;
+    await StudentGroup.deleteMany({ groupId });
+    
+    // Удаляем саму группу
     await Group.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Guruh o\'chirildi' });
+    
+    res.json({ message: 'Guruh va unga tegishli barcha ma\'lumotlar o\'chirildi' });
   } catch (error: any) {
     console.error('Error deleting group:', error);
     res.status(500).json({ message: 'Server xatosi', error: error.message });
@@ -374,8 +383,33 @@ router.delete('/students/:id', authenticate, requirePermission('delete_students'
       return res.status(403).json({ message: 'Access denied' });
     }
     
+    // Каскадное удаление связанных данных
+    const studentId = req.params.id;
+    
+    // Удаляем результаты тестов студента
+    const TestResult = require('../models/TestResult').default;
+    await TestResult.deleteMany({ studentId });
+    
+    // Удаляем конфигурации тестов студента
+    const StudentTestConfig = require('../models/StudentTestConfig').default;
+    await StudentTestConfig.deleteMany({ studentId });
+    
+    // Удаляем варианты студента
+    const StudentVariant = require('../models/StudentVariant').default;
+    await StudentVariant.deleteMany({ studentId });
+    
+    // Удаляем связи студента с группами
+    const StudentGroup = require('../models/StudentGroup').default;
+    await StudentGroup.deleteMany({ studentId });
+    
+    // Удаляем логи активности студента
+    const StudentActivityLog = require('../models/StudentActivityLog').default;
+    await StudentActivityLog.deleteMany({ studentId });
+    
+    // Удаляем самого студента
     await Student.findByIdAndDelete(req.params.id);
-    res.json({ message: 'O\'quvchi o\'chirildi' });
+    
+    res.json({ message: 'O\'quvchi va unga tegishli barcha ma\'lumotlar o\'chirildi' });
   } catch (error: any) {
     console.error('Error deleting student:', error);
     res.status(500).json({ message: 'Server xatosi', error: error.message });

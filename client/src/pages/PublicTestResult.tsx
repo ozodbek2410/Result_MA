@@ -285,7 +285,7 @@ export default function PublicTestResult() {
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setShowImage(false)}
         >
-          <div className="max-w-6xl max-h-[90vh] overflow-auto relative">
+          <div className="max-w-6xl max-h-[90vh] overflow-auto relative" onClick={(e) => e.stopPropagation()}>
             <div className="absolute top-4 right-4 bg-white rounded-lg px-4 py-2 shadow-lg">
               <p className="text-sm font-semibold text-gray-700">
                 Ko'k rang = Sizning javoblaringiz

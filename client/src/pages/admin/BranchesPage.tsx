@@ -15,6 +15,7 @@ export default function BranchesPage() {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingBranch, setEditingBranch] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', location: '' });
   const { success, error } = useToast();
 
@@ -35,16 +36,51 @@ export default function BranchesPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post('/branches', formData);
+      if (editingBranch) {
+        await api.put(`/branches/${editingBranch._id}`, formData);
+        success('Filial muvaffaqiyatli yangilandi!');
+      } else {
+        await api.post('/branches', formData);
+        success('Filial muvaffaqiyatli qo\'shildi!');
+      }
       setFormData({ name: '', location: '' });
+      setEditingBranch(null);
       setShowForm(false);
       fetchBranches();
-      success('Filial muvaffaqiyatli qo\'shildi!');
-    } catch (err) {
-      error('Xatolik yuz berdi');
+    } catch (err: any) {
+      console.error('Error saving branch:', err);
+      error(err.response?.data?.message || 'Xatolik yuz berdi');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEdit = (branch: any) => {
+    setEditingBranch(branch);
+    setFormData({ name: branch.name, location: branch.location });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (branchId: string) => {
+    if (!confirm('Filialni o\'chirmoqchimisiz?')) return;
+    
+    setLoading(true);
+    try {
+      await api.delete(`/branches/${branchId}`);
+      fetchBranches();
+      success('Filial muvaffaqiyatli o\'chirildi!');
+    } catch (err: any) {
+      console.error('Error deleting branch:', err);
+      error(err.response?.data?.message || 'Xatolik yuz berdi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseForm = () => {
+    setShowForm(false);
+    setEditingBranch(null);
+    setFormData({ name: '', location: '' });
   };
 
   const filteredBranches = branches.filter(branch =>
@@ -88,13 +124,13 @@ export default function BranchesPage() {
       />
 
       {/* Dialog */}
-      <Dialog open={showForm} onClose={() => setShowForm(false)}>
+      <Dialog open={showForm} onClose={handleCloseForm}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
               <Building2 className="w-5 h-5 text-primary" />
             </div>
-            Yangi filial qo'shish
+            {editingBranch ? 'Filialni tahrirlash' : 'Yangi filial qo\'shish'}
           </DialogTitle>
         </DialogHeader>
         <DialogContent>
@@ -117,9 +153,9 @@ export default function BranchesPage() {
             />
             <div className="flex gap-3 pt-4">
               <Button type="submit" loading={loading} className="flex-1">
-                Saqlash
+                {editingBranch ? 'Yangilash' : 'Saqlash'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1">
+              <Button type="button" variant="outline" onClick={handleCloseForm} className="flex-1">
                 Bekor qilish
               </Button>
             </div>
@@ -141,10 +177,24 @@ export default function BranchesPage() {
                     <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                   <div className="flex gap-1">
-                    <button className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit(branch);
+                      }}
+                      className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Tahrirlash"
+                    >
                       <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
                     </button>
-                    <button className="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(branch._id);
+                      }}
+                      className="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors"
+                      title="O'chirish"
+                    >
                       <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600" />
                     </button>
                   </div>

@@ -354,18 +354,40 @@ router.get('/:id/profile', authenticate, async (req: AuthRequest, res) => {
 
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const student = await Student.findByIdAndDelete(req.params.id);
+    const student = await Student.findById(req.params.id);
     if (!student) {
       return res.status(404).json({ message: 'O\'quvchi topilmadi' });
     }
     
-    // Also delete student groups
-    await StudentGroup.deleteMany({ studentId: req.params.id });
+    // Каскадное удаление связанных данных
+    const studentId = req.params.id;
+    
+    // Удаляем результаты тестов студента
+    const TestResult = require('../models/TestResult').default;
+    await TestResult.deleteMany({ studentId });
+    
+    // Удаляем конфигурации тестов студента
+    const StudentTestConfig = require('../models/StudentTestConfig').default;
+    await StudentTestConfig.deleteMany({ studentId });
+    
+    // Удаляем варианты студента
+    const StudentVariant = require('../models/StudentVariant').default;
+    await StudentVariant.deleteMany({ studentId });
+    
+    // Удаляем связи студента с группами
+    await StudentGroup.deleteMany({ studentId });
+    
+    // Удаляем логи активности студента
+    const StudentActivityLog = require('../models/StudentActivityLog').default;
+    await StudentActivityLog.deleteMany({ studentId });
+    
+    // Удаляем самого студента
+    await Student.findByIdAndDelete(req.params.id);
     
     // Инвалидируем кэш студентов
     await invalidateCache('/api/students');
     
-    res.json({ message: 'O\'quvchi o\'chirildi' });
+    res.json({ message: 'O\'quvchi va unga tegishli barcha ma\'lumotlar o\'chirildi' });
   } catch (error: any) {
     console.error('Error deleting student:', error);
     res.status(500).json({ message: 'Server xatosi', error: error.message });

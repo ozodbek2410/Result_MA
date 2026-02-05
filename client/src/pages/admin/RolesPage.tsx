@@ -7,6 +7,8 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@/components/u
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/hooks/useToast';
 import { usePermissions } from '@/hooks/usePermissions';
+import { PageNavbar } from '@/components/ui/PageNavbar';
+import { SkeletonCard } from '@/components/ui/SkeletonCard';
 import { Plus, Shield, Edit2, Trash2, Check } from 'lucide-react';
 
 interface Role {
@@ -30,6 +32,7 @@ export default function RolesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     displayName: '',
@@ -52,9 +55,8 @@ export default function RolesPage() {
   const fetchRoles = async () => {
     try {
       const { data } = await api.get('/roles');
-      // Фильтруем системные роли - показываем только кастомные
-      const customRoles = data.filter((role: Role) => !role.isSystem);
-      setRoles(customRoles);
+      // Показываем все роли, включая системные
+      setRoles(data);
     } catch (err: any) {
       error('Rollarni yuklashda xatolik');
     } finally {
@@ -162,31 +164,51 @@ export default function RolesPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6 animate-in">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 w-48 bg-muted rounded"></div>
-          <div className="h-4 w-64 bg-muted rounded"></div>
+      <div className="space-y-6">
+        <PageNavbar
+          title="Rollar"
+          description="Tizim rollarini boshqarish"
+        />
+        
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <SkeletonCard variant="default" count={6} />
         </div>
       </div>
     );
   }
 
+  // Фильтрация ролей по поиску
+  const filteredRoles = roles.filter(role => {
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      role.name?.toLowerCase().includes(searchLower) ||
+      role.displayName?.toLowerCase().includes(searchLower) ||
+      role.description?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Сортировка: системные роли первыми
+  const sortedRoles = [...filteredRoles].sort((a, b) => {
+    if (a.isSystem && !b.isSystem) return -1;
+    if (!a.isSystem && b.isSystem) return 1;
+    return a.displayName.localeCompare(b.displayName);
+  });
+
   return (
-    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 animate-in pb-16 sm:pb-20">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-foreground">Rollar</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Tizim rollarini boshqarish</p>
-        </div>
-        {canCreate && (
-          <Button onClick={() => setShowForm(true)} fullWidth={false} className="sm:w-auto">
-            <Plus className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Rol qo'shish</span>
-            <span className="sm:hidden">Qo'shish</span>
-          </Button>
-        )}
-      </div>
+    <div className="space-y-4 sm:space-y-6 animate-in pb-16 sm:pb-20">
+      {/* Navbar */}
+      <PageNavbar
+        title="Rollar"
+        description="Tizim rollarini boshqarish"
+        badge={`${sortedRoles.length} ta`}
+        showSearch={true}
+        searchPlaceholder="Rol nomi yoki tavsif bo'yicha qidirish..."
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        showAddButton={canCreate}
+        addButtonText="Rol qo'shish"
+        onAddClick={() => setShowForm(true)}
+      />
 
       {/* Dialog */}
       <Dialog open={showForm} onClose={handleCloseForm} className="max-w-4xl">
@@ -297,17 +319,22 @@ export default function RolesPage() {
       </Dialog>
 
       {/* Roles Grid */}
-      {roles.length === 0 ? (
+      {sortedRoles.length === 0 ? (
         <Card>
           <CardContent className="py-12 sm:py-16 text-center px-4">
             <div className="w-14 h-14 sm:w-16 sm:h-16 bg-muted rounded-lg flex items-center justify-center mx-auto mb-3 sm:mb-4">
               <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">Rollar yo'q</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
+              {searchQuery ? 'Rollar topilmadi' : 'Rollar yo\'q'}
+            </h3>
             <p className="text-xs sm:text-sm text-muted-foreground mb-4 sm:mb-6 max-w-md mx-auto">
-              Yangi rol qo'shish uchun yuqoridagi tugmani bosing
+              {searchQuery 
+                ? 'Qidiruv bo\'yicha hech narsa topilmadi. Boshqa so\'z bilan qidiring.'
+                : 'Yangi rol qo\'shish uchun yuqoridagi tugmani bosing'
+              }
             </p>
-            {canCreate && (
+            {!searchQuery && canCreate && (
               <Button onClick={() => setShowForm(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 Rol qo'shish
@@ -317,7 +344,7 @@ export default function RolesPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {roles.map((role) => (
+          {sortedRoles.map((role) => (
             <Card key={role._id} className="card-hover">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-col h-full">

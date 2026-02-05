@@ -32,9 +32,16 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
 export const authorize = (...roles: UserRole[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
+    console.log('=== ПРОВЕРКА АВТОРИЗАЦИИ ===');
+    console.log('Required roles:', roles);
+    console.log('User role:', req.user?.role);
+    console.log('User:', req.user);
+    
     if (!req.user || !roles.includes(req.user.role)) {
+      console.log('❌ Доступ запрещен');
       return res.status(403).json({ message: 'Ruxsat yo\'q' });
     }
+    console.log('✅ Доступ разрешен');
     next();
   };
 };

@@ -16,6 +16,7 @@ export default function SubjectsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({ nameUzb: '', isMandatory: false });
   const { success, error } = useToast();
   const { hasPermission } = usePermissions();
@@ -83,8 +84,14 @@ export default function SubjectsPage() {
     setFormData({ nameUzb: '', isMandatory: false });
   };
 
-  const mandatorySubjects = subjects.filter(s => s.isMandatory);
-  const optionalSubjects = subjects.filter(s => !s.isMandatory);
+  // Фильтрация по поиску
+  const filteredSubjects = subjects.filter(subject => {
+    const searchLower = searchQuery.toLowerCase();
+    return subject.nameUzb?.toLowerCase().includes(searchLower);
+  });
+
+  const mandatorySubjects = filteredSubjects.filter(s => s.isMandatory);
+  const optionalSubjects = filteredSubjects.filter(s => !s.isMandatory);
 
   if (loading) {
     return (
@@ -107,6 +114,11 @@ export default function SubjectsPage() {
       <PageNavbar
         title="Fanlar"
         description="O'quv fanlarini boshqarish"
+        badge={`${filteredSubjects.length} ta`}
+        showSearch={true}
+        searchPlaceholder="Fan nomi bo'yicha qidirish..."
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
         showAddButton={hasPermission('create_subjects')}
         addButtonText="Fan qo'shish"
         onAddClick={() => setShowForm(true)}
@@ -264,6 +276,20 @@ export default function SubjectsPage() {
                 Fan qo'shish
               </Button>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {filteredSubjects.length === 0 && searchQuery && (
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardContent className="py-12 sm:py-16 text-center px-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <BookOpen className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Fanlar topilmadi</h3>
+            <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 max-w-md mx-auto">
+              Qidiruv bo'yicha hech narsa topilmadi. Boshqa so'z bilan qidiring.
+            </p>
           </CardContent>
         </Card>
       )}

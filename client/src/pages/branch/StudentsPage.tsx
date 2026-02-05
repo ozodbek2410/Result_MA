@@ -41,7 +41,6 @@ export default function StudentsPage() {
     classNumber: 7 as number,
     phone: '',
     directionId: '',
-    subjectIds: [] as string[],
     selectedSubjects: {} as Record<string, string>, // для выбора "или"
     groups: [] as { groupId: string; subjectId: string }[]
   });
@@ -147,14 +146,9 @@ export default function StudentsPage() {
   const getAllStudentSubjects = () => {
     const directionSubjects = getDirectionSubjects();
     const mandatory = getMandatorySubjects();
-    const additional = subjects.filter(s => 
-      formData.subjectIds.includes(s._id) && 
-      !directionSubjects.find(ds => ds._id === s._id) &&
-      !mandatory.find(m => m._id === s._id)
-    );
     
-    // Собираем все предметы
-    const allSubjects = [...directionSubjects, ...mandatory, ...additional];
+    // Собираем все предметы (без дополнительных, так как шаг 3 удален)
+    const allSubjects = [...directionSubjects, ...mandatory];
     
     // Фильтруем выбранные из "или"
     const filtered: any[] = [];
@@ -201,8 +195,6 @@ export default function StudentsPage() {
         }
       }
       
-      setStep(3);
-    } else if (step === 3) {
       setStep(4);
     }
   };
@@ -239,14 +231,6 @@ export default function StudentsPage() {
         const { data } = await api.post('/students', submitData);
         fetchStudents();
         success('O\'quvchi muvaffaqiyatli qo\'shildi!');
-        
-        const profileUrl = `${window.location.origin}${data.profileUrl}`;
-        setTimeout(() => {
-          if (confirm(`Profil havolasi: ${profileUrl}\n\nNusxalashni xohlaysizmi?`)) {
-            navigator.clipboard.writeText(profileUrl);
-            success('Havola nusxalandi!');
-          }
-        }, 500);
       }
       handleCloseForm();
     } catch (err: any) {
@@ -295,7 +279,6 @@ export default function StudentsPage() {
       classNumber: student.classNumber,
       phone: student.phone || '',
       directionId: student.directionId?._id || '',
-      subjectIds: student.subjectIds?.map((s: any) => s._id) || [],
       selectedSubjects,
       groups: formattedGroups
     });
@@ -324,24 +307,9 @@ export default function StudentsPage() {
       classNumber: 7 as number, 
       phone: '', 
       directionId: '', 
-      subjectIds: [],
       selectedSubjects: {},
       groups: []
     });
-  };
-
-  const toggleSubject = (subjectId: string) => {
-    if (formData.subjectIds.includes(subjectId)) {
-      setFormData({
-        ...formData,
-        subjectIds: formData.subjectIds.filter(id => id !== subjectId)
-      });
-    } else {
-      setFormData({
-        ...formData,
-        subjectIds: [...formData.subjectIds, subjectId]
-      });
-    }
   };
 
   const handleGroupSelect = (subjectId: string, groupId: string) => {
@@ -488,51 +456,40 @@ export default function StudentsPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">O'quvchilar</h1>
-          <p className="text-gray-600 mt-1">O'quvchilarni boshqarish va profil havolalari</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowTemplateModal(true)}
-            className="flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Template yuklab olish
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            Excel orqali import
-          </Button>
-          <Button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            O'quvchi qo'shish
-          </Button>
-        </div>
-      </div>
-
-      {/* Search Input */}
-      {students.length > 0 && (
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="O'quvchi ismini, telefon yoki yo'nalishni qidirish..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-          />
-        </div>
-      )}
+      <PageNavbar
+        title="O'quvchilar"
+        description="O'quvchilarni boshqarish va profil havolalari"
+        badge={`${filteredStudents.length} ta`}
+        showSearch={students.length > 0}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="O'quvchi ismini, telefon yoki yo'nalishni qidirish..."
+        showAddButton={true}
+        addButtonText="O'quvchi qo'shish"
+        onAddClick={() => setShowForm(true)}
+        extraActions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setShowTemplateModal(true)}
+              className="flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Template yuklab olish</span>
+              <span className="sm:hidden">Template</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowImportModal(true)}
+              className="flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Excel orqali import</span>
+              <span className="sm:hidden">Import</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* Template Download Modal */}
       <Dialog open={showTemplateModal} onClose={() => setShowTemplateModal(false)}>
@@ -726,7 +683,7 @@ export default function StudentsPage() {
           <DialogTitle className="flex items-center gap-2">
             <GraduationCap className="w-6 h-6 text-primary" />
             {editingStudent ? 'O\'quvchini tahrirlash' : 'Yangi o\'quvchi'}
-            <span className="ml-auto text-sm text-gray-500">Qadam {step}/4</span>
+            <span className="ml-auto text-sm text-gray-500">Qadam {step > 2 ? step - 1 : step}/3</span>
           </DialogTitle>
         </DialogHeader>
         <DialogContent>
@@ -781,8 +738,7 @@ export default function StudentsPage() {
                     setFormData({ 
                       ...formData, 
                       directionId,
-                      selectedSubjects: {},
-                      subjectIds: []
+                      selectedSubjects: {}
                     });
                   }}
                   required
@@ -856,12 +812,6 @@ export default function StudentsPage() {
                         </div>
                       </div>
                     )}
-
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                      <p className="text-xs text-yellow-800">
-                        💡 Qo'shimcha fanlar keyingi qadamda qo'shishingiz mumkin
-                      </p>
-                    </div>
                   </div>
                 )}
 
@@ -885,49 +835,6 @@ export default function StudentsPage() {
                 <div className="flex gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setStep(1)}>
                     Orqaga
-                  </Button>
-                  <Button type="button" onClick={handleNextStep}>
-                    Keyingi <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Шаг 3: Дополнительные предметы */}
-            {step === 3 && (
-              <div className="space-y-4">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-sm text-gray-700 mb-2">
-                    Qo'shimcha fanlar (ixtiyoriy)
-                  </h4>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Agar kerak bo'lsa, qo'shimcha fanlar qo'shing. Yo'q bo'lsa, "O'tkazib yuborish" tugmasini bosing.
-                  </p>
-                  
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {subjects.filter(s => {
-                      const directionSubjects = getDirectionSubjects();
-                      const mandatory = getMandatorySubjects();
-                      return !directionSubjects.find(ds => ds._id === s._id) && 
-                             !mandatory.find(m => m._id === s._id);
-                    }).map((subject: any) => (
-                      <label key={subject._id} className="flex items-center gap-2 p-2 hover:bg-white rounded cursor-pointer">
-                        <Checkbox
-                          checked={formData.subjectIds.includes(subject._id)}
-                          onChange={() => toggleSubject(subject._id)}
-                        />
-                        <span className="text-sm">{subject.nameUzb}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setStep(2)}>
-                    Orqaga
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setStep(4)}>
-                    O'tkazib yuborish
                   </Button>
                   <Button type="button" onClick={handleNextStep}>
                     Keyingi <ChevronRight className="w-4 h-4 ml-1" />
@@ -994,7 +901,7 @@ export default function StudentsPage() {
                 </div>
 
                 <div className="flex gap-2 pt-4 border-t">
-                  <Button type="button" variant="outline" onClick={() => setStep(3)}>
+                  <Button type="button" variant="outline" onClick={() => setStep(2)}>
                     Orqaga
                   </Button>
                   <Button type="submit" loading={loading} className="flex-1">

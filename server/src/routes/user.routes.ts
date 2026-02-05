@@ -84,8 +84,18 @@ router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMI
   }
 });
 
-router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMIN), async (req, res) => {
+router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMIN), async (req: AuthRequest, res) => {
   try {
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) {
+      return res.status(404).json({ message: 'Foydalanuvchi topilmadi' });
+    }
+    
+    // Только сам супер-админ может изменить свои данные
+    if (targetUser.role === UserRole.SUPER_ADMIN && req.user?.id !== req.params.id) {
+      return res.status(403).json({ message: 'Super Admin faqat o\'z ma\'lumotlarini o\'zgartirishi mumkin' });
+    }
+    
     const { password, ...updateData } = req.body;
     
     if (password) {
@@ -93,9 +103,6 @@ router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_AD
     }
     
     const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true }).select('-password');
-    if (!user) {
-      return res.status(404).json({ message: 'Foydalanuvchi topilmadi' });
-    }
     
     res.json(user);
   } catch (error: any) {
@@ -116,6 +123,12 @@ router.delete('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req,
     }
     
     console.log('Найден пользователь:', { id: user._id, role: user.role, username: user.username });
+    
+    // Запрет на удаление супер-админа
+    if (user.role === UserRole.SUPER_ADMIN) {
+      console.log('❌ Попытка удалить супер-админа');
+      return res.status(403).json({ message: 'Super Admin rolini o\'chirib bo\'lmaydi!' });
+    }
     
     // Полностью удаляем пользователя из базы данных
     await User.findByIdAndDelete(req.params.id);

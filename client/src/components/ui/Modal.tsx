@@ -12,6 +12,7 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   showCloseButton?: boolean;
   closeOnOverlayClick?: boolean;
+  closeOnEscape?: boolean;
   footer?: ReactNode;
   className?: string;
 }
@@ -32,7 +33,8 @@ export function Modal({
   children,
   size = 'md',
   showCloseButton = true,
-  closeOnOverlayClick = true,
+  closeOnOverlayClick = false,
+  closeOnEscape = false,
   footer,
   className,
 }: ModalProps) {
@@ -50,14 +52,14 @@ export function Modal({
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && isOpen && closeOnEscape) {
         onClose();
       }
     };
 
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closeOnEscape]);
 
   if (!isOpen) return null;
 

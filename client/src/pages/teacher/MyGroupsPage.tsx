@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@/components/ui/Dialog';
+import { PageNavbar } from '@/components/ui/PageNavbar';
 import { useToast } from '@/hooks/useToast';
 import { 
   Users, 
@@ -140,36 +141,19 @@ export default function MyGroupsPage() {
   return (
     <div className="space-y-8 animate-fade-in pb-20">
       {/* Header */}
-      <div>
-        <div className="flex items-center justify-between mb-4 gap-3">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
-              <Users className="w-5 h-5 md:w-6 md:h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl md:text-3xl font-bold text-slate-900 truncate">Mening guruhlarim</h1>
-              <p className="text-xs md:text-sm text-slate-600 hidden sm:block">Sizga biriktirilgan guruhlar ro'yxati</p>
-            </div>
-          </div>
-          <Button onClick={() => setShowForm(true)} className="gap-2 flex-shrink-0">
-            <Plus className="w-4 h-4 md:w-5 md:h-5" />
-            <span className="hidden sm:inline">Guruh qo'shish</span>
-            <span className="sm:hidden">Qo'shish</span>
-          </Button>
-        </div>
-
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Guruh yoki fan bo'yicha qidirish..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-2xl focus:outline-none focus:border-indigo-500 transition-colors text-slate-900 placeholder:text-slate-400"
-          />
-        </div>
-      </div>
+      <PageNavbar
+        title="Mening guruhlarim"
+        description="Sizga biriktirilgan guruhlar ro'yxati"
+        badge={`${filteredGroups.length} ta`}
+        showSearch={groups.length > 0}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Guruh yoki fan bo'yicha qidirish..."
+        showAddButton={true}
+        addButtonText="Guruh qo'shish"
+        onAddClick={() => setShowForm(true)}
+        gradient={true}
+      />
 
       {/* Create Group Dialog */}
       <Dialog open={showForm} onClose={() => setShowForm(false)}>

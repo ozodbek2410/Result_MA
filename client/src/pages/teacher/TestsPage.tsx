@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { StudentList } from '@/components/ui/StudentCard';
+import { PageNavbar } from '@/components/ui/PageNavbar';
 import { useToast } from '@/hooks/useToast';
 import TestOptionsModal from '@/components/TestOptionsModal';
 import { Plus, Upload, FileText, Edit2, Trash2, Users, Eye, Search, BookOpen, ArrowRight, ArrowLeft, Shuffle } from 'lucide-react';
@@ -294,51 +295,29 @@ export default function TestsPage() {
   return (
     <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-24 sm:pb-24">
       {/* Header */}
-      <div className="mb-4 sm:mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/30 flex-shrink-0">
-              <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 truncate">Testlar</h1>
-              <p className="text-xs sm:text-sm text-slate-600 truncate hidden sm:block">Testlarni yaratish va boshqarish</p>
-            </div>
-          </div>
-          <div className="flex gap-2 sm:gap-3">
-            <Button 
-              variant="outline" 
-              size="lg"
-              onClick={() => navigate('/teacher/tests/import')}
-              className="flex-1 sm:flex-none border-2 hover:border-green-500 hover:text-green-600"
-            >
-              <Upload className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-              <span className="hidden xs:inline">Yuklash</span>
-            </Button>
-            <Button 
-              size="lg"
-              onClick={() => navigate('/teacher/tests/create')}
-              className="flex-1 sm:flex-none bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg shadow-green-500/30"
-            >
-              <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-              <span className="hidden xs:inline">Test yaratish</span>
-              <span className="xs:hidden">Yaratish</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Test nomi bo'yicha qidirish..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-white border-2 border-slate-200 rounded-xl sm:rounded-2xl focus:outline-none focus:border-green-500 transition-colors text-sm sm:text-base text-slate-900 placeholder:text-slate-400"
-          />
-        </div>
-      </div>
+      <PageNavbar
+        title="Testlar"
+        description="Testlarni yaratish va boshqarish"
+        badge={`${filteredTests.length} ta`}
+        showSearch={tests.length > 0}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Test nomi bo'yicha qidirish..."
+        showAddButton={true}
+        addButtonText="Test yaratish"
+        onAddClick={() => navigate('/teacher/tests/create')}
+        extraActions={
+          <Button 
+            variant="outline"
+            onClick={() => navigate('/teacher/tests/import')}
+            className="flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            <span className="hidden sm:inline">Yuklash</span>
+          </Button>
+        }
+        gradient={true}
+      />
 
       {/* Tests Grid */}
       {filteredTests.length === 0 ? (
