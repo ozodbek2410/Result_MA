@@ -13,6 +13,115 @@ import mongoose from 'mongoose';
 
 const router = Router();
 
+// Get teacher dashboard statistics
+router.get('/teacher/dashboard', authenticate, async (req, res) => {
+  try {
+    const teacherId = req.user?.id;
+    if (!teacherId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Get teacher's groups
+    const teacherGroups = await Group.find({ teacherId }).select('_id name').lean();
+    const groupIds = teacherGroups.map(g => g._id);
+
+    if (groupIds.length === 0) {
+      return res.json({
+        topGroups: [],
+        topStudents: []
+      });
+    }
+
+    // Get students in teacher's groups
+    const studentGroups = await StudentGroup.find({ 
+      groupId: { $in: groupIds } 
+    }).select('studentId groupId').lean();
+
+    const studentIds = [...new Set(studentGroups.map(sg => sg.studentId))];
+
+    // Calculate average percentage for each group
+    const groupStats = await Promise.all(
+      groupIds.map(async (groupId) => {
+        const groupStudentIds = studentGroups
+          .filter(sg => sg.groupId.toString() === groupId.toString())
+          .map(sg => sg.studentId);
+
+        if (groupStudentIds.length === 0) {
+          return null;
+        }
+
+        // Get test results for students in this group
+        const results = await TestResult.find({
+          studentId: { $in: groupStudentIds }
+        }).select('percentage').lean();
+
+        if (results.length === 0) {
+          return null;
+        }
+
+        const avgPercentage = results.reduce((sum, r) => sum + r.percentage, 0) / results.length;
+        const group = teacherGroups.find(g => g._id.toString() === groupId.toString());
+
+        return {
+          groupId,
+          groupName: group?.name || 'Unknown',
+          studentsCount: groupStudentIds.length,
+          testsCount: results.length,
+          averagePercentage: Math.round(avgPercentage * 10) / 10
+        };
+      })
+    );
+
+    // Filter out null values and sort by average percentage
+    const topGroups = groupStats
+      .filter(g => g !== null)
+      .sort((a, b) => b!.averagePercentage - a!.averagePercentage)
+      .slice(0, 5);
+
+    // Calculate average percentage for each student
+    const studentStats = await Promise.all(
+      studentIds.map(async (studentId) => {
+        const results = await TestResult.find({ studentId })
+          .select('percentage')
+          .lean();
+
+        if (results.length === 0) {
+          return null;
+        }
+
+        const avgPercentage = results.reduce((sum, r) => sum + r.percentage, 0) / results.length;
+        const student = await Student.findById(studentId).select('fullName').lean();
+
+        // Find which group this student belongs to
+        const studentGroup = studentGroups.find(sg => sg.studentId.toString() === studentId.toString());
+        const group = teacherGroups.find(g => g._id.toString() === studentGroup?.groupId.toString());
+
+        return {
+          studentId,
+          studentName: student?.fullName || 'Unknown',
+          groupName: group?.name || 'Unknown',
+          testsCount: results.length,
+          averagePercentage: Math.round(avgPercentage * 10) / 10
+        };
+      })
+    );
+
+    // Filter out null values and sort by average percentage
+    const topStudents = studentStats
+      .filter(s => s !== null)
+      .sort((a, b) => b!.averagePercentage - a!.averagePercentage)
+      .slice(0, 10);
+
+    res.json({
+      topGroups,
+      topStudents
+    });
+  } catch (error: any) {
+    console.error('Error fetching teacher dashboard statistics:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get overall statistics
 router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res) => {
   try {

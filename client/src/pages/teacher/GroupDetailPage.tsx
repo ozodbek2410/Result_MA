@@ -145,31 +145,49 @@ export default function GroupDetailPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <PageNavbar
-        title={group.name}
-        description="Guruh tafsilotlari va o'quvchilar"
-        showSearch={true}
-        searchPlaceholder="O'quvchi qidirish..."
-        searchValue={searchQuery}
-        onSearchChange={setSearchQuery}
-        extraActions={
+    <div className="space-y-4 sm:space-y-6 animate-fade-in pb-24 sm:pb-24">
+      {/* Mobile-friendly Header */}
+      <div className="flex flex-col gap-3 sm:gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => navigate('/teacher/groups')}
+              className="flex-shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 truncate">{group.name}</h1>
+              <p className="text-xs sm:text-sm text-slate-600 hidden sm:block">Guruh tafsilotlari va o'quvchilar</p>
+            </div>
+          </div>
           <Button 
-            variant="outline" 
-            size="lg"
-            onClick={() => navigate('/teacher/groups')}
+            size="sm"
+            onClick={() => {
+              fetchAllStudents();
+              setShowAddModal(true);
+            }}
+            className="flex-shrink-0"
           >
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            Orqaga
+            <Plus className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">O'quvchi qo'shish</span>
           </Button>
-        }
-        showAddButton={true}
-        addButtonText="O'quvchi qo'shish"
-        onAddClick={() => {
-          fetchAllStudents();
-          setShowAddModal(true);
-        }}
-      />
+        </div>
+        
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="O'quvchi qidirish..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-3 py-2.5 bg-white border-2 border-slate-200 rounded-xl focus:outline-none focus:border-green-500 transition-colors text-sm text-slate-900 placeholder:text-slate-400"
+          />
+        </div>
+      </div>
 
       {/* Add Students Modal */}
       <Dialog open={showAddModal} onClose={() => setShowAddModal(false)}>
@@ -250,62 +268,62 @@ export default function GroupDetailPage() {
       </Dialog>
 
       {/* Group Info Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card className="border-0 shadow-soft bg-gradient-to-br from-purple-50 to-purple-100/50">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Fan</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Fan</p>
+                <p className="text-base sm:text-xl font-bold text-gray-900 mt-0.5 sm:mt-1 truncate">
                   {group.subjectId?.nameUzb || 'N/A'}
                 </p>
               </div>
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-soft">
-                <BookOpen className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-soft flex-shrink-0">
+                <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-soft bg-gradient-to-br from-blue-50 to-blue-100/50">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Sinf</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Sinf</p>
+                <p className="text-base sm:text-xl font-bold text-gray-900 mt-0.5 sm:mt-1">
                   {group.classNumber}-sinf
                 </p>
               </div>
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-soft">
-                <GraduationCap className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-soft flex-shrink-0">
+                <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-soft bg-gradient-to-br from-green-50 to-green-100/50">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">O'quvchilar</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">{students.length} ta</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">O'quvchilar</p>
+                <p className="text-base sm:text-xl font-bold text-gray-900 mt-0.5 sm:mt-1">{students.length} ta</p>
               </div>
-              <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-soft">
-                <Users className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-soft flex-shrink-0">
+                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-soft bg-gradient-to-br from-orange-50 to-orange-100/50">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Testlar</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">0 ta</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Testlar</p>
+                <p className="text-base sm:text-xl font-bold text-gray-900 mt-0.5 sm:mt-1">0 ta</p>
               </div>
-              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-soft">
-                <FileText className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-soft flex-shrink-0">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
             </div>
           </CardContent>
@@ -416,58 +434,89 @@ export default function GroupDetailPage() {
           </div>
 
           {filteredStudents.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      #
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      F.I.O
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Telefon
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
-                      Amallar
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredStudents.map((student, index) => (
-                    <tr 
-                      key={student._id} 
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedStudentId(student._id)}
-                    >
-                      <td className="px-6 py-4 text-sm text-gray-900">{index + 1}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold">
-                            {student.fullName?.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="font-medium text-gray-900">{student.fullName}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{student.phone || 'N/A'}</td>
-                      <td className="px-6 py-4">
-                        <Badge variant="success" size="sm">Faol</Badge>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <Button variant="ghost" size="sm">
-                          <BarChart3 className="w-4 h-4 mr-1" />
-                          Natijalar
-                        </Button>
-                      </td>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        #
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        F.I.O
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Telefon
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
+                        Amallar
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredStudents.map((student, index) => (
+                      <tr 
+                        key={student._id} 
+                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        onClick={() => setSelectedStudentId(student._id)}
+                      >
+                        <td className="px-6 py-4 text-sm text-gray-900">{index + 1}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold">
+                              {student.fullName?.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="font-medium text-gray-900">{student.fullName}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{student.phone || 'N/A'}</td>
+                        <td className="px-6 py-4">
+                          <Badge variant="success" size="sm">Faol</Badge>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <Button variant="ghost" size="sm">
+                            <BarChart3 className="w-4 h-4 mr-1" />
+                            Natijalar
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile List View */}
+              <div className="md:hidden space-y-3">
+                {filteredStudents.map((student, index) => (
+                  <div
+                    key={student._id}
+                    className="p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 transition-colors cursor-pointer active:scale-98"
+                    onClick={() => setSelectedStudentId(student._id)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0">
+                        {student.fullName?.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold text-gray-500">#{index + 1}</span>
+                          <Badge variant="success" size="sm">Faol</Badge>
+                        </div>
+                        <h3 className="font-semibold text-gray-900 mb-1 truncate">{student.fullName}</h3>
+                        <p className="text-sm text-gray-600">{student.phone || 'Telefon yo\'q'}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="flex-shrink-0">
+                        <BarChart3 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <div className="py-12 text-center">
               <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">

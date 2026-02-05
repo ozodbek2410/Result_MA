@@ -4,58 +4,58 @@
 
 @layer base {
   :root {
-    /* 🎯 CLEAN & FUNCTIONAL DESIGN SYSTEM */
+    /* 🎯 MINIMALIST DESIGN SYSTEM */
     
     /* Core Colors */
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --background: 0 0% 98%;
+    --foreground: 0 0% 15%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 0 0% 15%;
     
-    /* Primary - Blue */
-    --primary: 217 91% 60%;
+    /* Primary - Simple Blue */
+    --primary: 217 91% 55%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 217 91% 54%;
+    --primary-hover: 217 91% 50%;
     
-    /* Secondary - Slate */
-    --secondary: 215 20% 65%;
+    /* Secondary - Gray */
+    --secondary: 0 0% 45%;
     --secondary-foreground: 0 0% 100%;
     
     /* Accent */
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 15%;
     
     /* Success */
-    --success: 142 76% 36%;
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     
     /* Warning */
-    --warning: 25 95% 53%;
+    --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
     
     /* Destructive */
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     
     /* Neutrals */
-    --muted: 215 16% 97%;
-    --muted-foreground: 215 16% 47%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 217 91% 60%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 217 91% 55%;
     
     /* Popover */
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 0 0% 15%;
     
-    /* Radius - Simple */
-    --radius: 0.5rem;
+    /* Radius - Minimal */
+    --radius: 0.375rem;
     
-    /* Shadows - Minimal */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    /* Shadows - Ultra Minimal */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+    --shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 2px 4px 0 rgb(0 0 0 / 0.06);
+    --shadow-lg: 0 4px 6px 0 rgb(0 0 0 / 0.07);
   }
 
   .dark {
@@ -100,62 +100,72 @@
     scroll-behavior: smooth;
   }
   
-  /* Custom scrollbar - Professional */
+  /* Custom scrollbar - Minimal */
   ::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
+    width: 6px;
+    height: 6px;
   }
   
   ::-webkit-scrollbar-track {
-    @apply bg-muted/20;
-    border-radius: 100px;
+    @apply bg-transparent;
   }
   
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full;
-    border: 3px solid transparent;
-    background-clip: padding-box;
-    transition: all 0.2s ease;
+    @apply bg-gray-300 rounded-full;
   }
   
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/40;
+    @apply bg-gray-400;
+  }
+
+  /* Thin scrollbar utility */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
   }
   
   /* Selection styling */
   ::selection {
-    @apply bg-primary/20 text-primary-dark;
+    @apply bg-primary/15;
   }
   
   /* Focus visible for accessibility */
   :focus-visible {
-    outline: 2px solid hsl(var(--primary));
-    outline-offset: 2px;
+    outline: 1px solid hsl(var(--primary));
+    outline-offset: 1px;
   }
 }
 
 @layer components {
-  /* Simple Button System */
+  /* Minimal Button System */
   .btn-primary {
-    @apply bg-primary hover:bg-primary-hover text-primary-foreground font-medium px-4 py-2 rounded-lg transition-colors duration-200;
+    @apply bg-primary hover:bg-primary-hover text-primary-foreground font-medium px-4 py-2 rounded transition-colors duration-150;
   }
   
   .btn-secondary {
-    @apply bg-secondary hover:bg-secondary/90 text-secondary-foreground font-medium px-4 py-2 rounded-lg transition-colors duration-200;
+    @apply bg-secondary hover:bg-secondary/90 text-secondary-foreground font-medium px-4 py-2 rounded transition-colors duration-150;
   }
   
   .btn-outline {
-    @apply border border-border text-foreground hover:bg-accent font-medium px-4 py-2 rounded-lg transition-colors duration-200;
+    @apply border border-border text-foreground hover:bg-accent font-medium px-4 py-2 rounded transition-colors duration-150;
   }
   
-  /* Simple Card */
+  /* Minimal Card */
   .card-simple {
-    @apply bg-card border border-border rounded-lg p-4 transition-all duration-200 hover:border-primary hover:shadow-md;
+    @apply bg-card border border-border rounded p-4 transition-colors duration-150 hover:border-gray-300;
   }
   
   /* Focus ring */
   .focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-all duration-200;
+    @apply focus:outline-none focus:ring-1 focus:ring-primary transition-colors duration-150;
   }
 }
 
@@ -165,7 +175,7 @@
     @apply w-full mx-auto px-4 sm:px-6 lg:px-8;
   }
   
-  /* Minimal animations - performance optimized */
+  /* Minimal animations */
   @keyframes fadeIn {
     from {
       opacity: 0;
@@ -175,42 +185,21 @@
     }
   }
   
-  @keyframes slideDown {
-    from {
-      opacity: 0;
-      transform: translateY(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
   .animate-fade-in {
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.2s ease-out;
   }
   
-  .animate-slide-down {
-    animation: slideDown 0.2s ease-out;
-  }
-  
-  /* Simple hover effects - no animations */
-  .hover-lift {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-  
-  .hover-lift:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-  }
-  
-  /* Simple shadows */
+  /* Minimal shadows */
   .shadow-soft {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   }
   
   .shadow-medium {
-    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  .shadow-large {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
   }
   
   /* Hide scrollbar */

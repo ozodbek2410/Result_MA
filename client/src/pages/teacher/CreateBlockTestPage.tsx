@@ -91,27 +91,27 @@ export default function CreateBlockTestPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in">
+    <div className="min-h-screen bg-gray-50 pb-24">
+      <div className="max-w-5xl mx-auto p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
           <Button
             variant="outline"
-            size="lg"
+            size="sm"
             onClick={() => navigate('/teacher/block-tests')}
-            className="shadow-sm"
+            className="shadow-sm flex-shrink-0"
           >
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            Orqaga
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 sm:mr-2" />
+            <span className="hidden sm:inline">Orqaga</span>
           </Button>
-          <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sm">
-                <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
+                <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" />
               </div>
-              Yangi blok test yaratish
+              <span className="truncate">Yangi blok test yaratish</span>
             </h1>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">
               Qadam {step}/2
             </p>
           </div>

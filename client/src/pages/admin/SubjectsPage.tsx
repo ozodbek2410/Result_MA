@@ -102,7 +102,7 @@ export default function SubjectsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 pb-16 sm:pb-20">
       {/* Navbar */}
       <PageNavbar
         title="Fanlar"
@@ -152,45 +152,45 @@ export default function SubjectsPage() {
 
       {mandatorySubjects.length > 0 && (
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+          <h2 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
             </div>
             Majburiy fanlar
           </h2>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-4 lg:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {mandatorySubjects.map((subject) => (
               <Card key={subject._id} className="hover:shadow-xl transition-all hover:-translate-y-1">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                      <BookOpen className="w-6 h-6 text-green-600" />
+                <CardContent className="p-4 sm:p-5 lg:p-6">
+                  <div className="flex items-start justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                      <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
                     </div>
                     {(hasPermission('edit_subjects') || hasPermission('delete_subjects')) && (
                       <div className="flex gap-1">
                         {hasPermission('edit_subjects') && (
                           <button 
                             onClick={() => handleEdit(subject)}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
                             title="Tahrirlash"
                           >
-                            <Edit2 className="w-4 h-4 text-gray-600" />
+                            <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
                           </button>
                         )}
                         {hasPermission('delete_subjects') && (
                           <button 
                             onClick={() => handleDelete(subject._id)}
-                            className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors"
                             title="O'chirish"
                           >
-                            <Trash2 className="w-4 h-4 text-red-600" />
+                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600" />
                           </button>
                         )}
                       </div>
                     )}
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-3">{subject.nameUzb}</h3>
-                  <span className="inline-block px-3 py-1 text-xs bg-green-100 text-green-700 rounded-full font-medium">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2 sm:mb-3 line-clamp-2">{subject.nameUzb}</h3>
+                  <span className="inline-block px-2.5 sm:px-3 py-0.5 sm:py-1 text-xs bg-green-100 text-green-700 rounded-full font-medium">
                     Majburiy
                   </span>
                 </CardContent>
@@ -202,45 +202,45 @@ export default function SubjectsPage() {
 
       {optionalSubjects.length > 0 && (
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-blue-600" />
+          <h2 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
             </div>
             Ixtiyoriy fanlar
           </h2>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-4 lg:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {optionalSubjects.map((subject) => (
               <Card key={subject._id} className="hover:shadow-xl transition-all hover:-translate-y-1">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                      <BookOpen className="w-6 h-6 text-blue-600" />
+                <CardContent className="p-4 sm:p-5 lg:p-6">
+                  <div className="flex items-start justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                      <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
                     </div>
                     {(hasPermission('edit_subjects') || hasPermission('delete_subjects')) && (
                       <div className="flex gap-1">
                         {hasPermission('edit_subjects') && (
                           <button 
                             onClick={() => handleEdit(subject)}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
                             title="Tahrirlash"
                           >
-                            <Edit2 className="w-4 h-4 text-gray-600" />
+                            <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
                           </button>
                         )}
                         {hasPermission('delete_subjects') && (
                           <button 
                             onClick={() => handleDelete(subject._id)}
-                            className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors"
                             title="O'chirish"
                           >
-                            <Trash2 className="w-4 h-4 text-red-600" />
+                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600" />
                           </button>
                         )}
                       </div>
                     )}
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-3">{subject.nameUzb}</h3>
-                  <span className="inline-block px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-full font-medium">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2 sm:mb-3 line-clamp-2">{subject.nameUzb}</h3>
+                  <span className="inline-block px-2.5 sm:px-3 py-0.5 sm:py-1 text-xs bg-blue-100 text-blue-700 rounded-full font-medium">
                     Ixtiyoriy
                   </span>
                 </CardContent>
@@ -252,15 +252,15 @@ export default function SubjectsPage() {
 
       {subjects.length === 0 && !showForm && (
         <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="py-16 text-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <BookOpen className="w-10 h-10 text-gray-400" />
+          <CardContent className="py-12 sm:py-16 text-center px-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <BookOpen className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Fanlar yo'q</h3>
-            <p className="text-gray-600 mb-6">Birinchi fanni qo'shish uchun yuqoridagi tugmani bosing</p>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Fanlar yo'q</h3>
+            <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 max-w-md mx-auto">Birinchi fanni qo'shish uchun yuqoridagi tugmani bosing</p>
             {hasPermission('create_subjects') && (
               <Button onClick={() => setShowForm(true)} size="lg">
-                <Plus className="w-5 h-5 mr-2" />
+                <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                 Fan qo'shish
               </Button>
             )}

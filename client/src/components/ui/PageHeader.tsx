@@ -24,30 +24,28 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        'mb-6 sm:mb-8 animate-fade-in',
-        gradient && 'gradient-mesh -mx-4 sm:-mx-6 px-4 sm:px-6 py-6 sm:py-8 rounded-xl sm:rounded-2xl border border-border/50 shadow-soft',
+        'mb-4 sm:mb-6 animate-fade-in',
         className
       )}
     >
-      {breadcrumb && <div className="mb-4 sm:mb-5">{breadcrumb}</div>}
+      {breadcrumb && <div className="mb-3 sm:mb-4">{breadcrumb}</div>}
       
-      <div className="flex flex-col sm:flex-row items-start justify-between gap-4 sm:gap-6">
-        <div className="flex items-start gap-3 sm:gap-5 flex-1 w-full sm:w-auto">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+        <div className="flex items-start gap-3 flex-1 w-full sm:w-auto">
           {Icon && (
-            <div className="relative group flex-shrink-0">
-              <div className="absolute inset-0 gradient-primary rounded-xl sm:rounded-2xl blur-xl opacity-30 group-hover:opacity-50 transition-opacity"></div>
-              <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl gradient-primary flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                <Icon className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
+                <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
             </div>
           )}
           
-          <div className="flex-1 min-w-0 pt-0.5 sm:pt-1">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-2 sm:mb-3 tracking-tight">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-semibold text-foreground mb-1 sm:mb-2">
               {title}
             </h1>
             {description && (
-              <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-3xl">
+              <p className="text-sm sm:text-base text-muted-foreground max-w-3xl">
                 {description}
               </p>
             )}
@@ -55,7 +53,7 @@ export function PageHeader({
         </div>
         
         {actions && (
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 pt-1 w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
             {actions}
           </div>
         )}
@@ -76,33 +74,33 @@ interface PageHeaderStatsProps {
 
 export function PageHeaderStats({ stats }: PageHeaderStatsProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 mb-6 sm:mb-8 animate-fade-in">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6 animate-fade-in">
       {stats.map((stat, index) => (
         <div
           key={index}
-          className="glass-card rounded-xl sm:rounded-2xl border border-border/50 p-4 sm:p-6 shadow-soft hover:shadow-md transition-all duration-300 hover-lift group"
+          className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 transition-colors duration-150 hover:border-gray-300"
         >
-          <div className="flex items-center justify-between mb-3 sm:mb-4">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
+            <span className="text-xs font-medium text-muted-foreground uppercase">
               {stat.label}
             </span>
             {stat.icon && (
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-primary/10 flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-                <stat.icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
+                <stat.icon className="w-4 h-4 text-blue-600" />
               </div>
             )}
           </div>
           <div className="flex items-end justify-between">
-            <span className="text-2xl sm:text-3xl font-bold text-foreground">
+            <span className="text-xl sm:text-2xl font-semibold text-foreground">
               {stat.value}
             </span>
             {stat.trend && stat.trendValue && (
               <span
                 className={cn(
-                  'text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full',
-                  stat.trend === 'up' && 'bg-success-light text-success',
-                  stat.trend === 'down' && 'bg-destructive-light text-destructive',
-                  stat.trend === 'neutral' && 'bg-muted text-muted-foreground'
+                  'text-xs font-medium px-2 py-0.5 rounded-full border',
+                  stat.trend === 'up' && 'bg-green-50 text-green-700 border-green-200',
+                  stat.trend === 'down' && 'bg-red-50 text-red-700 border-red-200',
+                  stat.trend === 'neutral' && 'bg-gray-100 text-gray-700 border-gray-200'
                 )}
               >
                 {stat.trendValue}

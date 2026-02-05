@@ -6,9 +6,8 @@ const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     <div
       ref={ref}
       className={cn(
-        'rounded-lg sm:rounded-xl lg:rounded-2xl border border-border bg-card text-card-foreground shadow-soft',
-        'transition-all duration-300 hover:shadow-medium hover:-translate-y-0.5',
-        'backdrop-blur-sm',
+        'rounded-lg border border-gray-200 bg-white',
+        'transition-colors duration-150 hover:border-gray-300',
         className
       )}
       {...props}
@@ -19,7 +18,7 @@ Card.displayName = 'Card';
 
 const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex flex-col space-y-2 p-4 sm:p-6 pb-3 sm:pb-4', className)} {...props} />
+    <div ref={ref} className={cn('flex flex-col space-y-1.5 p-5 pb-3', className)} {...props} />
   )
 );
 CardHeader.displayName = 'CardHeader';
@@ -28,7 +27,7 @@ const CardTitle = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLHeadingEle
   ({ className, ...props }, ref) => (
     <h3 
       ref={ref} 
-      className={cn('text-lg sm:text-xl font-bold leading-none tracking-tight', className)} 
+      className={cn('text-lg font-semibold leading-none text-gray-900', className)} 
       {...props} 
     />
   )
@@ -39,7 +38,7 @@ const CardDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLPara
   ({ className, ...props }, ref) => (
     <p
       ref={ref}
-      className={cn('text-xs sm:text-sm text-muted-foreground leading-relaxed', className)}
+      className={cn('text-sm text-gray-600', className)}
       {...props}
     />
   )
@@ -48,7 +47,7 @@ CardDescription.displayName = 'CardDescription';
 
 const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('p-4 sm:p-6 pt-0', className)} {...props} />
+    <div ref={ref} className={cn('p-5 pt-0', className)} {...props} />
   )
 );
 CardContent.displayName = 'CardContent';
@@ -57,7 +56,7 @@ const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('flex items-center p-4 sm:p-6 pt-0', className)}
+      className={cn('flex items-center p-5 pt-0', className)}
       {...props}
     />
   )

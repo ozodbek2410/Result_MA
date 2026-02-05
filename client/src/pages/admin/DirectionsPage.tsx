@@ -191,7 +191,7 @@ export default function DirectionsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 pb-16 sm:pb-20">
       {/* Navbar */}
       <PageNavbar
         title="Yo'nalishlar"
@@ -301,33 +301,33 @@ export default function DirectionsPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 lg:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {directions.map((direction) => (
           <Card key={direction._id} className="hover:shadow-xl transition-all hover:-translate-y-1">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                  <Compass className="w-6 h-6 text-purple-600" />
+            <CardContent className="p-4 sm:p-5 lg:p-6">
+              <div className="flex items-start justify-between mb-3 sm:mb-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                  <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
                 </div>
                 <div className="flex gap-1">
                   <button 
                     onClick={() => handleEdit(direction)}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
                     title="Tahrirlash"
                   >
-                    <Edit2 className="w-4 h-4 text-gray-600" />
+                    <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
                   </button>
                   <button 
                     onClick={() => handleDelete(direction._id)}
-                    className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                    className="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors"
                     title="O'chirish"
                   >
-                    <Trash2 className="w-4 h-4 text-red-600" />
+                    <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600" />
                   </button>
                 </div>
               </div>
               
-              <h3 className="text-lg font-bold text-gray-900 mb-3">{direction.nameUzb}</h3>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2 sm:mb-3 line-clamp-2">{direction.nameUzb}</h3>
               
               <div className="space-y-2">
                 <p className="text-xs font-medium text-gray-600 uppercase">Fanlar:</p>
@@ -335,7 +335,7 @@ export default function DirectionsPage() {
                   {direction.subjects?.length > 0 ? (
                     <>
                       {direction.subjects.map((subj: any, idx: number) => (
-                        <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                        <span key={idx} className="px-2 py-0.5 sm:py-1 bg-purple-100 text-purple-700 rounded text-xs">
                           {subj.subjectIds?.length || 0} ta
                         </span>
                       ))}
@@ -344,7 +344,7 @@ export default function DirectionsPage() {
                       </span>
                     </>
                   ) : (
-                    <span className="text-sm text-gray-500">Faqat majburiy fanlar</span>
+                    <span className="text-xs sm:text-sm text-gray-500">Faqat majburiy fanlar</span>
                   )}
                 </div>
               </div>
@@ -355,14 +355,14 @@ export default function DirectionsPage() {
 
       {directions.length === 0 && !showForm && (
         <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="py-16 text-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <Compass className="w-10 h-10 text-gray-400" />
+          <CardContent className="py-12 sm:py-16 text-center px-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <Compass className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Yo'nalishlar yo'q</h3>
-            <p className="text-gray-600 mb-6">Birinchi yo'nalishni qo'shish uchun yuqoridagi tugmani bosing</p>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Yo'nalishlar yo'q</h3>
+            <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 max-w-md mx-auto">Birinchi yo'nalishni qo'shish uchun yuqoridagi tugmani bosing</p>
             <Button onClick={() => setShowForm(true)} size="lg">
-              <Plus className="w-5 h-5 mr-2" />
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Yo'nalish qo'shish
             </Button>
           </CardContent>

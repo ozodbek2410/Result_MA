@@ -141,19 +141,20 @@ export default function MyGroupsPage() {
     <div className="space-y-8 animate-fade-in pb-20">
       {/* Header */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-              <Users className="w-6 h-6 text-white" />
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
+              <Users className="w-5 h-5 md:w-6 md:h-6 text-white" />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">Mening guruhlarim</h1>
-              <p className="text-slate-600">Sizga biriktirilgan guruhlar ro'yxati</p>
+            <div className="min-w-0">
+              <h1 className="text-xl md:text-3xl font-bold text-slate-900 truncate">Mening guruhlarim</h1>
+              <p className="text-xs md:text-sm text-slate-600 hidden sm:block">Sizga biriktirilgan guruhlar ro'yxati</p>
             </div>
           </div>
-          <Button onClick={() => setShowForm(true)} className="gap-2">
-            <Plus className="w-5 h-5" />
-            Guruh qo'shish
+          <Button onClick={() => setShowForm(true)} className="gap-2 flex-shrink-0">
+            <Plus className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="hidden sm:inline">Guruh qo'shish</span>
+            <span className="sm:hidden">Qo'shish</span>
           </Button>
         </div>
 
@@ -230,97 +231,177 @@ export default function MyGroupsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Groups Grid */}
+      {/* Groups Grid - Desktop / List - Mobile */}
       {filteredGroups.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredGroups.map((group, index) => (
-            <div
-              key={group._id}
-              style={{ animationDelay: `${index * 100}ms` }}
-              className="group animate-slide-in"
-            >
-              <Card 
-                className="h-full border-2 border-slate-200/50 hover:border-indigo-300 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-2 cursor-pointer overflow-hidden"
-                onClick={() => navigate(`/teacher/groups/${group._id}`)}
+        <>
+          {/* Desktop Grid View - Hidden on mobile */}
+          <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredGroups.map((group, index) => (
+              <div
+                key={group._id}
+                style={{ animationDelay: `${index * 100}ms` }}
+                className="group animate-slide-in"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-purple-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <CardContent className="p-6 relative">
-                  {/* Icon & Title */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                      <Users className="w-7 h-7 text-white" />
+                <Card 
+                  className="h-full border-2 border-slate-200/50 hover:border-indigo-300 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-2 cursor-pointer overflow-hidden"
+                  onClick={() => navigate(`/teacher/groups/${group._id}`)}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-purple-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <CardContent className="p-6 relative">
+                    {/* Icon & Title */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                        <Users className="w-7 h-7 text-white" />
+                      </div>
+                      <div className="flex gap-1">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(group);
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="Tahrirlash"
+                        >
+                          <Edit2 className="w-4 h-4 text-gray-600" />
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(group._id);
+                          }}
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          title="O'chirish"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/teacher/groups/${group._id}`);
+                          }}
+                          className="p-2 hover:bg-indigo-50 rounded-lg transition-colors"
+                          title="Ko'rish"
+                        >
+                          <ArrowRight className="w-5 h-5 text-indigo-600" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-1">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEdit(group);
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Tahrirlash"
-                      >
-                        <Edit2 className="w-4 h-4 text-gray-600" />
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(group._id);
-                        }}
-                        className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                        title="O'chirish"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/teacher/groups/${group._id}`);
-                        }}
-                        className="p-2 hover:bg-indigo-50 rounded-lg transition-colors"
-                        title="Ko'rish"
-                      >
-                        <ArrowRight className="w-5 h-5 text-indigo-600" />
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* Group Info */}
-                  <div className="mb-4">
-                    <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors">
-                      {group.name}
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200">
-                        {group.classNumber}-sinf
-                      </Badge>
-                      <Badge className="bg-purple-100 text-purple-700 border-purple-200">
-                        {group.letter}
-                      </Badge>
+                    {/* Group Info */}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors">
+                        {group.name}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200">
+                          {group.classNumber}-sinf
+                        </Badge>
+                        <Badge className="bg-purple-100 text-purple-700 border-purple-200">
+                          {group.letter}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Subject */}
-                  {group.subjectId && (
-                    <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl mb-4">
-                      <BookOpen className="w-4 h-4 text-slate-600" />
-                      <span className="text-sm font-semibold text-slate-700">
-                        {group.subjectId.nameUzb}
+                    {/* Subject */}
+                    {group.subjectId && (
+                      <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl mb-4">
+                        <BookOpen className="w-4 h-4 text-slate-600" />
+                        <span className="text-sm font-semibold text-slate-700">
+                          {group.subjectId.nameUzb}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Stats */}
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <GraduationCap className="w-4 h-4" />
+                      <span className="text-sm font-medium">
+                        {group.studentCount || 0} ta o'quvchi
                       </span>
                     </div>
-                  )}
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
 
-                  {/* Stats */}
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <GraduationCap className="w-4 h-4" />
-                    <span className="text-sm font-medium">
-                      {group.studentCount || 0} ta o'quvchi
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          ))}
-        </div>
+          {/* Mobile List View - Visible only on mobile */}
+          <div className="md:hidden space-y-3">
+            {filteredGroups.map((group, index) => (
+              <div
+                key={group._id}
+                style={{ animationDelay: `${index * 50}ms` }}
+                className="animate-slide-in"
+              >
+                <Card 
+                  className="border-2 border-slate-200/50 hover:border-indigo-300 transition-all duration-200 active:scale-98 cursor-pointer overflow-hidden"
+                  onClick={() => navigate(`/teacher/groups/${group._id}`)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      {/* Icon */}
+                      <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                        <Users className="w-6 h-6 text-white" />
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-bold text-slate-900 mb-1 truncate">
+                          {group.name}
+                        </h3>
+                        
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs px-2 py-0.5">
+                            {group.classNumber}-sinf
+                          </Badge>
+                          <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs px-2 py-0.5">
+                            {group.letter}
+                          </Badge>
+                        </div>
+
+                        {group.subjectId && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 mb-1">
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span className="font-medium truncate">{group.subjectId.nameUzb}</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <GraduationCap className="w-3.5 h-3.5" />
+                          <span>{group.studentCount || 0} ta o'quvchi</span>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col gap-1 flex-shrink-0">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(group);
+                          }}
+                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="Tahrirlash"
+                        >
+                          <Edit2 className="w-4 h-4 text-gray-600" />
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(group._id);
+                          }}
+                          className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                          title="O'chirish"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <Card className="border-2 border-slate-200/50">
           <CardContent className="py-16 text-center">

@@ -1,16 +1,15 @@
-/* Clean & Functional Design System */
+/* Minimalist Design System */
 
-/* Remove excessive animations and effects */
+/* Clean card */
 .clean-card {
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  transition: all 0.2s ease;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: border-color 0.15s ease;
 }
 
 .clean-card:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border-color: #d1d5db;
 }
 
 /* Simple button styles */
@@ -18,7 +17,7 @@
   padding: 0.5rem 1rem;
   border-radius: 6px;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
 .clean-btn-primary {
@@ -37,12 +36,6 @@
   gap: 0.5rem;
   font-size: 0.875rem;
   color: #64748b;
-}
-
-/* Remove gradients and blur effects */
-.no-gradient {
-  background: white !important;
-  backdrop-filter: none !important;
 }
 
 /* Simplified spacing */

@@ -14,35 +14,31 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         className={cn(
-          'inline-flex items-center justify-center rounded-lg sm:rounded-xl font-semibold transition-all duration-200',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          'inline-flex items-center justify-center rounded font-medium transition-colors duration-150',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           'disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed',
-          'active:scale-[0.97] transform relative overflow-hidden',
-          'touch-target', // Минимум 44px для сенсорного ввода
-          'before:absolute before:inset-0 before:bg-white/20 before:translate-y-full before:transition-transform before:duration-300',
-          'hover:before:translate-y-0',
           {
-            'bg-primary text-primary-foreground hover:bg-primary-hover shadow-soft hover:shadow-medium hover:-translate-y-0.5': 
+            'bg-primary text-white hover:bg-primary-hover': 
               variant === 'default',
-            'bg-destructive text-destructive-foreground hover:opacity-90 shadow-soft hover:shadow-medium hover:-translate-y-0.5': 
+            'bg-red-600 text-white hover:bg-red-700': 
               variant === 'destructive',
-            'bg-success text-success-foreground hover:opacity-90 shadow-soft hover:shadow-medium hover:-translate-y-0.5': 
+            'bg-green-600 text-white hover:bg-green-700': 
               variant === 'success',
-            'bg-warning text-warning-foreground hover:opacity-90 shadow-soft hover:shadow-medium hover:-translate-y-0.5': 
+            'bg-orange-500 text-white hover:bg-orange-600': 
               variant === 'warning',
-            'border-2 border-input bg-background hover:bg-accent hover:text-accent-foreground hover:border-primary/50': 
+            'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700': 
               variant === 'outline',
-            'bg-secondary text-secondary-foreground hover:opacity-90 shadow-soft hover:-translate-y-0.5': 
+            'bg-gray-200 text-gray-700 hover:bg-gray-300': 
               variant === 'secondary',
-            'hover:bg-accent hover:text-accent-foreground': 
+            'hover:bg-gray-100 text-gray-700': 
               variant === 'ghost',
           },
           {
-            'h-11 px-4 sm:px-5 py-2.5 text-sm': size === 'default',
-            'h-9 px-3 text-xs rounded-lg': size === 'xs',
-            'h-10 px-3 sm:px-4 text-sm rounded-lg': size === 'sm',
-            'h-12 sm:h-13 px-6 sm:px-8 text-base': size === 'lg',
-            'h-10 w-10 sm:h-11 sm:w-11': size === 'icon',
+            'h-10 px-4 py-2 text-sm': size === 'default',
+            'h-8 px-3 text-xs': size === 'xs',
+            'h-9 px-3 text-sm': size === 'sm',
+            'h-11 px-6 text-base': size === 'lg',
+            'h-10 w-10': size === 'icon',
           },
           fullWidth && 'w-full',
           className
@@ -51,10 +47,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={disabled || loading}
         {...props}
       >
-        <span className="relative z-10 flex items-center">
-          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {children}
-        </span>
+        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {children}
       </button>
     );
   }

@@ -89,34 +89,35 @@ export default function MyStudentsPage() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in pb-20">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-24 sm:pb-24">
       {/* Header */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/30">
-              <GraduationCap className="w-6 h-6 text-white" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/30 flex-shrink-0">
+              <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">Mening o'quvchilarim</h1>
-              <p className="text-slate-600">Guruhlarimga biriktirilgan o'quvchilar</p>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 truncate">Mening o'quvchilarim</h1>
+              <p className="text-xs sm:text-sm text-slate-600 truncate hidden sm:block">Guruhlarimga biriktirilgan o'quvchilar</p>
             </div>
           </div>
-          <Button onClick={() => setShowForm(true)} className="gap-2 bg-green-600 hover:bg-green-700">
-            <Plus className="w-5 h-5" />
-            O'quvchi qo'shish
+          <Button onClick={() => setShowForm(true)} className="gap-2 bg-green-600 hover:bg-green-700 w-full sm:w-auto flex-shrink-0">
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden xs:inline">O'quvchi qo'shish</span>
+            <span className="xs:hidden">Qo'shish</span>
           </Button>
         </div>
 
         {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <div className="relative">
+          <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
           <input
             type="text"
             placeholder="O'quvchi qidirish..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-2xl focus:outline-none focus:border-green-500 transition-colors text-slate-900 placeholder:text-slate-400"
+            className="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-white border-2 border-slate-200 rounded-xl sm:rounded-2xl focus:outline-none focus:border-green-500 transition-colors text-sm sm:text-base text-slate-900 placeholder:text-slate-400"
           />
         </div>
       </div>
@@ -185,64 +186,120 @@ export default function MyStudentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Students Grid */}
+      {/* Students Grid - Desktop / List - Mobile */}
       {filteredStudents.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredStudents.map((student, index) => (
-            <div
-              key={student._id}
-              style={{ animationDelay: `${index * 100}ms` }}
-              className="group animate-slide-in"
-              onClick={() => setSelectedStudentId(student._id)}
-            >
-              <Card className="h-full border-2 border-slate-200/50 hover:border-green-300 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/20 hover:-translate-y-2 cursor-pointer">
-                <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-emerald-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <CardContent className="p-6 relative">
-                  {/* Icon & Name */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                      <GraduationCap className="w-7 h-7 text-white" />
-                    </div>
-                  </div>
-
-                  {/* Student Info */}
-                  <div className="mb-4">
-                    <h3 className="text-xl font-bold text-slate-900 mb-1 group-hover:text-green-600 transition-colors">
-                      {student.fullName}
-                    </h3>
-                    <p className="text-sm text-slate-600">@{student.username}</p>
-                  </div>
-
-                  {/* Contact Info */}
-                  <div className="space-y-2">
-                    {student.phone && (
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <Phone className="w-4 h-4" />
-                        <span>{student.phone}</span>
-                      </div>
-                    )}
-                    {student.parentPhone && (
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <Phone className="w-4 h-4 text-orange-500" />
-                        <span>Ota-ona: {student.parentPhone}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Groups */}
-                  {student.groups && student.groups.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-slate-200">
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <Users className="w-4 h-4" />
-                        <span>{student.groups.length} ta guruhda</span>
+        <>
+          {/* Desktop Grid View */}
+          <div className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+            {filteredStudents.map((student, index) => (
+              <div
+                key={student._id}
+                style={{ animationDelay: `${index * 100}ms` }}
+                className="group animate-slide-in"
+                onClick={() => setSelectedStudentId(student._id)}
+              >
+                <Card className="h-full border-2 border-slate-200/50 hover:border-green-300 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/20 hover:-translate-y-2 cursor-pointer">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-emerald-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <CardContent className="p-6 relative">
+                    {/* Icon & Name */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                        <GraduationCap className="w-7 h-7 text-white" />
                       </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          ))}
-        </div>
+
+                    {/* Student Info */}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-bold text-slate-900 mb-1 group-hover:text-green-600 transition-colors">
+                        {student.fullName}
+                      </h3>
+                      <p className="text-sm text-slate-600">@{student.username}</p>
+                    </div>
+
+                    {/* Contact Info */}
+                    <div className="space-y-2">
+                      {student.phone && (
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <Phone className="w-4 h-4" />
+                          <span>{student.phone}</span>
+                        </div>
+                      )}
+                      {student.parentPhone && (
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <Phone className="w-4 h-4 text-orange-500" />
+                          <span>Ota-ona: {student.parentPhone}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Groups */}
+                    {student.groups && student.groups.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-slate-200">
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <Users className="w-4 h-4" />
+                          <span>{student.groups.length} ta guruhda</span>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+
+          {/* Mobile List View */}
+          <div className="md:hidden space-y-3">
+            {filteredStudents.map((student, index) => (
+              <div
+                key={student._id}
+                style={{ animationDelay: `${index * 50}ms` }}
+                className="animate-slide-in"
+                onClick={() => setSelectedStudentId(student._id)}
+              >
+                <Card className="border-2 border-slate-200/50 hover:border-green-300 transition-all duration-200 active:scale-98 cursor-pointer">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      {/* Icon */}
+                      <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                        <GraduationCap className="w-6 h-6 text-white" />
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-bold text-slate-900 mb-0.5 truncate">
+                          {student.fullName}
+                        </h3>
+                        <p className="text-xs text-slate-600 mb-2">@{student.username}</p>
+
+                        {/* Contact Info */}
+                        <div className="space-y-1">
+                          {student.phone && (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                              <Phone className="w-3.5 h-3.5" />
+                              <span>{student.phone}</span>
+                            </div>
+                          )}
+                          {student.parentPhone && (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                              <Phone className="w-3.5 h-3.5 text-orange-500" />
+                              <span className="truncate">Ota-ona: {student.parentPhone}</span>
+                            </div>
+                          )}
+                          {student.groups && student.groups.length > 0 && (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                              <Users className="w-3.5 h-3.5" />
+                              <span>{student.groups.length} ta guruhda</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <Card className="border-2 border-slate-200/50">
           <CardContent className="py-16 text-center">

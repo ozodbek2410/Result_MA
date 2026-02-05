@@ -85,7 +85,7 @@ export default function CustomRoleLayout() {
 
       {/* Bottom Navigation - Mobile Only */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t-2 border-slate-200 z-50 safe-area-bottom shadow-2xl">
-        <div className="grid grid-cols-4 h-16">
+        <div className="grid grid-cols-4 h-20">
           {bottomNavItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -314,7 +314,7 @@ export default function CustomRoleLayout() {
         ${sidebarOpen ? 'lg:ml-72' : 'lg:ml-20'}
         pt-16 lg:pt-0
       `}>
-        <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-20 lg:pb-8">
+        <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">
           <Suspense fallback={<Loading />}>
             <Routes>
               <Route path="/" element={<Navigate to="dashboard" replace />} />

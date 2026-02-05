@@ -87,7 +87,7 @@ export default function AssignmentsPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-16 sm:pb-20">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-24 sm:pb-24">
       {/* Header */}
       <div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">

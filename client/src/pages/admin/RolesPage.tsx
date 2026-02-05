@@ -165,16 +165,17 @@ export default function RolesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 animate-in">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 animate-in pb-16 sm:pb-20">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Rollar</h1>
-          <p className="text-sm text-muted-foreground mt-1">Tizim rollarini boshqarish</p>
+          <h1 className="text-xl sm:text-2xl font-semibold text-foreground">Rollar</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Tizim rollarini boshqarish</p>
         </div>
-        <Button onClick={() => setShowForm(true)}>
+        <Button onClick={() => setShowForm(true)} fullWidth={false} className="sm:w-auto">
           <Plus className="w-4 h-4 mr-2" />
-          Rol qo'shish
+          <span className="hidden sm:inline">Rol qo'shish</span>
+          <span className="sm:hidden">Qo'shish</span>
         </Button>
       </div>
 
@@ -289,12 +290,12 @@ export default function RolesPage() {
       {/* Roles Grid */}
       {roles.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-muted-foreground" />
+          <CardContent className="py-12 sm:py-16 text-center px-4">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-muted rounded-lg flex items-center justify-center mx-auto mb-3 sm:mb-4">
+              <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Rollar yo'q</h3>
-            <p className="text-sm text-muted-foreground mb-6">
+            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">Rollar yo'q</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground mb-4 sm:mb-6 max-w-md mx-auto">
               Yangi rol qo'shish uchun yuqoridagi tugmani bosing
             </p>
             <Button onClick={() => setShowForm(true)}>
@@ -304,14 +305,14 @@ export default function RolesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {roles.map((role) => (
             <Card key={role._id} className="card-hover">
-              <CardContent className="p-5">
+              <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-col h-full">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Shield className="w-6 h-6 text-primary" />
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                     </div>
                     {!role.isSystem && (
                       <div className="flex gap-1">
@@ -319,13 +320,13 @@ export default function RolesPage() {
                           onClick={() => handleEdit(role)}
                           className="p-1.5 hover:bg-muted rounded-lg transition-colors"
                         >
-                          <Edit2 className="w-4 h-4 text-muted-foreground" />
+                          <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
                         </button>
                         <button
                           onClick={() => handleDelete(role._id)}
                           className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors"
                         >
-                          <Trash2 className="w-4 h-4 text-destructive" />
+                          <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-destructive" />
                         </button>
                       </div>
                     )}
@@ -333,14 +334,14 @@ export default function RolesPage() {
                   
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-base font-semibold text-foreground">{role.displayName}</h3>
+                      <h3 className="text-sm sm:text-base font-semibold text-foreground line-clamp-1">{role.displayName}</h3>
                       {role.isSystem && (
                         <Badge variant="secondary" size="sm">Tizim</Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mb-3">{role.name}</p>
+                    <p className="text-xs text-muted-foreground mb-2 sm:mb-3 truncate">{role.name}</p>
                     {role.description && (
-                      <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{role.description}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 line-clamp-2">{role.description}</p>
                     )}
                   </div>
                   

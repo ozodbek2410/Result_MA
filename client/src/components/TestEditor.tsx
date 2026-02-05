@@ -119,21 +119,21 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-between items-center">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
         <h3 className="text-sm font-medium text-gray-900">
           Savollar ({questions.length})
         </h3>
-        <Button type="button" size="sm" onClick={addQuestion}>
+        <Button type="button" size="sm" onClick={addQuestion} className="w-full sm:w-auto">
           <Plus className="w-4 h-4 mr-1" />
           Savol qo'shish
         </Button>
       </div>
 
       {questions.length === 0 ? (
-        <div className="text-center py-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-          <p className="text-sm text-gray-600 mb-2">Hali savollar yo'q</p>
-          <Button type="button" variant="outline" size="sm" onClick={addQuestion}>
+        <div className="text-center py-6 sm:py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <p className="text-xs sm:text-sm text-gray-600 mb-2">Hali savollar yo'q</p>
+          <Button type="button" variant="outline" size="sm" onClick={addQuestion} className="w-full sm:w-auto">
             Birinchi savolni qo'shing
           </Button>
         </div>
@@ -143,16 +143,16 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
             <div key={qIndex} className="border border-gray-200 rounded-lg overflow-hidden">
               {/* Header */}
               <div 
-                className="bg-gray-50 p-2.5 flex items-center justify-between cursor-pointer hover:bg-gray-100"
+                className="bg-gray-50 p-2 sm:p-2.5 flex items-center justify-between cursor-pointer hover:bg-gray-100 active:bg-gray-200 transition-colors"
                 onClick={() => setExpandedQuestion(expandedQuestion === qIndex ? null : qIndex)}
               >
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <span className="text-base font-bold text-blue-600">{qIndex + 1}</span>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm sm:text-base font-bold text-blue-600">{qIndex + 1}</span>
                   </div>
                   {question.text && (
-                    <span className="text-sm text-gray-700 truncate max-w-md">
-                      <MathText text={question.text.substring(0, 80) + (question.text.length > 80 ? '...' : '')} />
+                    <span className="text-xs sm:text-sm text-gray-700 truncate">
+                      <MathText text={question.text.substring(0, 60) + (question.text.length > 60 ? '...' : '')} />
                     </span>
                   )}
                 </div>
@@ -162,7 +162,7 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                     e.stopPropagation();
                     removeQuestion(qIndex);
                   }}
-                  className="p-1.5 hover:bg-red-50 rounded text-red-500 transition-colors"
+                  className="p-1.5 hover:bg-red-50 rounded text-red-500 transition-colors flex-shrink-0"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -170,7 +170,7 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
 
               {/* Content */}
               {expandedQuestion === qIndex && (
-                <div className="p-4 space-y-4 bg-white">
+                <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 bg-white">
                   {/* Question Text with Rich Text Editor */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">

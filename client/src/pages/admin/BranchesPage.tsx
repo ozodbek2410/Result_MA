@@ -87,45 +87,45 @@ export default function BranchesPage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                <Building2 className="w-6 h-6 text-blue-600" />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+                <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
             </div>
             <div>
-              <p className="text-sm text-gray-600 font-medium mb-1">Jami filiallar</p>
-              <p className="text-3xl font-bold text-gray-900">{branches.length}</p>
+              <p className="text-xs sm:text-sm text-gray-600 font-medium mb-1">Jami filiallar</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{branches.length}</p>
             </div>
           </CardContent>
         </Card>
 
         <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
-                <Building2 className="w-6 h-6 text-green-600" />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-50 rounded-xl flex items-center justify-center">
+                <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
             </div>
             <div>
-              <p className="text-sm text-gray-600 font-medium mb-1">Faol filiallar</p>
-              <p className="text-3xl font-bold text-gray-900">{branches.length}</p>
+              <p className="text-xs sm:text-sm text-gray-600 font-medium mb-1">Faol filiallar</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{branches.length}</p>
             </div>
           </CardContent>
         </Card>
 
         <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                <Plus className="w-6 h-6 text-purple-600" />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-50 rounded-xl flex items-center justify-center">
+                <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
               </div>
             </div>
             <div>
-              <p className="text-sm text-gray-600 font-medium mb-1">Yangi (bu oy)</p>
-              <p className="text-3xl font-bold text-gray-900">0</p>
+              <p className="text-xs sm:text-sm text-gray-600 font-medium mb-1">Yangi (bu oy)</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">0</p>
             </div>
           </CardContent>
         </Card>
@@ -173,43 +173,43 @@ export default function BranchesPage() {
 
       {/* Branches Grid */}
       {filteredBranches.length > 0 ? (
-        <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {filteredBranches.map((branch, index) => (
             <Card 
               key={branch._id} 
               className="hover:shadow-xl transition-all hover:-translate-y-1"
             >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                    <Building2 className="w-6 h-6 text-white" />
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-start justify-between mb-3 sm:mb-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                   <div className="flex gap-1">
-                    <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                      <Edit2 className="w-4 h-4 text-gray-600" />
+                    <button className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                      <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
                     </button>
-                    <button className="p-2 hover:bg-red-50 rounded-lg transition-colors">
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                    <button className="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600" />
                     </button>
                   </div>
                 </div>
                 
-                <h3 className="text-lg font-bold text-gray-900 mb-3">{branch.name}</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2 sm:mb-3 line-clamp-2">{branch.name}</h3>
                 
-                <div className="space-y-2.5 mb-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <MapPin className="w-4 h-4 flex-shrink-0" />
+                <div className="space-y-2 sm:space-y-2.5 mb-3 sm:mb-4">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                    <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     <span className="line-clamp-1">{branch.location}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Calendar className="w-4 h-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                    <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     <span>{new Date(branch.createdAt).toLocaleDateString('uz-UZ')}</span>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-gray-100">
+                <div className="pt-3 sm:pt-4 border-t border-gray-100">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Status:</span>
+                    <span className="text-xs sm:text-sm text-gray-600">Status:</span>
                     <Badge variant="success" size="sm">
                       Faol
                     </Badge>

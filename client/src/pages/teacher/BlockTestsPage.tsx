@@ -664,7 +664,7 @@ export default function BlockTestsPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-16 sm:pb-20">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-24 sm:pb-24">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
