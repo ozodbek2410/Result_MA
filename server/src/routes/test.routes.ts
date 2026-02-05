@@ -16,7 +16,7 @@ const router = express.Router();
 // Multer configuration for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, path.join(__dirname, '../../uploads/'));
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -264,11 +264,18 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     console.log('File size:', req.file.size, 'bytes');
     console.log('File mimetype:', req.file.mimetype);
 
+    // Используем абсолютный путь для надежности
+    const absolutePath = path.isAbsolute(req.file.path) 
+      ? req.file.path 
+      : path.join(__dirname, '../../', req.file.path);
+    
+    console.log('Absolute file path:', absolutePath);
+
     let questions;
     let logs: any[] = [];
     
     try {
-      questions = await TestImportService.importTest(req.file.path, format);
+      questions = await TestImportService.importTest(absolutePath, format);
       logs = TestImportService.getParsingLogs();
     } catch (parseError: any) {
       console.error('Parse error:', parseError);

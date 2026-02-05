@@ -45,6 +45,9 @@ const env = validateEnv();
 const app = express();
 const PORT = env.PORT;
 
+// Trust proxy - важно для работы за nginx
+app.set('trust proxy', 1);
+
 // Включаем сжатие ответов
 app.use(compression({
   level: 6, // Уровень сжатия (0-9)

@@ -1,11 +1,13 @@
 // Load environment variables from .env file
 // Note: Make sure server/.env exists on production server
-require('dotenv').config({ path: './server/.env' });
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, 'server', '.env') });
 
 module.exports = {
   apps: [{
     name: 'mathacademy-server',
     script: './server/dist/index.js',
+    cwd: '/var/www/resultMA',  // Absolute path for production
     instances: 1,
     exec_mode: 'cluster',
     env: {
@@ -14,7 +16,7 @@ module.exports = {
       MONGODB_URI: process.env.MONGODB_URI,
       JWT_SECRET: process.env.JWT_SECRET,
       GROQ_API_KEY: process.env.GROQ_API_KEY,
-      UPLOAD_DIR: process.env.UPLOAD_DIR || 'uploads',
+      UPLOAD_DIR: process.env.UPLOAD_DIR || 'server/uploads',
       REDIS_ENABLED: process.env.REDIS_ENABLED || 'false',
       REDIS_HOST: process.env.REDIS_HOST || 'localhost',
       REDIS_PORT: process.env.REDIS_PORT || '6379',
