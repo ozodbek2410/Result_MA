@@ -10,9 +10,9 @@ const router = express.Router();
 const execAsync = promisify(exec);
 
 // Настройка multer для загрузки изображений
+const uploadDir = path.join(process.cwd(), 'server', 'uploads', 'omr');
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/omr/');
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
@@ -82,10 +82,7 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     
     try {
       // QR-scanner skriptini ishlatish
-      const isDev = process.env.NODE_ENV !== 'production';
-      const qrScriptPath = isDev
-        ? path.join(__dirname, '../../python/qr_scanner.py')
-        : path.join(__dirname, '../../../python/qr_scanner.py');
+      const qrScriptPath = path.join(process.cwd(), 'server', 'python', 'qr_scanner.py');
       
       const pythonCmd = process.env.PYTHON_PATH || 
                        (process.platform === 'win32' ? 'python' : 'python3');
@@ -270,11 +267,7 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     console.log('🔍 2-bosqich: Javoblarni aniqlash...');
 
     // 2. Javoblarni aniqlash (omr_color.py - rangli blanklar uchun)
-    // Production'da __dirname dist papkasida bo'ladi, shuning uchun to'g'ri yo'lni topish kerak
-    const isDev = process.env.NODE_ENV !== 'production';
-    const pythonScript = isDev 
-      ? path.join(__dirname, '../../python/omr_color.py')
-      : path.join(__dirname, '../../../python/omr_color.py');
+    const pythonScript = path.join(process.cwd(), 'server', 'python', 'omr_color.py');
     
     // Python3 ni ishlatish (ko'p Linux serverlarida python3 bo'ladi)
     // Allow override via environment variable for production
@@ -815,7 +808,7 @@ router.get('/results/:testId', authenticate, async (req, res) => {
 router.delete('/image/:filename', authenticate, async (req, res) => {
   try {
     const { filename } = req.params;
-    const imagePath = path.join(__dirname, '../../uploads/omr/', filename);
+    const imagePath = path.join(process.cwd(), 'server', 'uploads', 'omr', filename);
     
     await fs.unlink(imagePath);
     

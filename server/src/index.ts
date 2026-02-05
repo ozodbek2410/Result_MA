@@ -68,7 +68,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api/', apiLimiter);
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(path.join(process.cwd(), 'server', 'uploads')));
 
 // Request logging middleware
 app.use((req, res, next) => {

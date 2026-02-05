@@ -14,9 +14,10 @@ import { TestImportService } from '../services/testImportService';
 const router = express.Router();
 
 // Multer configuration for file uploads
+const uploadDir = path.join(process.cwd(), 'server', 'uploads');
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads/'));
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -267,7 +268,7 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     // Используем абсолютный путь для надежности
     const absolutePath = path.isAbsolute(req.file.path) 
       ? req.file.path 
-      : path.join(__dirname, '../../', req.file.path);
+      : path.join(process.cwd(), req.file.path);
     
     console.log('Absolute file path:', absolutePath);
 

@@ -22,6 +22,11 @@ export const apiLimiter = rateLimit({
            req.path.startsWith('/static') ||
            req.path.startsWith('/public');
   },
+  // Безопасная обработка X-Forwarded-For за прокси
+  keyGenerator: (req: Request) => {
+    // Используем req.ip который уже обработан express с trust proxy
+    return req.ip || 'unknown';
+  },
   handler: (req: Request, res: Response) => {
     console.warn(`⚠️  Rate limit exceeded for IP: ${req.ip}, Path: ${req.path}`);
     res.status(429).json({
@@ -41,6 +46,9 @@ export const authLimiter = rateLimit({
     error: 'Too many login attempts, please try again later.',
     retryAfter: '15 minutes'
   },
+  keyGenerator: (req: Request) => {
+    return req.ip || 'unknown';
+  },
   handler: (req: Request, res: Response) => {
     console.warn(`⚠️  Auth rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
@@ -58,6 +66,9 @@ export const uploadLimiter = rateLimit({
   message: {
     error: 'Too many file uploads, please try again later.',
     retryAfter: '1 hour'
+  },
+  keyGenerator: (req: Request) => {
+    return req.ip || 'unknown';
   },
   handler: (req: Request, res: Response) => {
     console.warn(`⚠️  Upload rate limit exceeded for IP: ${req.ip}`);
@@ -77,6 +88,9 @@ export const omrLimiter = rateLimit({
     error: 'Too many scan requests, please try again later.',
     retryAfter: '1 hour'
   },
+  keyGenerator: (req: Request) => {
+    return req.ip || 'unknown';
+  },
   handler: (req: Request, res: Response) => {
     console.warn(`⚠️  OMR rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
@@ -95,6 +109,9 @@ export const aiLimiter = rateLimit({
     error: 'Too many AI parsing requests, please try again later.',
     retryAfter: '1 hour'
   },
+  keyGenerator: (req: Request) => {
+    return req.ip || 'unknown';
+  },
   handler: (req: Request, res: Response) => {
     console.warn(`⚠️  AI parsing rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
@@ -112,6 +129,9 @@ export const batchLimiter = rateLimit({
   message: {
     error: 'Too many batch requests, please try again later.',
     retryAfter: '15 minutes'
+  },
+  keyGenerator: (req: Request) => {
+    return req.ip || 'unknown';
   },
   handler: (req: Request, res: Response) => {
     console.warn(`⚠️  Batch rate limit exceeded for IP: ${req.ip}`);
