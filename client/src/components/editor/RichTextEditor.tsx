@@ -198,20 +198,20 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
   return (
     <div className={`relative ${className}`}>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-gray-50/50 rounded-t-lg">
+      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 border-b bg-gray-50/50 rounded-t-lg flex-wrap">
         <button
           type="button"
           onClick={insertFormula}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 hover:border-gray-400 transition-all"
+          className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 hover:border-gray-400 transition-all flex-shrink-0"
           title="Formula qo'shish (Alt+=)"
         >
-          <span>𝑓(x)</span>
-          <span className="text-gray-500">Alt+=</span>
+          <span className="text-sm sm:text-base">𝑓(x)</span>
+          <span className="text-gray-500 hidden sm:inline">Alt+=</span>
         </button>
 
-        <div className="flex-1"></div>
+        <div className="flex-1 min-w-0"></div>
 
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-gray-400 hidden md:block">
           Tahrirlash: Enter yoki 2x bosish
         </div>
       </div>

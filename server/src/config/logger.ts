@@ -24,9 +24,18 @@ interface LogEntry {
 
 class Logger {
   private isDevelopment: boolean;
+  private minLevel: LogLevel;
 
   constructor() {
     this.isDevelopment = process.env.NODE_ENV !== 'production';
+    // Устанавливаем минимальный уровень логирования из переменной окружения
+    const envLevel = process.env.LOG_LEVEL?.toUpperCase() || 'INFO';
+    this.minLevel = LogLevel[envLevel as keyof typeof LogLevel] || LogLevel.INFO;
+  }
+
+  private shouldLog(level: LogLevel): boolean {
+    const levels = [LogLevel.ERROR, LogLevel.WARN, LogLevel.INFO, LogLevel.DEBUG];
+    return levels.indexOf(level) <= levels.indexOf(this.minLevel);
   }
 
   private formatLog(entry: LogEntry): string {
@@ -42,16 +51,23 @@ class Logger {
     };
 
     const color = colors[level] || colors.RESET;
-    const contextStr = context ? ` [${context}]` : '';
+    const contextStr = context ? `[${context}]` : '';
     
-    let logStr = `${color}${timestamp} ${level}${contextStr}: ${message}${colors.RESET}`;
+    // Короткий формат времени (только время, без даты)
+    const time = new Date(timestamp).toLocaleTimeString('ru-RU');
     
-    if (data && this.isDevelopment) {
-      logStr += `\n${JSON.stringify(data, null, 2)}`;
+    // Компактный формат: время [контекст] сообщение
+    let logStr = `${color}${time} ${contextStr} ${message}${colors.RESET}`;
+    
+    // Данные показываем только в development и только если они важные
+    if (data && this.isDevelopment && Object.keys(data).length > 0) {
+      logStr += ` ${JSON.stringify(data)}`;
     }
     
+    // Ошибки показываем компактно
     if (error) {
-      logStr += `\n${color}Error: ${error.message}${colors.RESET}`;
+      logStr += ` - ${error.message}`;
+      // Stack trace только в development
       if (error.stack && this.isDevelopment) {
         logStr += `\n${error.stack}`;
       }
@@ -61,6 +77,11 @@ class Logger {
   }
 
   private log(level: LogLevel, message: string, context?: string, data?: any, error?: Error) {
+    // Проверяем, нужно ли логировать этот уровень
+    if (!this.shouldLog(level)) {
+      return;
+    }
+
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
@@ -84,16 +105,11 @@ class Logger {
         console.warn(formatted);
         break;
       case LogLevel.DEBUG:
-        if (this.isDevelopment) {
-          console.debug(formatted);
-        }
+        console.debug(formatted);
         break;
       default:
         console.log(formatted);
     }
-
-    // In production, you could send logs to external service here
-    // e.g., Sentry, LogRocket, CloudWatch, etc.
   }
 
   error(message: string, error?: Error, context?: string, data?: any) {
@@ -115,39 +131,48 @@ class Logger {
   // Convenience methods for common scenarios
   
   apiRequest(method: string, path: string, userId?: string) {
-    this.info(`${method} ${path}`, 'API', { userId });
+    // Логируем только в DEBUG режиме
+    this.debug(`${method} ${path}`, 'API', userId ? { userId } : undefined);
   }
 
   apiResponse(method: string, path: string, statusCode: number, duration: number) {
-    const level = statusCode >= 400 ? LogLevel.WARN : LogLevel.INFO;
-    this.log(level, `${method} ${path} - ${statusCode} (${duration}ms)`, 'API');
+    // Логируем только ошибки и медленные запросы
+    if (statusCode >= 400) {
+      this.warn(`${method} ${path} - ${statusCode} (${duration}ms)`, 'API');
+    } else if (duration > 1000) {
+      this.warn(`${method} ${path} - медленный запрос (${duration}ms)`, 'API');
+    } else {
+      this.debug(`${method} ${path} - ${statusCode} (${duration}ms)`, 'API');
+    }
   }
 
   dbQuery(operation: string, collection: string, duration?: number) {
-    const message = duration 
-      ? `${operation} on ${collection} (${duration}ms)`
-      : `${operation} on ${collection}`;
-    this.debug(message, 'DB');
+    // Логируем только медленные запросы
+    if (duration && duration > 500) {
+      this.warn(`${operation} ${collection} - медленный запрос (${duration}ms)`, 'DB');
+    } else {
+      this.debug(`${operation} ${collection}`, 'DB');
+    }
   }
 
   cacheHit(key: string) {
-    this.debug(`Cache HIT: ${key}`, 'CACHE');
+    this.debug(`HIT: ${key}`, 'CACHE');
   }
 
   cacheMiss(key: string) {
-    this.debug(`Cache MISS: ${key}`, 'CACHE');
+    this.debug(`MISS: ${key}`, 'CACHE');
   }
 
   queueJob(jobType: string, jobId: string) {
-    this.info(`Job queued: ${jobType} (${jobId})`, 'QUEUE');
+    this.info(`${jobType} запущен`, 'QUEUE');
   }
 
   queueComplete(jobType: string, jobId: string, duration: number) {
-    this.info(`Job completed: ${jobType} (${jobId}) in ${duration}ms`, 'QUEUE');
+    this.info(`${jobType} завершен (${duration}ms)`, 'QUEUE');
   }
 
   queueFailed(jobType: string, jobId: string, error: Error) {
-    this.error(`Job failed: ${jobType} (${jobId})`, error, 'QUEUE');
+    this.error(`${jobType} ошибка`, error, 'QUEUE');
   }
 }
 

@@ -58,23 +58,29 @@ export default function FormulaPopover({ anchorEl, initialLatex, onSave, onClose
   useEffect(() => {
     const updatePosition = () => {
       const rect = anchorEl.getBoundingClientRect();
-      const popoverHeight = 500; // Увеличили высоту
-      const popoverWidth = 500;
+      const isMobile = window.innerWidth < 640;
+      const popoverHeight = isMobile ? 450 : 500;
+      const popoverWidth = isMobile ? window.innerWidth - 16 : 500;
       
       // Добавляем отступы от краев экрана
-      const padding = 16;
+      const padding = isMobile ? 8 : 16;
       
       let top = rect.bottom + 8;
-      let left = rect.left;
+      let left = isMobile ? padding : rect.left;
 
-      // Проверяем, не выходит ли за пределы экрана справа
-      if (left + popoverWidth > window.innerWidth - padding) {
-        left = window.innerWidth - popoverWidth - padding;
-      }
-      
-      // Проверяем, не выходит ли за пределы экрана слева
-      if (left < padding) {
-        left = padding;
+      // На мобильных центрируем по горизонтали
+      if (isMobile) {
+        left = 8;
+      } else {
+        // Проверяем, не выходит ли за пределы экрана справа
+        if (left + popoverWidth > window.innerWidth - padding) {
+          left = window.innerWidth - popoverWidth - padding;
+        }
+        
+        // Проверяем, не выходит ли за пределы экрана слева
+        if (left < padding) {
+          left = padding;
+        }
       }
 
       // Проверяем, не выходит ли за пределы экрана снизу
@@ -576,31 +582,32 @@ export default function FormulaPopover({ anchorEl, initialLatex, onSave, onClose
       {/* Popover */}
       <div
         ref={popoverRef}
-        className="fixed z-50 bg-white rounded-xl shadow-2xl border-2 border-blue-200 w-[95vw] sm:w-[500px] flex flex-col"
+        className="fixed z-50 bg-white rounded-xl shadow-2xl border-2 border-blue-200 w-[calc(100vw-16px)] sm:w-[500px] flex flex-col"
         style={{ 
           top: `${position.top}px`, 
           left: `${position.left}px`,
-          maxHeight: 'calc(100vh - 32px)',
+          maxHeight: 'calc(100vh - 16px)',
           cursor: isDragging ? 'grabbing' : 'default'
         }}
       >
         {/* Header - Draggable */}
         <div 
-          className="flex items-center justify-between p-3 border-b bg-gradient-to-r from-blue-50 to-purple-50 cursor-grab active:cursor-grabbing select-none touch-none"
+          className="flex items-center justify-between p-2 sm:p-3 border-b bg-gradient-to-r from-blue-50 to-purple-50 cursor-grab active:cursor-grabbing select-none touch-none"
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
         >
-          <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <span>📐</span>
-            Formula tahrirlash
-            <span className="text-xs text-gray-500 font-normal hidden sm:inline">(ko'chirish mumkin)</span>
+          <h3 className="text-xs sm:text-sm font-bold text-gray-900 flex items-center gap-1 sm:gap-2">
+            <span className="text-sm sm:text-base">📐</span>
+            <span className="hidden xs:inline">Formula tahrirlash</span>
+            <span className="xs:hidden">Formula</span>
+            <span className="text-xs text-gray-500 font-normal hidden md:inline">(ko'chirish mumkin)</span>
           </h3>
           <button
             type="button"
             onClick={handleClose}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="p-1 hover:bg-white/50 rounded-lg transition-all"
+            className="p-1.5 hover:bg-white/50 rounded-lg transition-all flex-shrink-0"
           >
             <X className="w-4 h-4 text-gray-600" />
           </button>
@@ -613,32 +620,33 @@ export default function FormulaPopover({ anchorEl, initialLatex, onSave, onClose
         ) : (
           <>
             {/* Tabs */}
-            <div className="flex border-b bg-gray-50">
+            <div className="flex border-b bg-gray-50 overflow-x-auto">
               {[
-                { key: 'basic' as const, label: '🔢 Asosiy', title: 'Asosiy operatsiyalar' },
-                { key: 'greek' as const, label: '🇬🇷 Yunon', title: 'Yunon harflari' },
-                { key: 'operators' as const, label: '➗ Operatorlar', title: 'Matematik operatorlar' },
-                { key: 'advanced' as const, label: '📐 Murakkab', title: 'Murakkab funksiyalar' },
-              ].map(({ key, label, title }) => (
+                { key: 'basic' as const, label: '🔢', fullLabel: 'Asosiy', title: 'Asosiy operatsiyalar' },
+                { key: 'greek' as const, label: '🇬🇷', fullLabel: 'Yunon', title: 'Yunon harflari' },
+                { key: 'operators' as const, label: '➗', fullLabel: 'Operatorlar', title: 'Matematik operatorlar' },
+                { key: 'advanced' as const, label: '📐', fullLabel: 'Murakkab', title: 'Murakkab funksiyalar' },
+              ].map(({ key, label, fullLabel, title }) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setActiveTab(key)}
-                  className={`flex-1 px-2 py-2 text-xs sm:text-sm font-medium transition-all ${
+                  className={`flex-1 px-1.5 sm:px-2 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                     activeTab === key
                       ? 'bg-white text-blue-600 border-b-2 border-blue-600'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                   }`}
                   title={title}
                 >
-                  {label}
+                  <span className="sm:hidden">{label}</span>
+                  <span className="hidden sm:inline">{label} {fullLabel}</span>
                 </button>
               ))}
             </div>
 
             {/* Toolbar */}
-            <div className="p-2 border-b bg-gray-50 overflow-y-auto" style={{ maxHeight: '150px' }}>
-              <div className="grid grid-cols-5 sm:grid-cols-8 gap-1">
+            <div className="p-1.5 sm:p-2 border-b bg-gray-50 overflow-y-auto" style={{ maxHeight: '140px' }}>
+              <div className="grid grid-cols-6 sm:grid-cols-8 gap-0.5 sm:gap-1">
                 {symbolCategories[activeTab].map((item: any, index: number) => (
                   <button
                     key={index}
@@ -651,7 +659,7 @@ export default function FormulaPopover({ anchorEl, initialLatex, onSave, onClose
                         insertText(item.text);
                       }
                     }}
-                    className="px-2 py-2 text-sm sm:text-base bg-white border rounded hover:bg-blue-50 hover:border-blue-300 hover:shadow-sm transition-all active:scale-95"
+                    className="px-1 sm:px-2 py-1.5 sm:py-2 text-sm sm:text-base bg-white border rounded hover:bg-blue-50 hover:border-blue-300 hover:shadow-sm transition-all active:scale-95"
                     title={item.title}
                     aria-label={item.title}
                   >
@@ -662,35 +670,36 @@ export default function FormulaPopover({ anchorEl, initialLatex, onSave, onClose
             </div>
 
             {/* Editor */}
-            <div className="p-4 flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white" style={{ minHeight: '150px', maxHeight: '250px' }}>
-              <label className="text-sm text-gray-700 mb-2 block font-semibold flex items-center gap-2">
-                <span className="text-lg">✏️</span>
+            <div className="p-2 sm:p-4 flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white" style={{ minHeight: '120px', maxHeight: '200px' }}>
+              <label className="text-xs sm:text-sm text-gray-700 mb-1.5 sm:mb-2 block font-semibold flex items-center gap-1 sm:gap-2">
+                <span className="text-base sm:text-lg">✏️</span>
                 Formula:
               </label>
               <div
                 ref={mathFieldRef}
-                className="w-full border-2 border-gray-300 rounded-lg p-4 min-h-[120px] bg-white shadow-sm hover:border-blue-400 hover:shadow-md focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100 transition-all"
-                style={{ fontSize: '28px' }}
+                className="w-full border-2 border-gray-300 rounded-lg p-2 sm:p-4 min-h-[80px] sm:min-h-[100px] bg-white shadow-sm hover:border-blue-400 hover:shadow-md focus-within:border-blue-500 focus-within:ring-2 sm:focus-within:ring-4 focus-within:ring-blue-100 transition-all overflow-x-auto"
+                style={{ fontSize: '20px' }}
               />
-              <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
+              <p className="text-xs text-gray-500 mt-2 sm:mt-3 flex items-center gap-1.5">
                 <span>💡</span>
-                <span>Yuqoridagi tugmalarni bosing yoki klaviaturadan yozing</span>
+                <span className="hidden sm:inline">Yuqoridagi tugmalarni bosing yoki klaviaturadan yozing</span>
+                <span className="sm:hidden">Tugmalarni bosing</span>
               </p>
             </div>
 
             {/* Footer */}
-            <div className="p-3 border-t bg-gray-50 flex gap-2 justify-end items-center">
+            <div className="p-2 sm:p-3 border-t bg-gray-50 flex gap-2 justify-end items-center">
               <button
                 type="button"
                 onClick={handleSave}
-                className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all font-medium"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all font-medium"
               >
                 Saqlash
               </button>
               <button
                 type="button"
                 onClick={handleClose}
-                className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg transition-all font-medium"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg transition-all font-medium"
               >
                 Yopish
               </button>

@@ -72,6 +72,11 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'server', 'uploads')
 
 // Request logging middleware
 app.use((req, res, next) => {
+  // Пропускаем логирование health check и статических файлов
+  if (req.path.includes('/health') || req.path.includes('/uploads')) {
+    return next();
+  }
+  
   const start = Date.now();
   
   res.on('finish', () => {
@@ -153,23 +158,21 @@ process.on('uncaughtException', (error: Error) => {
 connectDB().then(() => {
   // Подключаем Redis (опционально)
   connectRedis().catch(err => {
-    logger.warn('Redis connection failed, continuing without cache', 'REDIS');
+    logger.warn('Redis недоступен, работаем без кеша', 'REDIS');
   });
   
   // Регистрируем обработчики очередей
   registerOMRHandler();
-  logger.info('Queue handlers registered', 'QUEUE');
+  logger.info('Обработчики очередей зарегистрированы', 'QUEUE');
   
   // Инициализируем планировщик для автоматического повышения класса
   initScheduler();
   
   app.listen(PORT, () => {
-    logger.info(`Server running on port ${PORT}`, 'SERVER');
-    logger.info(`Environment: ${env.NODE_ENV}`, 'SERVER');
-    logger.info(`API: http://localhost:${PORT}/api`, 'SERVER');
-    logger.info(`Health: http://localhost:${PORT}/api/health`, 'SERVER');
+    logger.info(`Сервер запущен на порту ${PORT}`, 'SERVER');
+    logger.info(`Окружение: ${env.NODE_ENV}`, 'SERVER');
   });
 }).catch((error) => {
-  logger.error('Failed to start server', error, 'SERVER');
+  logger.error('Не удалось запустить сервер', error, 'SERVER');
   process.exit(1);
 });

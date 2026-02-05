@@ -1,6 +1,13 @@
 /* Tiptap Editor Styles */
 .ProseMirror {
   outline: none;
+  font-size: 14px;
+}
+
+@media (min-width: 640px) {
+  .ProseMirror {
+    font-size: 16px;
+  }
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
@@ -13,6 +20,8 @@
 
 .ProseMirror p {
   margin: 0.5em 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .ProseMirror p:first-child {
@@ -28,6 +37,8 @@
   display: inline-flex;
   align-items: center;
   vertical-align: baseline;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .ProseMirror .ProseMirror-selectednode {
@@ -37,19 +48,35 @@
 /* MathQuill Styles Override */
 .mathquill-editor {
   font-size: inherit !important;
+  max-width: 100% !important;
 }
 
 .mq-editable-field {
   border: none !important;
   width: 100% !important;
   display: block !important;
-  min-height: 40px !important;
+  min-height: 36px !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+}
+
+@media (min-width: 640px) {
+  .mq-editable-field {
+    min-height: 40px !important;
+  }
 }
 
 .mq-math-mode .mq-root-block {
   padding: 0 !important;
   width: 100% !important;
-  min-height: 40px !important;
+  min-height: 36px !important;
+  max-width: 100% !important;
+}
+
+@media (min-width: 640px) {
+  .mq-math-mode .mq-root-block {
+    min-height: 40px !important;
+  }
 }
 
 /* MathQuill cursor - всегда видимый */

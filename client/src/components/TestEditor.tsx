@@ -188,19 +188,23 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                   {/* Question Image */}
                   {question.imageUrl ? (
                     <div className="relative inline-block">
-                      <img src={question.imageUrl} alt="Question" className="max-w-xs rounded-lg border border-gray-200" />
+                      <img 
+                        src={question.imageUrl} 
+                        alt="Question" 
+                        className="max-w-full sm:max-w-xs rounded-lg border border-gray-300 shadow-sm" 
+                      />
                       <button
                         type="button"
                         onClick={() => updateQuestion(qIndex, 'imageUrl', undefined)}
-                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                        className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-md"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3 h-3 sm:w-4 sm:h-4" />
                       </button>
                     </div>
                   ) : (
-                    <label className="inline-flex items-center gap-2 text-sm text-blue-600 cursor-pointer hover:text-blue-700">
+                    <label className="inline-flex items-center gap-2 text-sm text-blue-600 cursor-pointer hover:text-blue-700 p-2 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
                       <ImageIcon className="w-4 h-4" />
-                      <span>Rasm qo'shish</span>
+                      <span>Savolga rasm qo'shish</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -229,74 +233,81 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                       </button>
                     </div>
                     
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {question.variants.map((variant, vIndex) => (
-                        <div key={vIndex} className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            {/* Variant Letter Circle */}
+                        <div key={vIndex} className="space-y-2 border border-gray-200 rounded-lg p-2 sm:p-3 bg-gray-50">
+                          {/* Variant Header - Letter and Actions */}
+                          <div className="flex items-center justify-between gap-2">
                             <button
                               type="button"
                               onClick={() => updateQuestion(qIndex, 'correctAnswer', variant.letter)}
                               className={`
-                                w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0 transition-all
+                                w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-base sm:text-lg text-white flex-shrink-0 transition-all
                                 ${question.correctAnswer === variant.letter 
-                                  ? 'bg-green-500 shadow-md' 
-                                  : 'bg-gray-300 hover:bg-gray-400'
+                                  ? 'bg-green-500 shadow-md ring-2 ring-green-300' 
+                                  : 'bg-gray-400 hover:bg-gray-500 active:bg-gray-600'
                                 }
                               `}
+                              title={question.correctAnswer === variant.letter ? "To'g'ri javob" : "To'g'ri javob sifatida belgilash"}
                             >
                               {variant.letter}
                             </button>
 
-                            {/* Variant Input with Rich Text */}
-                            <div className="flex-1">
-                              <RichTextEditor
-                                value={variant.text}
-                                onChange={(value) => updateVariant(qIndex, vIndex, 'text', value)}
-                                placeholder={`Variant ${variant.letter}`}
-                                className="text-sm"
-                              />
+                            <div className="flex items-center gap-1 sm:gap-2">
+                              {/* Image Upload Icon */}
+                              {!variant.imageUrl && (
+                                <label className="p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors flex-shrink-0 border border-blue-200 hover:border-blue-400" title="Rasm qo'shish">
+                                  <ImageIcon className="w-4 h-4 text-blue-600" />
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) handleImageUpload(qIndex, vIndex, file);
+                                    }}
+                                  />
+                                </label>
+                              )}
+
+                              {/* Delete Variant Button */}
+                              {question.variants.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeVariant(qIndex, vIndex)}
+                                  className="p-2 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 border border-gray-200 hover:border-red-400"
+                                  title="Variantni o'chirish"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
+                          </div>
 
-                            {/* Image Upload Icon */}
-                            {!variant.imageUrl && (
-                              <label className="p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors flex-shrink-0 border border-blue-200 hover:border-blue-400" title="Rasm qo'shish">
-                                <ImageIcon className="w-4 h-4 text-blue-600" />
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) handleImageUpload(qIndex, vIndex, file);
-                                  }}
-                                />
-                              </label>
-                            )}
-
-                            {/* Delete Variant Button */}
-                            {question.variants.length > 2 && (
-                              <button
-                                type="button"
-                                onClick={() => removeVariant(qIndex, vIndex)}
-                                className="p-2 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 border border-gray-200 hover:border-red-400"
-                                title="Variantni o'chirish"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
+                          {/* Variant Input - Full Width */}
+                          <div className="w-full">
+                            <RichTextEditor
+                              value={variant.text}
+                              onChange={(value) => updateVariant(qIndex, vIndex, 'text', value)}
+                              placeholder={`Variant ${variant.letter} matnini kiriting...`}
+                              className="text-sm"
+                            />
                           </div>
                           
                           {/* Variant Image */}
                           {variant.imageUrl && (
-                            <div className="ml-10 relative inline-block mt-2">
-                              <img src={variant.imageUrl} alt={`Variant ${variant.letter}`} className="max-w-xs rounded border border-gray-200" />
+                            <div className="relative inline-block">
+                              <img 
+                                src={variant.imageUrl} 
+                                alt={`Variant ${variant.letter}`} 
+                                className="max-w-full sm:max-w-xs rounded border border-gray-300 shadow-sm" 
+                              />
                               <button
                                 type="button"
                                 onClick={() => updateVariant(qIndex, vIndex, 'imageUrl', undefined)}
-                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                                className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-md"
                               >
-                                <X className="w-3 h-3" />
+                                <X className="w-3 h-3 sm:w-4 sm:h-4" />
                               </button>
                             </div>
                           )}
