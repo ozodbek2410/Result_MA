@@ -1,0 +1,44 @@
+fix: Исправлены пути к Python скриптам и uploads директории
+
+Проблема:
+- Приложение использовало process.cwd() для формирования путей
+- PM2 запускается с cwd=/var/www/resultMA
+- Файлы находятся в /var/www/resultMA/server/
+- Это приводило к ошибкам ENOENT при поиске Python скриптов
+
+Решение:
+- Заменили process.cwd() на __dirname с правильным подъемом на уровни
+- Добавили константу SERVER_ROOT в каждый файл
+- Теперь пути всегда правильные независимо от cwd
+
+Измененные файлы:
+- server/src/routes/omr.routes.ts
+- server/src/index.ts
+- server/src/services/omrQueueHandler.ts
+- server/src/routes/upload.routes.ts
+- server/src/routes/test.routes.ts
+- server/src/scripts/generateExcelTemplate.ts
+
+Результат:
+- ✅ Python скрипты находятся корректно
+- ✅ Uploads директория создается правильно
+- ✅ Статические файлы доступны через /uploads/
+- ✅ Все пути работают независимо от cwd PM2
+
+Тестирование:
+- [x] Загрузка OMR изображений
+- [x] Распознавание QR-кодов
+- [x] Определение ответов
+- [x] Сохранение результатов
+- [x] Доступ к статическим файлам
+
+Документация:
+- README_PATH_FIX.md - главный файл с обзором
+- QUICK_SUMMARY_RU.md - краткая сводка
+- PATH_FIX_SUMMARY.md - подробное описание
+- ИНСТРУКЦИЯ_ПО_ДЕПЛОЮ.md - инструкция по деплою
+- CHECKLIST.md - чеклист проверки
+- PATH_STRUCTURE.md - схема структуры путей
+- deploy-path-fix.sh - скрипт автоматического деплоя
+
+Closes: #[номер issue, если есть]

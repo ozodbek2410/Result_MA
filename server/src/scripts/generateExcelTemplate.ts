@@ -1,21 +1,10 @@
 import * as XLSX from 'xlsx';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 
-// Определяем базовую директорию сервера для ES модулей
-// Если это CommonJS (скомпилированный TypeScript), используем __dirname
-// Если это ES модуль, используем import.meta.url
-const __filename = typeof __dirname !== 'undefined' 
-  ? __filename 
-  : fileURLToPath(import.meta.url);
-const __dirnameResolved = typeof __dirname !== 'undefined' 
-  ? __dirname 
-  : dirname(__filename);
-
+// Определяем базовую директорию сервера
 // __dirname в скомпилированном коде: /var/www/resultMA/server/dist/scripts
 // Поднимаемся на 2 уровня вверх: /var/www/resultMA/server
-const SERVER_ROOT = path.join(__dirnameResolved, '..', '..');
+const SERVER_ROOT = path.join(__dirname, '..', '..');
 
 // Пример данных для направления "Iqtisod" + majburiy fanlar
 const exampleData = [
