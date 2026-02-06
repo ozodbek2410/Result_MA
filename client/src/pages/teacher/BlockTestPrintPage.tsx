@@ -90,62 +90,91 @@ export default function BlockTestPrintPage() {
     </div>
   );
 
-  const renderQuestionsContent = () => (
-    <div className={`space-y-8 ${columnsCount === 2 ? 'columns-2 gap-4' : ''}`}>
-      {test.subjectTests?.map((subjectTest: any, subjectIndex: number) => (
-        <div key={subjectIndex} className="mb-8">
-          <h3 className="text-xl font-bold mb-4 bg-gray-100 p-3 rounded">
-            {subjectTest.subjectId?.nameUzb || 'Fan'}
-          </h3>
-          <div className="space-y-6">
-            {subjectTest.questions?.map((question: any, qIndex: number) => (
-              <div key={qIndex} className="border-b pb-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <span className="font-bold text-lg">{qIndex + 1}.</span>
-                  <div className="flex-1">
-                    <MathText text={question.text} />
+  const renderQuestionsContent = () => {
+    // Группируем вопросы по предметам
+    const subjectGroups = test.subjectTests || [];
+    
+    return (
+      <div className="space-y-8">
+        {subjectGroups.map((subjectTest: any, subjectIndex: number) => (
+          <div key={subjectIndex}>
+            {/* Заголовок предмета */}
+            <div className="bg-blue-50 border-l-4 border-blue-500 px-4 py-3 mb-4">
+              <h3 className="text-xl font-bold text-blue-900">
+                {subjectTest.subjectId?.nameUzb || 'Fan'}
+              </h3>
+            </div>
+            
+            {/* Вопросы предмета */}
+            <div className={`space-y-6 ${columnsCount === 2 ? 'columns-2 gap-4' : ''}`}>
+              {subjectTest.questions?.map((question: any, qIndex: number) => (
+                <div key={qIndex} className="border-b pb-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <span className="font-bold text-lg">{qIndex + 1}.</span>
+                    <div className="flex-1">
+                      <MathText text={question.text} />
+                    </div>
+                  </div>
+                  <div className="ml-6 space-y-2">
+                    {question.variants?.map((variant: any, varIndex: number) => (
+                      <div key={varIndex} className="flex items-start gap-2">
+                        <span className="font-semibold">{variant.letter})</span>
+                        <MathText text={variant.text} />
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="ml-6 space-y-2">
-                  {question.variants?.map((variant: any, varIndex: number) => (
-                    <div key={varIndex} className="flex items-start gap-2">
-                      <span className="font-semibold">{variant.letter})</span>
-                      <MathText text={variant.text} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            
+            {/* Разделитель между предметами */}
+            {subjectIndex < subjectGroups.length - 1 && (
+              <div className="my-6 border-t-2 border-dashed border-gray-300"></div>
+            )}
           </div>
-        </div>
-      ))}
-    </div>
-  );
+        ))}
+      </div>
+    );
+  };
 
-  const renderAnswersContent = () => (
-    <div className="space-y-6">
-      {test.subjectTests?.map((subjectTest: any, subjectIndex: number) => (
-        <div key={subjectIndex}>
-          <h3 className="text-lg font-bold mb-3 bg-gray-100 p-2 rounded">
-            {subjectTest.subjectId?.nameUzb || 'Fan'}
-          </h3>
-          <div className="space-y-2">
-            {subjectTest.questions?.map((question: any, qIndex: number) => {
-              const correctAnswer = question.correctAnswer;
-              return (
-                <div key={qIndex} className="flex items-center gap-4 border-b pb-2">
-                  <span className="font-bold w-12">{qIndex + 1}.</span>
-                  <span className="font-semibold text-green-600">
-                    {correctAnswer || '-'}
-                  </span>
-                </div>
-              );
-            })}
+  const renderAnswersContent = () => {
+    const subjectGroups = test.subjectTests || [];
+    
+    return (
+      <div className="space-y-6">
+        {subjectGroups.map((subjectTest: any, subjectIndex: number) => (
+          <div key={subjectIndex}>
+            {/* Заголовок предмета */}
+            <div className="bg-green-50 border-l-4 border-green-500 px-4 py-2 mb-3">
+              <h3 className="text-lg font-bold text-green-900">
+                {subjectTest.subjectId?.nameUzb || 'Fan'}
+              </h3>
+            </div>
+            
+            {/* Ответы */}
+            <div className="space-y-2">
+              {subjectTest.questions?.map((question: any, qIndex: number) => {
+                const correctAnswer = question.correctAnswer;
+                return (
+                  <div key={qIndex} className="flex items-center gap-4 border-b pb-2">
+                    <span className="font-bold w-12">{qIndex + 1}.</span>
+                    <span className="font-semibold text-green-600">
+                      {correctAnswer || '-'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Разделитель между предметами */}
+            {subjectIndex < subjectGroups.length - 1 && (
+              <div className="my-4 border-t-2 border-dashed border-gray-300"></div>
+            )}
           </div>
-        </div>
-      ))}
-    </div>
-  );
+        ))}
+      </div>
+    );
+  };
 
   const renderSheetsContent = () => (
     <div className="space-y-8">
@@ -274,6 +303,31 @@ export default function BlockTestPrintPage() {
           .columns-2 {
             column-count: 2;
             column-gap: 1rem;
+          }
+          
+          /* Сохраняем цвета при печати */
+          .bg-blue-50 {
+            background-color: #eff6ff !important;
+          }
+          
+          .bg-green-50 {
+            background-color: #f0fdf4 !important;
+          }
+          
+          .border-blue-500 {
+            border-color: #3b82f6 !important;
+          }
+          
+          .border-green-500 {
+            border-color: #22c55e !important;
+          }
+          
+          .text-blue-900 {
+            color: #1e3a8a !important;
+          }
+          
+          .text-green-900 {
+            color: #14532d !important;
           }
         }
       `}</style>

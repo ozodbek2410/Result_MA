@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Printer } from 'lucide-react';
+import { Printer, Download } from 'lucide-react';
 import MathText from '@/components/MathText';
+import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, PageBreak } from 'docx';
+import { saveAs } from 'file-saver';
 
 interface StudentVariant {
   student: any;
@@ -185,6 +187,156 @@ export default function BlockTestPrintQuestionsPage() {
   const handlePrint = () => {
     window.print();
   };
+
+  // Функция для очистки текста от HTML и LaTeX
+  const cleanText = (text: string): string => {
+    if (!text) return '';
+    
+    // Удаляем HTML теги
+    let cleaned = text.replace(/<[^>]*>/g, '');
+    
+    // Удаляем LaTeX формулы (оставляем содержимое)
+    cleaned = cleaned.replace(/\$\$([^$]+)\$\$/g, '$1');
+    cleaned = cleaned.replace(/\$([^$]+)\$/g, '$1');
+    
+    // Декодируем HTML entities
+    cleaned = cleaned.replace(/&nbsp;/g, ' ');
+    cleaned = cleaned.replace(/&lt;/g, '<');
+    cleaned = cleaned.replace(/&gt;/g, '>');
+    cleaned = cleaned.replace(/&amp;/g, '&');
+    cleaned = cleaned.replace(/&quot;/g, '"');
+    
+    return cleaned.trim();
+  };
+
+  const handleDownloadWord = async () => {
+    try {
+      const sections: any[] = [];
+
+      for (const variant of studentVariants) {
+        // Заголовок для каждого студента
+        sections.push(
+          new Paragraph({
+            text: 'BLOK TEST - SAVOLLAR',
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 }
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: variant.student.fullName,
+                bold: true,
+                size: 28
+              })
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 100 }
+          }),
+          new Paragraph({
+            text: `${blockTest.classNumber}-sinf | ${variant.student.directionId?.nameUzb || ''}`,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 100 }
+          }),
+          new Paragraph({
+            text: `Jami: ${variant.questions.length} ta savol`,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400 }
+          })
+        );
+
+        // Группируем вопросы по предметам
+        const questionsBySubject = new Map<string, any[]>();
+        variant.questions.forEach((q: any) => {
+          if (!questionsBySubject.has(q.subjectName)) {
+            questionsBySubject.set(q.subjectName, []);
+          }
+          questionsBySubject.get(q.subjectName)!.push(q);
+        });
+
+        // Добавляем вопросы по предметам
+        for (const [subjectName, questions] of questionsBySubject) {
+          // Заголовок предмета
+          sections.push(
+            new Paragraph({
+              text: subjectName,
+              heading: HeadingLevel.HEADING_2,
+              spacing: { before: 300, after: 200 }
+            })
+          );
+
+          // Вопросы предмета
+          for (const question of questions) {
+            // Очищаем текст вопроса
+            const questionText = cleanText(question.question);
+            sections.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `${question.number}. `,
+                    bold: true
+                  }),
+                  new TextRun({
+                    text: questionText
+                  })
+                ],
+                spacing: { before: 200, after: 100 }
+              })
+            );
+
+            // Варианты ответов
+            if (question.options && question.options.length > 0) {
+              question.options.forEach((option: string, idx: number) => {
+                const optionText = cleanText(option);
+                sections.push(
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `${String.fromCharCode(65 + idx)}) `,
+                        bold: true
+                      }),
+                      new TextRun({
+                        text: optionText
+                      })
+                    ],
+                    spacing: { after: 50 },
+                    indent: { left: 400 }
+                  })
+                );
+              });
+            }
+          }
+
+          // Разделитель между предметами
+          sections.push(
+            new Paragraph({
+              text: '─'.repeat(50),
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 300, after: 300 }
+            })
+          );
+        }
+
+        // Разрыв страницы между студентами
+        if (variant !== studentVariants[studentVariants.length - 1]) {
+          sections.push(new Paragraph({ children: [new PageBreak()] }));
+        }
+      }
+
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: sections
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `blok-test-savollar-${blockTest.classNumber}-sinf.docx`);
+    } catch (error) {
+      console.error('Error generating Word document:', error);
+      alert('Word faylini yaratishda xatolik yuz berdi');
+    }
+  };
   
   // Get spacing classes based on setting
   const getSpacingClasses = () => {
@@ -236,6 +388,10 @@ export default function BlockTestPrintQuestionsPage() {
           size="lg"
         >
           ⚙️ Sozlamalar
+        </Button>
+        <Button onClick={handleDownloadWord} variant="outline" size="lg">
+          <Download className="w-5 h-5 mr-2" />
+          Word yuklash
         </Button>
         <Button onClick={handlePrint} size="lg">
           <Printer className="w-5 h-5 mr-2" />
@@ -338,70 +494,92 @@ export default function BlockTestPrintQuestionsPage() {
       )}
 
       <div className={spacingClasses.container} style={{ fontSize: `${fontSize}px` }}>
-        {studentVariants.map((variant, index) => (
-          <div key={variant.student._id} className={`mb-4 page-break ${columnsCount === 2 ? 'columns-2 gap-4' : ''}`} style={{ pageBreakAfter: 'always' }}>
-            <div className={`${spacingClasses.header} border-b border-gray-300`}>
-              <h1 className="font-bold text-center mb-1" style={{ fontSize: `${fontSize + 4}px` }}>
-                BLOK TEST - SAVOLLAR
-              </h1>
-              <div className="text-center">
-                <p className="font-semibold">{variant.student.fullName}</p>
-                <p className="text-gray-600" style={{ fontSize: `${fontSize - 2}px` }}>
-                  {blockTest.classNumber}-sinf | {variant.student.directionId?.nameUzb}
-                </p>
-                <p className="text-gray-500" style={{ fontSize: `${fontSize - 2}px` }}>
-                  Jami: {variant.questions.length} ta savol
-                </p>
-              </div>
-            </div>
+        {studentVariants.map((variant, index) => {
+          // Группируем вопросы по предметам
+          const questionsBySubject = new Map<string, any[]>();
+          variant.questions.forEach((q: any) => {
+            if (!questionsBySubject.has(q.subjectName)) {
+              questionsBySubject.set(q.subjectName, []);
+            }
+            questionsBySubject.get(q.subjectName)!.push(q);
+          });
 
-            <div className={spacingClasses.questions}>
-              {variant.questions.map((question) => (
-                <div key={question.number} className={`border-b border-gray-100 ${spacingClasses.question}`}>
-                  <div className="flex items-start gap-2">
-                    <span className="font-bold min-w-[30px]">
-                      {question.number}.
-                    </span>
-                    <div className="flex-1">
-                      {showSubjectLabels && (
-                        <div className="mb-1">
-                          <span className="text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded" style={{ fontSize: `${fontSize - 2}px` }}>
-                            {question.subjectName}
+          return (
+            <div key={variant.student._id} className={`mb-4 page-break`} style={{ pageBreakAfter: 'always' }}>
+              <div className={`${spacingClasses.header} border-b-2 border-gray-800 mb-4`}>
+                <h1 className="font-bold text-center mb-1" style={{ fontSize: `${fontSize + 4}px` }}>
+                  BLOK TEST - SAVOLLAR
+                </h1>
+                <div className="text-center">
+                  <p className="font-semibold">{variant.student.fullName}</p>
+                  <p className="text-gray-600" style={{ fontSize: `${fontSize - 2}px` }}>
+                    {blockTest.classNumber}-sinf | {variant.student.directionId?.nameUzb}
+                  </p>
+                  <p className="text-gray-500" style={{ fontSize: `${fontSize - 2}px` }}>
+                    Jami: {variant.questions.length} ta savol
+                  </p>
+                </div>
+              </div>
+
+              {/* Вопросы по предметам */}
+              {Array.from(questionsBySubject.entries()).map(([subjectName, questions], subjectIndex) => (
+                <div key={subjectName} className="mb-6">
+                  {/* Заголовок предмета */}
+                  <div className="bg-blue-50 border-l-4 border-blue-500 px-3 py-2 mb-3">
+                    <h2 className="font-bold text-blue-900" style={{ fontSize: `${fontSize + 2}px` }}>
+                      {subjectName}
+                    </h2>
+                  </div>
+
+                  {/* Вопросы предмета */}
+                  <div className={`${spacingClasses.questions} ${columnsCount === 2 ? 'columns-2 gap-4' : ''}`}>
+                    {questions.map((question) => (
+                      <div key={question.number} className={`border-b border-gray-200 ${spacingClasses.question}`}>
+                        <div className="flex items-start gap-2">
+                          <span className="font-bold min-w-[30px]">
+                            {question.number}.
                           </span>
-                        </div>
-                      )}
-                      <div className="mb-1.5 leading-tight">
-                        <MathText text={question.question} />
-                      </div>
-                      {question.image && (
-                        <div className="my-2">
-                          <img 
-                            src={question.image} 
-                            alt="Question" 
-                            className="max-w-full h-auto"
-                            style={{ maxHeight: '200px', objectFit: 'contain' }}
-                          />
-                        </div>
-                      )}
-                      <div className={spacingClasses.options}>
-                        {question.options?.map((option: string, idx: number) => (
-                          <div key={idx} className="flex items-start gap-1.5">
-                            <span className="font-medium min-w-[20px]">
-                              {String.fromCharCode(65 + idx)})
-                            </span>
-                            <div className="flex-1 leading-tight">
-                              <MathText text={option} />
+                          <div className="flex-1">
+                            <div className="mb-1.5 leading-tight">
+                              <MathText text={question.question} />
+                            </div>
+                            {question.image && (
+                              <div className="my-2">
+                                <img 
+                                  src={question.image} 
+                                  alt="Question" 
+                                  className="max-w-full h-auto"
+                                  style={{ maxHeight: '200px', objectFit: 'contain' }}
+                                />
+                              </div>
+                            )}
+                            <div className={spacingClasses.options}>
+                              {question.options?.map((option: string, idx: number) => (
+                                <div key={idx} className="flex items-start gap-1.5">
+                                  <span className="font-medium min-w-[20px]">
+                                    {String.fromCharCode(65 + idx)})
+                                  </span>
+                                  <div className="flex-1 leading-tight">
+                                    <MathText text={option} />
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        ))}
+                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
+
+                  {/* Разделитель между предметами */}
+                  {subjectIndex < questionsBySubject.size - 1 && (
+                    <div className="my-4 border-t-2 border-dashed border-gray-300"></div>
+                  )}
                 </div>
               ))}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <style>{`
@@ -443,6 +621,19 @@ export default function BlockTestPrintQuestionsPage() {
           .columns-2 {
             column-count: 2;
             column-gap: 1rem;
+          }
+          
+          /* Сохраняем цвета при печати */
+          .bg-blue-50 {
+            background-color: #eff6ff !important;
+          }
+          
+          .border-blue-500 {
+            border-color: #3b82f6 !important;
+          }
+          
+          .text-blue-900 {
+            color: #1e3a8a !important;
           }
           
           /* Убираем сайдбар и навигацию */

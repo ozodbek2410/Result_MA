@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import { Printer, ArrowLeft, Settings } from 'lucide-react';
+import { Printer, ArrowLeft, Settings, Download } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import AnswerSheet from '@/components/AnswerSheet';
+import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, PageBreak } from 'docx';
+import { saveAs } from 'file-saver';
 
 export default function TestPrintPage() {
   const { id, type } = useParams<{ id: string; type: string }>();
@@ -55,6 +57,140 @@ export default function TestPrintPage() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Функция для очистки текста от HTML и LaTeX
+  const cleanText = (text: string): string => {
+    if (!text) return '';
+    
+    // Удаляем HTML теги
+    let cleaned = text.replace(/<[^>]*>/g, '');
+    
+    // Удаляем LaTeX формулы (оставляем содержимое)
+    cleaned = cleaned.replace(/\$\$([^$]+)\$\$/g, '$1');
+    cleaned = cleaned.replace(/\$([^$]+)\$/g, '$1');
+    
+    // Декодируем HTML entities
+    cleaned = cleaned.replace(/&nbsp;/g, ' ');
+    cleaned = cleaned.replace(/&lt;/g, '<');
+    cleaned = cleaned.replace(/&gt;/g, '>');
+    cleaned = cleaned.replace(/&amp;/g, '&');
+    cleaned = cleaned.replace(/&quot;/g, '"');
+    
+    return cleaned.trim();
+  };
+
+  const handleDownloadWord = async () => {
+    if (selectedStudents.length === 0) {
+      alert('O\'quvchilar tanlanmagan');
+      return;
+    }
+
+    try {
+      const sections: any[] = [];
+
+      for (const student of selectedStudents) {
+        const variant = variants.find(v => v.studentId?._id === student._id);
+        const variantCode = variant?.variantCode || '';
+        
+        // Используем shuffledQuestions если они есть, иначе оригинальные вопросы
+        const questionsToRender = variant?.shuffledQuestions && variant.shuffledQuestions.length > 0
+          ? variant.shuffledQuestions
+          : test.questions;
+
+        // Заголовок для каждого студента
+        sections.push(
+          new Paragraph({
+            text: test.subjectId?.nameUzb || test.subjectId || 'Test',
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 }
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: student.fullName,
+                bold: true,
+                size: 28
+              })
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 100 }
+          }),
+          new Paragraph({
+            text: `Variant: ${variantCode}`,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 100 }
+          }),
+          new Paragraph({
+            text: `${test.classNumber || 10}-sinf | ${test.groupId?.nameUzb || ''}`,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400 }
+          })
+        );
+
+        // Добавляем вопросы
+        for (const [index, question] of questionsToRender.entries()) {
+          // Текст вопроса
+          const questionText = cleanText(question.text);
+          sections.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${index + 1}. `,
+                  bold: true
+                }),
+                new TextRun({
+                  text: questionText
+                })
+              ],
+              spacing: { before: 200, after: 100 }
+            })
+          );
+
+          // Варианты ответов
+          if (question.variants && question.variants.length > 0) {
+            question.variants.forEach((qVariant: any) => {
+              const optionText = cleanText(qVariant.text);
+              sections.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: `${qVariant.letter}) `,
+                      bold: true
+                    }),
+                    new TextRun({
+                      text: optionText
+                    })
+                  ],
+                  spacing: { after: 50 },
+                  indent: { left: 400 }
+                })
+              );
+            });
+          }
+        }
+
+        // Разрыв страницы между студентами
+        if (student !== selectedStudents[selectedStudents.length - 1]) {
+          sections.push(new Paragraph({ children: [new PageBreak()] }));
+        }
+      }
+
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: sections
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const fileName = `${test.subjectId?.nameUzb || 'test'}-${test.classNumber || 10}-sinf.docx`;
+      saveAs(blob, fileName);
+    } catch (error) {
+      console.error('Error generating Word document:', error);
+      alert('Word faylini yaratishda xatolik yuz berdi');
+    }
   };
 
   if (loading) {
@@ -376,6 +512,12 @@ export default function TestPrintPage() {
             <Button variant="outline" onClick={() => setShowSettings(!showSettings)}>
               <Settings className="w-4 h-4 mr-2" />
               Sozlamalar
+            </Button>
+          )}
+          {type === 'questions' && selectedStudents.length > 0 && (
+            <Button variant="outline" onClick={handleDownloadWord}>
+              <Download className="w-4 h-4 mr-2" />
+              Word yuklash
             </Button>
           )}
           <Button onClick={handlePrint}>

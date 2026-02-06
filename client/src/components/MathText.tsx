@@ -16,26 +16,26 @@ export default function MathText({ text, className = '' }: MathTextProps) {
     try {
       containerRef.current.innerHTML = '';
 
+      let cleanedText = text;
+      
+      // Сначала удаляем HTML теги (кроме тегов с формулами)
+      cleanedText = cleanedText.replace(/<p>/gi, '');
+      cleanedText = cleanedText.replace(/<\/p>/gi, '\n');
+      cleanedText = cleanedText.replace(/<br\s*\/?>/gi, '\n');
+      
       // Удаляем пустые формулы
-      let cleanedText = text.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
+      cleanedText = cleanedText.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
       cleanedText = cleanedText.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
 
       // Извлекаем формулы из HTML-тегов и конвертируем в $...$
-      cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_match, latex) => {
-        if (!latex) return '';
-        return `$${latex}$`;
-      });
-
-      // Удаляем HTML теги
-      cleanedText = cleanedText.replace(/<p>/g, '').replace(/<\/p>/g, '\n');
-      cleanedText = cleanedText.replace(/<br\s*\/?>/g, '\n');
+      cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$1$$');
       cleanedText = cleanedText.replace(/<[^>]+>/g, '');
       cleanedText = cleanedText.trim();
 
       // Нормализуем формат: конвертируем \(...\) в $...$
       let normalizedText = cleanedText;
-      normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$1$');
-      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$$1$$$$');
+      normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$1$');
+      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$1$$');
 
       // Рендерим с помощью KaTeX
       const container = containerRef.current;
