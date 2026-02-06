@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import User, { UserRole } from '../models/User';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { invalidateCache } from '../middleware/cache';
 
 const router = express.Router();
 
@@ -83,6 +84,9 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       .select('-password')
       .populate('branchId');
     
+    // Инвалидируем кэш учителей
+    await invalidateCache('/api/teachers');
+    
     res.status(201).json(populatedTeacher);
   } catch (error: any) {
     console.error('❌ Ошибка создания учителя:', error);
@@ -131,6 +135,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       .select('-password')
       .populate('branchId');
     
+    // Инвалидируем кэш учителей
+    await invalidateCache('/api/teachers');
+    
     res.json(updatedTeacher);
   } catch (error: any) {
     console.error('❌ Error updating teacher:', error);
@@ -152,9 +159,24 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
     
     console.log('Найден учитель:', { id: teacher._id, name: teacher.fullName || teacher.username });
     
+    // Обнуляем teacherId во всех группах этого учителя
+    const Group = require('../models/Group').default;
+    const updateResult = await Group.updateMany(
+      { teacherId: req.params.id },
+      { $unset: { teacherId: '' } }
+    );
+    
+    console.log(`✅ Обновлено групп: ${updateResult.modifiedCount}`);
+    
     // Полностью удаляем учителя
     await User.findByIdAndDelete(req.params.id);
     console.log('✅ Учитель удален из БД');
+    
+    // Инвалидируем кэш учителей и групп
+    await Promise.all([
+      invalidateCache('/api/teachers'),
+      invalidateCache('/api/groups')
+    ]);
     
     res.json({ message: 'O\'qituvchi o\'chirildi' });
   } catch (error: any) {

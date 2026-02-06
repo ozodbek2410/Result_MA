@@ -14,7 +14,7 @@ import { TestImportService } from '../services/testImportService';
 const router = express.Router();
 
 // Multer configuration for file uploads
-const uploadDir = path.join(process.cwd(), 'server', 'uploads');
+const uploadDir = path.join(process.cwd(), 'uploads');
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
@@ -101,6 +101,68 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       createdBy: req.user?.id
     });
     await test.save();
+    
+    // Автоматически генерируем варианты после создания теста
+    if (test.groupId) {
+      try {
+        const studentGroups = await StudentGroup.find({ groupId: test.groupId })
+          .populate('studentId', 'fullName classNumber')
+          .lean()
+          .exec();
+        
+        const variants = [];
+        for (const sg of studentGroups) {
+          const variantCode = uuidv4().substring(0, 8).toUpperCase();
+          const questionOrder = shuffleArray([...Array(test.questions.length).keys()]);
+          
+          // Перемешиваем ответы для каждого вопроса
+          const shuffledQuestions = questionOrder.map((qIndex) => {
+            const originalQuestion = test.questions[qIndex] as any;
+            
+            if (!originalQuestion.variants || !originalQuestion.correctAnswer) {
+              return {
+                ...originalQuestion,
+                originalQuestionIndex: qIndex
+              };
+            }
+            
+            const answerIndices = [...Array(originalQuestion.variants.length).keys()];
+            const shuffledAnswerIndices = shuffleArray(answerIndices);
+            const shuffledVariants = shuffledAnswerIndices.map(idx => originalQuestion.variants[idx]);
+            
+            const originalCorrectIndex = originalQuestion.correctAnswer.charCodeAt(0) - 65;
+            const newCorrectIndex = shuffledAnswerIndices.indexOf(originalCorrectIndex);
+            const newCorrectAnswer = String.fromCharCode(65 + newCorrectIndex);
+            
+            return {
+              ...originalQuestion,
+              variants: shuffledVariants,
+              correctAnswer: newCorrectAnswer,
+              originalQuestionIndex: qIndex
+            };
+          });
+          
+          const qrPayload = variantCode;
+          
+          const variant = new StudentVariant({
+            testId: test._id,
+            studentId: sg.studentId._id,
+            variantCode,
+            qrPayload,
+            questionOrder,
+            shuffledQuestions
+          });
+          
+          await variant.save();
+          variants.push(variant);
+        }
+        
+        console.log(`Auto-generated ${variants.length} variants for test ${test._id}`);
+      } catch (variantError) {
+        console.error('Error auto-generating variants:', variantError);
+        // Не прерываем создание теста, если не удалось создать варианты
+      }
+    }
     
     // Инвалидируем кэш списка тестов
     await invalidateCache('/api/tests');

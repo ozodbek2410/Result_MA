@@ -398,7 +398,7 @@ export default function ImportTestPage() {
 
         {/* Step 3: Preview Questions */}
         {step === 'preview' && (
-          <div className="space-y-6 pb-32">
+          <div className="space-y-6 pb-48 lg:pb-32">
             {/* Test Settings Form */}
             <div className="bg-white border-2 border-blue-200 p-6 rounded-xl space-y-4">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Test ma'lumotlari</h3>
@@ -595,7 +595,7 @@ export default function ImportTestPage() {
             )}
 
             {/* Fixed Bottom Bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg xl:left-72 z-40 pb-20 xl:pb-0">
               <div className="max-w-7xl mx-auto px-4 py-4 flex gap-3">
                 <Button
                   onClick={handleConfirm}

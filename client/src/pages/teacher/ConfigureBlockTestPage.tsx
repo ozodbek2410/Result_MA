@@ -377,9 +377,21 @@ export default function ConfigureBlockTestPage() {
             onClick={handleApplyConfigs}
             disabled={saving}
             loading={saving}
+            className="hidden md:flex"
           >
             <Save className="w-4 h-4 mr-2" />
             Saqlash
+          </Button>
+          
+          {/* Save button - mobile (icon only) */}
+          <Button 
+            size="sm"
+            onClick={handleApplyConfigs}
+            disabled={saving}
+            loading={saving}
+            className="md:hidden"
+          >
+            <Save className="w-4 h-4" />
           </Button>
         </div>
       </div>

@@ -336,7 +336,7 @@ export default function TeacherDashboardPage() {
                 <div className="divide-y divide-gray-100">
                   {dashboardStats.topGroups.map((group, index) => (
                     <div 
-                      key={group.groupId}
+                      key={`group-${group.groupId}-${index}`}
                       className="p-3 md:p-4 hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center gap-2 md:gap-4">
@@ -398,7 +398,7 @@ export default function TeacherDashboardPage() {
                 <div className="divide-y divide-gray-100">
                   {dashboardStats.topStudents.map((student, index) => (
                     <div 
-                      key={student.studentId}
+                      key={`student-${student.studentId}-${index}`}
                       className="p-3 md:p-4 hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center gap-2 md:gap-4">

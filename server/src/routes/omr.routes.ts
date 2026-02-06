@@ -5,12 +5,13 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import { authenticate } from '../middleware/auth';
+import { invalidateCache } from '../middleware/cache';
 
 const router = express.Router();
 const execAsync = promisify(exec);
 
 // Настройка multer для загрузки изображений
-const uploadDir = path.join(process.cwd(), 'server', 'uploads', 'omr');
+const uploadDir = path.join(process.cwd(), 'uploads', 'omr');
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
@@ -65,6 +66,17 @@ router.post('/upload', authenticate, upload.single('image'), async (req, res) =>
  * To'g'ri javoblar bilan solishtirish va natijani hisoblash
  */
 router.post('/check-answers', authenticate, upload.single('image'), async (req, res) => {
+  // Таймаут для всего запроса (60 секунд)
+  const requestTimeout = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error('⏱️ Request timeout - 60 seconds exceeded');
+      res.status(504).json({ 
+        success: false,
+        error: 'Request timeout',
+        details: 'Processing took too long. Please try again.'
+      });
+    }
+  }, 60000);
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Rasm yuklanmadi' });
@@ -82,7 +94,7 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     
     try {
       // QR-scanner skriptini ishlatish
-      const qrScriptPath = path.join(process.cwd(), 'server', 'python', 'qr_scanner.py');
+      const qrScriptPath = path.join(process.cwd(), 'python', 'qr_scanner.py');
       
       const pythonCmd = process.env.PYTHON_PATH || 
                        (process.platform === 'win32' ? 'python' : 'python3');
@@ -154,6 +166,15 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
               // Просто берем все вопросы из варианта по порядку
               variantInfo.shuffledQuestions.forEach((question: any, index: number) => {
                 correctAnswers[index + 1] = question.correctAnswer;
+                
+                // Детальное логирование первых 10 вопросов
+                if (index < 10) {
+                  console.log(`  📝 Вопрос ${index + 1}:`, {
+                    text: question.text?.substring(0, 50) + '...',
+                    correctAnswer: question.correctAnswer,
+                    variants: question.variants?.map((v: any) => `${v.letter}: ${v.text?.substring(0, 20)}...`)
+                  });
+                }
               });
               
               console.log(`✅ Jami ${Object.keys(correctAnswers).length} ta to'g'ri javob (from variant)`);
@@ -267,13 +288,22 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     console.log('🔍 2-bosqich: Javoblarni aniqlash...');
 
     // 2. Javoblarni aniqlash (omr_color.py - rangli blanklar uchun)
-    const pythonScript = path.join(process.cwd(), 'server', 'python', 'omr_color.py');
+    const pythonScript = path.join(process.cwd(), 'python', 'omr_color.py');
     
     // Python3 ni ishlatish (ko'p Linux serverlarida python3 bo'ladi)
     // Allow override via environment variable for production
     const pythonCmd = process.env.PYTHON_PATH || 
                      (process.platform === 'win32' ? 'python' : 'python3');
-    const command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
+    
+    // Передаём правильные ответы в Python, если они есть
+    let command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
+    if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
+      const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
+      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}"`;
+      console.log('✅ Передаём правильные ответы в Python:', Object.keys(qrData.correctAnswers).length, 'вопросов');
+    } else {
+      console.log('⚠️ Правильные ответы не найдены, Python будет только определять отмеченные ответы');
+    }
     
     console.log('🐍 Python command:', command);
     console.log('📁 Python script path:', pythonScript);
@@ -361,6 +391,23 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     console.log('📊 detected_answers:', result.detected_answers);
     console.log('📊 detected_answers type:', typeof result.detected_answers);
     console.log('📊 detected_answers keys:', result.detected_answers ? Object.keys(result.detected_answers) : 'null');
+    console.log('📊 detected_answers is Array:', Array.isArray(result.detected_answers));
+    
+    // ВАЖНО: Проверяем что detected_answers это объект, а не массив
+    if (result.detected_answers && Array.isArray(result.detected_answers)) {
+      console.error('❌ ОШИБКА: detected_answers это массив, а должен быть объект!');
+      console.error('❌ Конвертируем массив в объект...');
+      
+      const answersObj: any = {};
+      result.detected_answers.forEach((answer: string, index: number) => {
+        if (answer) {
+          answersObj[index + 1] = answer;
+        }
+      });
+      result.detected_answers = answersObj;
+      
+      console.log('✅ Конвертировано:', result.detected_answers);
+    }
     
     // Total questions ТОЛЬКО из варианта (QR-код)
     let totalQuestions = 0;
@@ -454,6 +501,16 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
           detectedAnswersCount: Object.keys(detectedAnswers).length
         });
         
+        // ВАЖНО: detectedAnswers[i] = ответ на ПОЗИЦИЮ i на бланке
+        // correctAnswers[i] = правильный ответ для ВОПРОСА на позиции i в варианте
+        // Эти позиции ВСЕГДА совпадают, потому что:
+        // 1. На бланке вопросы идут по порядку: 1, 2, 3, ...
+        // 2. В варианте shuffledQuestions тоже идут по порядку: [0], [1], [2], ...
+        // 3. correctAnswers[i] берется из shuffledQuestions[i-1].correctAnswer
+        // Поэтому прямое сравнение detectedAnswers[i] === correctAnswers[i] ПРАВИЛЬНО
+        
+        console.log('🔍 Детальное сравнение первых 10 вопросов:');
+        
         // Проверяем каждый вопрос из варианта
         for (let i = 1; i <= totalQuestionsFromVariant; i++) {
           const studentAnswer = detectedAnswers[i] || null;
@@ -461,8 +518,8 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
           
           const isCorrect = studentAnswer === correctAnswer;
           
-          if (i <= 5) {
-            console.log(`  Q${i}: student=${studentAnswer}, correct=${correctAnswer}, isCorrect=${isCorrect}`);
+          if (i <= 10) {
+            console.log(`  Q${i}: detected="${studentAnswer}" (type: ${typeof studentAnswer}), correct="${correctAnswer}" (type: ${typeof correctAnswer}), match=${isCorrect}`);
           }
           
           if (!studentAnswer) {
@@ -639,11 +696,16 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     console.log('📤 Response keys:', Object.keys(result));
     console.log('📤 Response success:', result.success);
     
+    // Очищаем таймаут перед отправкой ответа
+    clearTimeout(requestTimeout);
+    
     res.json(result);
     
     console.log('✅ Response sent successfully');
     
   } catch (error: any) {
+    // Очищаем таймаут при ошибке
+    clearTimeout(requestTimeout);
     console.error('❌ Javoblarni aniqlashda xatolik:', error);
     console.error('❌ Error stack:', error.stack);
     console.error('❌ Error details:', {
@@ -713,12 +775,21 @@ router.post('/save-result', authenticate, async (req, res) => {
     }
 
     // Javoblarni to'g'ri formatga o'tkazish
-    const answers = comparison.details.map((detail: any) => ({
-      questionIndex: detail.question - 1,
-      selectedAnswer: detail.student_answer || undefined,
-      isCorrect: detail.is_correct,
-      points: detail.is_correct ? 1 : 0
-    }));
+    const answers = comparison.details.map((detail: any) => {
+      const questionNum = detail.question;
+      const detectedAnswer = detectedAnswers[questionNum]; // Оригинальный ответ с фото
+      const finalAnswer = detail.student_answer; // Финальный ответ (может быть отредактирован)
+      const wasEdited = detectedAnswer !== finalAnswer; // Проверяем, был ли отредактирован
+      
+      return {
+        questionIndex: detail.question - 1,
+        selectedAnswer: finalAnswer || undefined,
+        isCorrect: detail.is_correct,
+        points: detail.is_correct ? 1 : 0,
+        wasEdited: wasEdited,
+        originalAnswer: detectedAnswer || undefined
+      };
+    });
 
     // Natijani saqlash - annotatedImage ni birinchi o'rinda ishlatish
     const imagePath = annotatedImage || originalImagePath;
@@ -739,6 +810,12 @@ router.post('/save-result', authenticate, async (req, res) => {
     await testResult.save();
     
     console.log('✅ Natija saqlandi, rasm yo\'li:', testResult.scannedImagePath);
+
+    // Инвалидируем кэш статистики
+    await Promise.all([
+      invalidateCache('/api/statistics'),
+      invalidateCache('/api/branches')
+    ]);
 
     res.json({
       success: true,
@@ -808,7 +885,7 @@ router.get('/results/:testId', authenticate, async (req, res) => {
 router.delete('/image/:filename', authenticate, async (req, res) => {
   try {
     const { filename } = req.params;
-    const imagePath = path.join(process.cwd(), 'server', 'uploads', 'omr', filename);
+    const imagePath = path.join(process.cwd(), 'uploads', 'omr', filename);
     
     await fs.unlink(imagePath);
     

@@ -94,6 +94,7 @@ export default function OMRCheckerPage() {
     if (!selectedFile) return toast('Rasm tanlang', 'error');
     setChecking(true);
     setScanProgress(0);
+    setEditedAnswers({}); // Очищаем отредактированные ответы при новом сканировании
     
     // Simulate progress animation
     const progressInterval = setInterval(() => {
@@ -116,6 +117,21 @@ export default function OMRCheckerPage() {
       clearInterval(progressInterval);
       setScanProgress(100);
       
+      console.log('📊 OMR Scan Result:', {
+        success: response.data.success,
+        qr_found: response.data.qr_found,
+        total_questions: response.data.total_questions,
+        detected_answers_count: response.data.detected_answers ? Object.keys(response.data.detected_answers).length : 0,
+        first_10_detected: response.data.detected_answers ? 
+          Object.keys(response.data.detected_answers).slice(0, 10).map(key => 
+            `Q${key}: ${response.data.detected_answers[parseInt(key)]}`
+          ) : [],
+        comparison_details_count: response.data.comparison?.details?.length || 0,
+        first_10_comparison: response.data.comparison?.details?.slice(0, 10).map((d: any) => 
+          `Q${d.question}: student="${d.student_answer}", correct="${d.correct_answer}", match=${d.is_correct}`
+        ) || []
+      });
+      
       setTimeout(() => {
         setResult(response.data);
         if (response.data.success) {
@@ -137,7 +153,18 @@ export default function OMRCheckerPage() {
   };
 
   const handleEditAnswer = (questionNum: number, answer: string) => {
-    setEditedAnswers(prev => ({ ...prev, [questionNum]: answer }));
+    setEditedAnswers(prev => {
+      // Получаем текущий ответ (либо отредактированный, либо из результата)
+      const currentAnswer = prev[questionNum] || result?.comparison?.details.find(d => d.question === questionNum)?.student_answer;
+      
+      // Если нажали на уже выбранный ответ - сбрасываем (делаем пустым)
+      if (currentAnswer === answer) {
+        return { ...prev, [questionNum]: '-' };
+      }
+      
+      // Иначе устанавливаем новый ответ
+      return { ...prev, [questionNum]: answer };
+    });
   };
 
   // Динамический пересчет статистики с учетом отредактированных ответов
@@ -525,6 +552,8 @@ export default function OMRCheckerPage() {
                   </div>
                 </div>
                 
+                {/* Убрали Info Panel с предупреждением */}
+                
                 <div className="p-3 sm:p-6 bg-white">
                   <div className="space-y-2 max-h-[400px] sm:max-h-[500px] overflow-y-auto">
                     {(() => {
@@ -563,16 +592,21 @@ export default function OMRCheckerPage() {
                             
                             {/* Answer Display */}
                             <div className="flex-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
-                              <span className={`text-sm sm:text-base font-bold ${
-                                currentAnswer === '-' ? 'text-gray-400' :
-                                isCorrect ? 'text-green-700' : 'text-red-700'
-                              }`}>
-                                {currentAnswer}
-                              </span>
-                              <span className="text-gray-400">/</span>
-                              <span className="text-xs sm:text-sm font-semibold text-gray-600">
-                                {detail.correct_answer}
-                              </span>
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-sm sm:text-base font-bold ${
+                                    currentAnswer === '-' ? 'text-gray-400' :
+                                    isCorrect ? 'text-green-700' : 'text-red-700'
+                                  }`}>
+                                    {currentAnswer}
+                                  </span>
+                                  <span className="text-gray-400">/</span>
+                                  <span className="text-xs sm:text-sm font-semibold text-gray-600">
+                                    {detail.correct_answer}
+                                  </span>
+                                </div>
+                                {/* Убрали текст (Rasmdan: ...) */}
+                              </div>
                             </div>
                             
                             {/* Edit Buttons */}
@@ -604,6 +638,7 @@ export default function OMRCheckerPage() {
             {getAnnotatedImageUrl() && (
               <Card className="border shadow-sm">
                 <div className="p-3 sm:p-5">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Tahlil qilingan rasm</h3>
                   <div className="rounded-lg overflow-hidden border border-gray-200">
                     <img src={getAnnotatedImageUrl()!} alt="Result" className="w-full h-auto max-h-[300px] sm:max-h-[400px] object-contain bg-gray-50" />
                   </div>
@@ -611,6 +646,7 @@ export default function OMRCheckerPage() {
               </Card>
             )}
 
+            {/* Debug Info - показываем RAW данные */}
             {/* Navigation */}
             <div className="flex gap-3">
               <Button 

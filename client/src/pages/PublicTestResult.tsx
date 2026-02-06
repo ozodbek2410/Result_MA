@@ -206,6 +206,8 @@ export default function PublicTestResult() {
               {result.testId?.questions?.map((question: any, index: number) => {
                 const answer = result.answers.find((a: any) => a.questionIndex === index);
                 const correctAnswer = question.correctAnswer;
+                const wasEdited = answer?.wasEdited;
+                const originalAnswer = answer?.originalAnswer;
                 
                 return (
                   <div

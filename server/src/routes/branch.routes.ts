@@ -8,6 +8,7 @@ import StudentGroup from '../models/StudentGroup';
 import TestResult from '../models/TestResult';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
+import { cacheMiddleware } from '../middleware/cache';
 
 const router = express.Router();
 
@@ -79,12 +80,12 @@ router.delete('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req:
 });
 
 // Get branch statistics
-router.get('/:id/statistics', authenticate, async (req, res) => {
+router.get('/:id/statistics', authenticate, cacheMiddleware(300), async (req, res) => {
   try {
     const branchId = req.params.id;
 
     // Run all queries in parallel
-    const [branch, studentsCount, teachersCount, groups, studentGroupCounts, testResults] = await Promise.all([
+    const [branch, studentsCount, teachersCount, groups, studentGroupCounts] = await Promise.all([
       Branch.findById(branchId).lean(),
       Student.countDocuments({ branchId }),
       User.countDocuments({ branchId, role: UserRole.TEACHER, isActive: true }),
@@ -110,30 +111,6 @@ router.get('/:id/statistics', authenticate, async (req, res) => {
             count: { $sum: 1 }
           }
         }
-      ]),
-      // Get test results for students in this branch
-      TestResult.aggregate([
-        {
-          $match: {
-            branchId: new mongoose.Types.ObjectId(branchId)
-          }
-        },
-        {
-          $lookup: {
-            from: 'studentgroups',
-            localField: 'studentId',
-            foreignField: 'studentId',
-            as: 'studentGroups'
-          }
-        },
-        { $unwind: { path: '$studentGroups', preserveNullAndEmptyArrays: false } },
-        {
-          $group: {
-            _id: '$studentGroups.groupId',
-            avgPercentage: { $avg: '$percentage' },
-            count: { $sum: 1 }
-          }
-        }
       ])
     ]);
 
@@ -145,24 +122,38 @@ router.get('/:id/statistics', authenticate, async (req, res) => {
     const studentCountMap = new Map(
       studentGroupCounts.map(item => [item._id.toString(), item.count])
     );
-    
-    const testResultsMap = new Map(
-      testResults.map(item => [item._id?.toString(), { avg: item.avgPercentage, count: item.count }])
-    );
 
-    // Calculate student counts and average percentages for groups efficiently
-    const groupsWithCounts = groups.map(group => {
-      const groupId = group._id.toString();
-      const testData = testResultsMap.get(groupId);
-      
-      return {
-        _id: group._id,
-        name: group.name,
-        capacity: group.capacity || 20,
-        studentsCount: studentCountMap.get(groupId) || 0,
-        averageScore: testData ? Math.round(testData.avg) : 0
-      };
-    });
+    // Calculate average percentage for each group
+    const groupsWithCounts = await Promise.all(
+      groups.map(async (group) => {
+        const groupId = group._id.toString();
+        
+        // Get students in this group
+        const studentGroups = await StudentGroup.find({ groupId: group._id }).select('studentId').lean();
+        const studentIds = studentGroups.map(sg => sg.studentId);
+        
+        // Get test results for these students
+        let avgPercentage = 0;
+        if (studentIds.length > 0) {
+          const testResults = await TestResult.find({ 
+            studentId: { $in: studentIds } 
+          }).select('percentage').lean();
+          
+          if (testResults.length > 0) {
+            const totalPercentage = testResults.reduce((sum, result) => sum + result.percentage, 0);
+            avgPercentage = Math.round(totalPercentage / testResults.length);
+          }
+        }
+        
+        return {
+          _id: group._id,
+          name: group.name,
+          capacity: group.capacity || 20,
+          studentsCount: studentCountMap.get(groupId) || 0,
+          averageScore: avgPercentage
+        };
+      })
+    );
 
     res.json({
       branch: {

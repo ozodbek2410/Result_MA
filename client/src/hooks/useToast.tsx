@@ -8,6 +8,7 @@ export function useToast() {
   const showToast = useCallback((message: string, type: ToastType = 'info', duration = 3000) => {
     if (!toastContainer) {
       toastContainer = document.createElement('div');
+      toastContainer.className = 'toast-container';
       document.body.appendChild(toastContainer);
     }
 
@@ -16,8 +17,15 @@ export function useToast() {
     const root = createRoot(toastElement);
 
     const handleClose = () => {
-      root.unmount();
-      toastContainer?.removeChild(toastElement);
+      try {
+        root.unmount();
+        // Проверяем, что элемент все еще является дочерним элементом контейнера
+        if (toastContainer && toastContainer.contains(toastElement)) {
+          toastContainer.removeChild(toastElement);
+        }
+      } catch (error) {
+        console.warn('Error closing toast:', error);
+      }
     };
 
     root.render(<Toast message={message} type={type} duration={duration} onClose={handleClose} />);

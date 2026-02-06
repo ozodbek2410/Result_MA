@@ -3,6 +3,7 @@ import Group from '../models/Group';
 import StudentGroup from '../models/StudentGroup';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
+import { invalidateCache } from '../middleware/cache';
 
 const router = express.Router();
 
@@ -193,6 +194,9 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       .populate('subjectId')
       .populate('teacherId');
     
+    // Инвалидируем кэш групп
+    await invalidateCache('/api/groups');
+    
     res.status(201).json(populatedGroup);
   } catch (error: any) {
     console.error('Error creating group:', error);
@@ -246,6 +250,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       teacherName: (group?.teacherId as any)?.fullName || 'null'
     });
     
+    // Инвалидируем кэш групп
+    await invalidateCache('/api/groups');
+    
     res.json(group);
   } catch (error: any) {
     console.error('❌ Error updating group:', error);
@@ -269,6 +276,9 @@ router.delete('/:id', authenticate, async (req, res) => {
     
     // Удаляем саму группу
     await Group.findByIdAndDelete(req.params.id);
+    
+    // Инвалидируем кэш групп
+    await invalidateCache('/api/groups');
     
     res.json({ message: 'Guruh va unga tegishli barcha ma\'lumotlar o\'chirildi' });
   } catch (error: any) {

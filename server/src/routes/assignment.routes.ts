@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { invalidateCache } from '../middleware/cache';
 import { Assignment, AssignmentSubmission } from '../models/Assignment';
 import Group from '../models/Group';
 import StudentGroup from '../models/StudentGroup';
@@ -88,6 +89,9 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       await AssignmentSubmission.insertMany(submissions);
     }
 
+    // Инвалидируем кэш заданий
+    await invalidateCache('/api/assignments');
+
     res.status(201).json({ 
       message: 'Topshiriq muvaffaqiyatli yaratildi',
       assignment
@@ -116,6 +120,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
 
     await assignment.save();
 
+    // Инвалидируем кэш заданий
+    await invalidateCache('/api/assignments');
+
     res.json({ 
       message: 'Topshiriq muvaffaqiyatli yangilandi',
       assignment
@@ -138,6 +145,9 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
     await AssignmentSubmission.deleteMany({ assignmentId: req.params.id });
     
     await Assignment.findByIdAndDelete(req.params.id);
+
+    // Инвалидируем кэш заданий
+    await invalidateCache('/api/assignments');
 
     res.json({ message: 'Topshiriq o\'chirildi' });
   } catch (error) {
@@ -175,36 +185,42 @@ router.post('/:id/grade/:submissionId', authenticate, async (req: AuthRequest, r
 
     await submission.save();
 
-    // Add grade to student profile
+    // Add grade to student profile using atomic update
     const Student = (await import('../models/Student')).default;
-    const student = await Student.findById(submission.studentId);
-    if (student) {
-      // Check if grade already exists for this assignment
-      const existingGradeIndex = student.grades?.findIndex(
-        (g: any) => g.assignmentId?.toString() === req.params.id
-      );
-
-      const gradeData = {
-        assignmentId: assignment._id,
-        subjectId: assignment.subjectId,
-        percentage,
-        notes,
-        gradedAt: new Date()
-      };
-
-      if (existingGradeIndex !== undefined && existingGradeIndex >= 0) {
-        // Update existing grade
-        student.grades[existingGradeIndex] = gradeData as any;
-      } else {
-        // Add new grade
-        if (!student.grades) {
-          student.grades = [];
+    
+    const gradeData = {
+      assignmentId: assignment._id,
+      subjectId: assignment.subjectId,
+      percentage,
+      notes,
+      gradedAt: new Date()
+    };
+    
+    // Используем atomic update для избежания race condition
+    await Student.findOneAndUpdate(
+      { 
+        _id: submission.studentId,
+        'grades.assignmentId': assignment._id
+      },
+      {
+        $set: {
+          'grades.$': gradeData
         }
-        student.grades.push(gradeData as any);
       }
-
-      await student.save();
-    }
+    );
+    
+    // Если оценка не найдена, добавляем новую
+    await Student.findOneAndUpdate(
+      { 
+        _id: submission.studentId,
+        'grades.assignmentId': { $ne: assignment._id }
+      },
+      {
+        $push: {
+          grades: gradeData
+        }
+      }
+    );
 
     res.json({ 
       message: 'Baho qo\'yildi',

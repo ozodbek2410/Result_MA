@@ -8,7 +8,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = express.Router();
 
-const uploadDir = path.join(process.cwd(), 'server', 'uploads');
+const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

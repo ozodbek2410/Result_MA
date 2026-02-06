@@ -31,6 +31,12 @@ router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMI
     
     const { username, password, role, branchId, phone, fullName, parentPhone } = req.body;
     
+    // Запрет на создание супер-админов
+    if (role === UserRole.SUPER_ADMIN) {
+      console.log('❌ Попытка создать супер-админа');
+      return res.status(403).json({ message: 'Super Admin yaratish mumkin emas!' });
+    }
+    
     // Validation
     if (!username || !password) {
       return res.status(400).json({ message: 'Login va parol majburiy' });
@@ -94,6 +100,12 @@ router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_AD
     // Только сам супер-админ может изменить свои данные
     if (targetUser.role === UserRole.SUPER_ADMIN && req.user?.id !== req.params.id) {
       return res.status(403).json({ message: 'Super Admin faqat o\'z ma\'lumotlarini o\'zgartirishi mumkin' });
+    }
+    
+    // Запрет на изменение роли на SUPER_ADMIN
+    if (req.body.role === UserRole.SUPER_ADMIN && targetUser.role !== UserRole.SUPER_ADMIN) {
+      console.log('❌ Попытка изменить роль на супер-админа');
+      return res.status(403).json({ message: 'Super Admin rolini tayinlash mumkin emas!' });
     }
     
     const { password, ...updateData } = req.body;

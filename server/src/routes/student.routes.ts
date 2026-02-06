@@ -60,9 +60,9 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res) => {
 
 router.get('/', authenticate, cacheMiddleware(120), async (req: AuthRequest, res) => {
   try {
-    const { groupId, classNumber } = req.query;
+    const { groupId, classNumber, page = '1', limit = '500' } = req.query;
     
-    console.log('GET /students - Query params:', { groupId, classNumber, userRole: req.user?.role, teacherId: req.user?.teacherId });
+    console.log('GET /students - Query params:', { groupId, classNumber, page, limit, userRole: req.user?.role, teacherId: req.user?.teacherId });
     
     // If requesting students for specific group
     if (groupId) {
@@ -125,15 +125,20 @@ router.get('/', authenticate, cacheMiddleware(120), async (req: AuthRequest, res
       return res.json(students);
     }
     
-    // Optimized query for all students
+    // Optimized query for all students with pagination
     const filter: any = {};
     if (req.user?.role !== UserRole.SUPER_ADMIN) {
       filter.branchId = req.user?.branchId;
     }
     
-    // Filter by class
+    // Filter by class with validation
     if (classNumber) {
-      filter.classNumber = parseInt(classNumber as string);
+      const parsedClass = parseInt(classNumber as string);
+      if (!isNaN(parsedClass) && parsedClass > 0 && parsedClass <= 12) {
+        filter.classNumber = parsedClass;
+      } else {
+        return res.status(400).json({ message: 'Noto\'g\'ri sinf raqami' });
+      }
     }
     
     // Скрываем выпускников для всех, кроме админов
@@ -141,13 +146,19 @@ router.get('/', authenticate, cacheMiddleware(120), async (req: AuthRequest, res
       filter.isGraduated = { $ne: true };
     }
     
+    // Pagination parameters with validation
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string) || 500));
+    const skip = (pageNum - 1) * limitNum;
+    
     const students = await Student.find(filter)
       .populate('directionId', 'nameUzb nameRu')
       .populate('subjectIds', 'nameUzb nameRu')
       .populate('branchId', 'name')
       .select('fullName classNumber phone directionId subjectIds branchId profileToken createdAt')
       .sort({ fullName: 1 })
-      .limit(500)
+      .skip(skip)
+      .limit(limitNum)
       .lean()
       .exec();
     
@@ -228,8 +239,11 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       .populate('directionId')
       .populate('subjectIds');
     
-    // Инвалидируем кэш студентов
-    await invalidateCache('/api/students');
+    // Инвалидируем кэш студентов и групп
+    await Promise.all([
+      invalidateCache('/api/students'),
+      invalidateCache('/api/groups')
+    ]);
     
     res.status(201).json({
       student: populatedStudent,
@@ -269,8 +283,11 @@ router.put('/:id', authenticate, async (req, res) => {
       }
     }
     
-    // Инвалидируем кэш студентов
-    await invalidateCache('/api/students');
+    // Инвалидируем кэш студентов и групп
+    await Promise.all([
+      invalidateCache('/api/students'),
+      invalidateCache('/api/groups')
+    ]);
     
     res.json(student);
   } catch (error: any) {
@@ -384,8 +401,11 @@ router.delete('/:id', authenticate, async (req, res) => {
     // Удаляем самого студента
     await Student.findByIdAndDelete(req.params.id);
     
-    // Инвалидируем кэш студентов
-    await invalidateCache('/api/students');
+    // Инвалидируем кэш студентов и групп
+    await Promise.all([
+      invalidateCache('/api/students'),
+      invalidateCache('/api/groups')
+    ]);
     
     res.json({ message: 'O\'quvchi va unga tegishli barcha ma\'lumotlar o\'chirildi' });
   } catch (error: any) {

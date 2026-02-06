@@ -49,6 +49,9 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
       console.log(`Total tests in block: ${blockTest.subjectTests.length}`);
 
       await blockTest.save();
+      
+      // Инвалидируем кэш блок-тестов
+      await invalidateCache('/api/block-tests');
     } else {
       // Создаем новый блок-тест
       blockTest = new BlockTest({
@@ -67,6 +70,9 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
 
       await blockTest.save();
       console.log('Created new block test:', blockTest._id);
+      
+      // Инвалидируем кэш блок-тестов
+      await invalidateCache('/api/block-tests');
     }
 
     res.status(201).json({ 
@@ -109,6 +115,9 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 
     await blockTest.save();
     console.log('Created new block test:', blockTest._id);
+
+    // Инвалидируем кэш блок-тестов
+    await invalidateCache('/api/block-tests');
 
     res.status(201).json({ 
       message: 'Blok test muvaffaqiyatli yaratildi',
@@ -195,6 +204,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       console.log(`Updated ${subjectTests.length} subjects`);
     }
     
+    // Инвалидируем кэш блок-тестов
+    await invalidateCache('/api/block-tests');
+    
     res.json({ message: 'Blok test yangilandi', blockTest });
   } catch (error) {
     console.error('Error updating block test:', error);
@@ -217,6 +229,9 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
     }
     
     await BlockTest.findByIdAndDelete(req.params.id);
+    
+    // Инвалидируем кэш блок-тестов
+    await invalidateCache('/api/block-tests');
     
     res.json({ message: 'Blok test o\'chirildi' });
   } catch (error) {
@@ -383,9 +398,19 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
       return shuffledQuestion;
     };
 
-    // Create new variants for each student
+    // Batch processing для больших групп студентов (100+)
+    const BATCH_SIZE = 50;
     const variants = [];
-    for (const studentId of studentIds) {
+    
+    console.log(`📊 Processing ${studentIds.length} students in batches of ${BATCH_SIZE}`);
+    
+    for (let i = 0; i < studentIds.length; i += BATCH_SIZE) {
+      const batchStudentIds = studentIds.slice(i, i + BATCH_SIZE);
+      console.log(`📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(studentIds.length / BATCH_SIZE)}`);
+      
+      const batchVariants = [];
+      
+      for (const studentId of batchStudentIds) {
       const variantCode = uuidv4().substring(0, 8).toUpperCase();
       
       // ВАЖНО: Получаем конфигурацию студента (какие предметы он выбрал)
@@ -459,8 +484,15 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
         shuffledQuestions // Store shuffled questions with shuffled variants
       });
 
-      await variant.save();
-      variants.push(variant);
+        batchVariants.push(variant);
+      }
+      
+      // Сохраняем batch одним запросом
+      if (batchVariants.length > 0) {
+        await StudentVariant.insertMany(batchVariants);
+        variants.push(...batchVariants);
+        console.log(`✅ Saved batch: ${batchVariants.length} variants`);
+      }
     }
 
     console.log(`✅ Generated ${variants.length} variants with shuffled questions (within each subject)`);

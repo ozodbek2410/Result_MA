@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/Card';
 import { 
   Users, 
@@ -34,6 +35,7 @@ interface Statistics {
 export default function StatisticsPage() {
   const [stats, setStats] = useState<Statistics | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchStatistics();
@@ -133,7 +135,8 @@ export default function StatisticsPage() {
             {stats.branches.map((branch, index) => (
               <Card 
                 key={branch._id} 
-                className="hover:shadow-lg transition-all duration-300"
+                className="hover:shadow-lg transition-all duration-300 cursor-pointer"
+                onClick={() => navigate(`/admin/branches/${branch._id}/statistics`)}
               >
                 <CardContent className="p-4 sm:p-5 lg:p-6">
                   {/* Mobile Layout */}

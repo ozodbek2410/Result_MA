@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '@/store/authStore';
 import { Card, CardContent } from '@/components/ui/Card';
 import { 
   Users, 
@@ -36,6 +37,7 @@ export default function BranchStatisticsPage() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<Statistics | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuthStore();
 
   useEffect(() => {
     fetchStatistics();
@@ -43,81 +45,31 @@ export default function BranchStatisticsPage() {
 
   const fetchStatistics = async () => {
     try {
-      const [groupsRes, studentsRes, teachersRes, testResultsRes, studentGroupsRes] = await Promise.all([
-        api.get('/groups'),
-        api.get('/students'),
-        api.get('/teachers'),
-        api.get('/test-results').catch(() => ({ data: [] })),
-        api.get('/observer/student-groups').catch(() => ({ data: [] }))
-      ]);
+      // Получаем ID филиала из authStore
+      const branchId = user?.branchId;
 
-      const testResults = testResultsRes.data;
-      const studentGroups = studentGroupsRes.data;
+      if (!branchId) {
+        console.error('Branch ID not found for user');
+        setLoading(false);
+        return;
+      }
 
-      // Create a map of studentId to groupIds
-      const studentToGroupMap: Record<string, string[]> = {};
-      studentGroups.forEach((sg: any) => {
-        const studentId = sg.studentId?._id || sg.studentId;
-        const groupId = sg.groupId?._id || sg.groupId;
-        if (!studentToGroupMap[studentId]) {
-          studentToGroupMap[studentId] = [];
-        }
-        studentToGroupMap[studentId].push(groupId);
-      });
+      console.log('Fetching statistics for branch:', branchId);
 
-      // Calculate average score for each group
-      const groupScores: Record<string, { total: number; count: number }> = {};
-      
-      testResults.forEach((result: any) => {
-        const studentId = result.studentId?._id || result.studentId;
-        if (!studentId) return;
+      // Используем тот же endpoint, что и в админ панели
+      const statsResponse = await api.get(`/branches/${branchId}/statistics`);
+      const branchStats = statsResponse.data;
 
-        const groupIds = studentToGroupMap[studentId] || [];
-        
-        groupIds.forEach((groupId: string) => {
-          if (!groupScores[groupId]) {
-            groupScores[groupId] = { total: 0, count: 0 };
-          }
-
-          if (result.percentage !== undefined && result.percentage !== null) {
-            groupScores[groupId].total += result.percentage;
-            groupScores[groupId].count += 1;
-          }
-        });
-      });
-
-      const groups = groupsRes.data.map((group: any) => {
-        const scores = groupScores[group._id];
-        return {
-          _id: group._id,
-          name: group.name,
-          studentsCount: group.studentsCount || 0,
-          teacherId: group.teacherId,
-          averageScore: scores && scores.count > 0 ? Math.round(scores.total / scores.count) : 0
-        };
-      });
-
-      // Calculate overall average score
-      let totalScore = 0;
-      let validResults = 0;
-      
-      testResults.forEach((result: any) => {
-        if (result.percentage !== undefined && result.percentage !== null) {
-          totalScore += result.percentage;
-          validResults++;
-        }
-      });
-
-      const averageScore = validResults > 0 ? Math.round(totalScore / validResults) : 0;
+      console.log('Branch statistics:', branchStats);
 
       setStats({
-        totalGroups: groupsRes.data.length,
-        totalStudents: studentsRes.data.length,
-        totalTeachers: teachersRes.data.length,
+        totalGroups: branchStats.groupsCount || 0,
+        totalStudents: branchStats.studentsCount || 0,
+        totalTeachers: branchStats.teachersCount || 0,
         totalTests: 0,
-        totalTestResults: testResults.length,
-        averageScore,
-        groups
+        totalTestResults: 0,
+        averageScore: 0,
+        groups: branchStats.groups || []
       });
     } catch (error) {
       console.error('Error fetching statistics:', error);

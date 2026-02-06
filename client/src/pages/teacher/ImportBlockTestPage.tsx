@@ -288,7 +288,7 @@ export default function ImportBlockTestPage() {
         )}
 
         {step === 'preview' && (
-          <div className="space-y-3 pb-32">
+          <div className="space-y-3 pb-48 lg:pb-32">
             <div className="bg-white border p-3 rounded-lg">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
@@ -438,7 +438,7 @@ export default function ImportBlockTestPage() {
               ))}
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg xl:left-72 z-40 pb-20 xl:pb-0">
               <div className="max-w-7xl mx-auto px-4 py-2 flex gap-2">
                 <Button
                   onClick={handleConfirm}

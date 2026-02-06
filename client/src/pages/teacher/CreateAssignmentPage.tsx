@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -20,11 +20,13 @@ const assignmentTypes = [
 
 export default function CreateAssignmentPage() {
   const navigate = useNavigate();
+  const { id } = useParams();
   const { success, error } = useToast();
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [step, setStep] = useState(1);
+  const [fetchingAssignment, setFetchingAssignment] = useState(false);
   
   const [formData, setFormData] = useState({
     groupId: '',
@@ -38,7 +40,10 @@ export default function CreateAssignmentPage() {
 
   useEffect(() => {
     fetchGroups();
-  }, []);
+    if (id) {
+      fetchAssignment();
+    }
+  }, [id]);
 
   const fetchGroups = async () => {
     try {
@@ -46,6 +51,37 @@ export default function CreateAssignmentPage() {
       setGroups(data);
     } catch (err) {
       console.error('Error fetching groups:', err);
+    }
+  };
+
+  const fetchAssignment = async () => {
+    console.log('Fetching assignment with id:', id);
+    setFetchingAssignment(true);
+    try {
+      const { data } = await api.get(`/assignments/${id}`);
+      console.log('Assignment data received:', data);
+      
+      // Сервер возвращает { assignment, submissions }, нам нужен только assignment
+      const assignmentData = data.assignment || data;
+      
+      const newFormData = {
+        groupId: assignmentData.groupId?._id || assignmentData.groupId || '',
+        title: assignmentData.title || '',
+        description: assignmentData.description || '',
+        type: assignmentData.type || 'yozma_ish',
+        fileUrl: assignmentData.fileUrl || '',
+        dueDate: assignmentData.dueDate ? new Date(assignmentData.dueDate).toISOString().split('T')[0] : '',
+        questions: assignmentData.questions || []
+      };
+      
+      console.log('Setting form data:', newFormData);
+      setFormData(newFormData);
+    } catch (err) {
+      console.error('Error fetching assignment:', err);
+      error('Topshiriqni yuklashda xatolik');
+      navigate('/teacher/assignments');
+    } finally {
+      setFetchingAssignment(false);
     }
   };
 
@@ -91,16 +127,34 @@ export default function CreateAssignmentPage() {
 
     setLoading(true);
     try {
-      await api.post('/assignments', formData);
-      success('Topshiriq muvaffaqiyatli yaratildi!');
+      if (id) {
+        await api.put(`/assignments/${id}`, formData);
+        success('Topshiriq muvaffaqiyatli yangilandi!');
+      } else {
+        await api.post('/assignments', formData);
+        success('Topshiriq muvaffaqiyatli yaratildi!');
+      }
       navigate('/teacher/assignments');
     } catch (err: any) {
-      console.error('Error creating assignment:', err);
+      console.error('Error saving assignment:', err);
       error(err.response?.data?.message || 'Xatolik yuz berdi');
     } finally {
       setLoading(false);
     }
   };
+
+  if (fetchingAssignment) {
+    return (
+      <div className="min-h-screen bg-gray-50 pb-20">
+        <div className="max-w-3xl mx-auto p-3 sm:p-4 space-y-3 animate-fade-in">
+          <div className="animate-pulse space-y-3">
+            <div className="h-10 bg-slate-200 rounded-xl w-48"></div>
+            <div className="h-64 bg-slate-200 rounded-2xl"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -120,7 +174,7 @@ export default function CreateAssignmentPage() {
               <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
                 <ClipboardList className="w-4 h-4 text-white" />
               </div>
-              Yangi topshiriq yaratish
+              {id ? 'Topshiriqni tahrirlash' : 'Yangi topshiriq yaratish'}
             </h1>
             <p className="text-xs text-gray-600 mt-0.5">
               Qadam {step}/2
@@ -286,7 +340,7 @@ export default function CreateAssignmentPage() {
                       className="h-9"
                     >
                       <Save className="w-4 h-4 mr-1" />
-                      Yaratish
+                      {id ? 'Saqlash' : 'Yaratish'}
                     </Button>
                   </div>
                 </div>

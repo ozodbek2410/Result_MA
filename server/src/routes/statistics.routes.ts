@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
+import { cacheMiddleware } from '../middleware/cache';
 import Branch from '../models/Branch';
 import Subject from '../models/Subject';
 import Student from '../models/Student';
@@ -14,7 +15,7 @@ import mongoose from 'mongoose';
 const router = Router();
 
 // Get teacher dashboard statistics
-router.get('/teacher/dashboard', authenticate, async (req: AuthRequest, res) => {
+router.get('/teacher/dashboard', authenticate, cacheMiddleware(300), async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user?.id;
     if (!teacherId) {
@@ -123,7 +124,7 @@ router.get('/teacher/dashboard', authenticate, async (req: AuthRequest, res) => 
 });
 
 // Get branch dashboard statistics
-router.get('/branch/dashboard', authenticate, async (req: AuthRequest, res) => {
+router.get('/branch/dashboard', authenticate, cacheMiddleware(300), async (req: AuthRequest, res) => {
   try {
     const branchId = req.user?.branchId;
     if (!branchId) {
@@ -194,7 +195,7 @@ router.get('/branch/dashboard', authenticate, async (req: AuthRequest, res) => {
 });
 
 // Get overall statistics
-router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthRequest, res) => {
+router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), cacheMiddleware(600), async (req: AuthRequest, res) => {
   try {
     // Use Promise.all to run all queries in parallel
     const [
@@ -238,11 +239,20 @@ router.get('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: AuthR
       Group.aggregate([
         { $group: { _id: '$branchId', count: { $sum: 1 } } }
       ]),
-      // Get average test percentage per branch
+      // Get average test percentage per branch - через студентов
       TestResult.aggregate([
         {
+          $lookup: {
+            from: 'students',
+            localField: 'studentId',
+            foreignField: '_id',
+            as: 'student'
+          }
+        },
+        { $unwind: '$student' },
+        {
           $group: {
-            _id: '$branchId',
+            _id: '$student.branchId',
             avgPercentage: { $avg: '$percentage' },
             count: { $sum: 1 }
           }

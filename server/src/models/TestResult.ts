@@ -5,6 +5,8 @@ export interface IAnswer {
   selectedAnswer?: 'A' | 'B' | 'C' | 'D';
   isCorrect: boolean;
   points: number;
+  wasEdited?: boolean; // Флаг, что ответ был отредактирован вручную
+  originalAnswer?: 'A' | 'B' | 'C' | 'D'; // Оригинальный ответ с фото
 }
 
 export interface ITestResult extends Document {
@@ -26,7 +28,9 @@ const AnswerSchema = new Schema<IAnswer>({
   questionIndex: { type: Number, required: true },
   selectedAnswer: { type: String, enum: ['A', 'B', 'C', 'D'] },
   isCorrect: { type: Boolean, required: true },
-  points: { type: Number, required: true }
+  points: { type: Number, required: true },
+  wasEdited: { type: Boolean, default: false },
+  originalAnswer: { type: String, enum: ['A', 'B', 'C', 'D'] }
 }, { _id: false });
 
 const TestResultSchema = new Schema<ITestResult>({

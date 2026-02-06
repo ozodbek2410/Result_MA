@@ -10,6 +10,26 @@ import { logger } from './config/logger';
 import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import { registerOMRHandler } from './services/omrQueueHandler';
 import { initScheduler } from './scheduler';
+
+// Import models to register them with Mongoose
+import './models/User';
+import './models/Teacher';
+import './models/Student';
+import './models/Branch';
+import './models/Subject';
+import './models/Direction';
+import './models/Group';
+import './models/StudentGroup';
+import './models/Test';
+import './models/BlockTest';
+import './models/Assignment';
+import './models/TestResult';
+import './models/StudentVariant';
+import './models/StudentTestConfig';
+import './models/StudentActivityLog';
+import './models/Upload';
+import './models/Role';
+
 import authRoutes from './routes/auth.routes';
 import branchRoutes from './routes/branch.routes';
 import subjectRoutes from './routes/subject.routes';
@@ -50,7 +70,7 @@ app.set('trust proxy', 1);
 
 // Включаем сжатие ответов
 app.use(compression({
-  level: 6, // Уровень сжатия (0-9)
+  level: 6, // Уровень сжатия (0-9)Ц
   threshold: 1024, // Минимальный размер для сжатия (1KB)
   filter: (req, res) => {
     if (req.headers['x-no-compression']) {
@@ -68,7 +88,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api/', apiLimiter);
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(process.cwd(), 'server', 'uploads')));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Request logging middleware
 app.use((req, res, next) => {

@@ -71,10 +71,13 @@ export default function UsersPage() {
         return 0;
       });
       setRoles(sortedRoles);
-      // Agar formData'da rol bo'lmasa, birinchi rolni tanlash
+      // Agar formData'da rol bo'lmasa, birinchi rolni tanlash (SUPER_ADMIN dan boshqa)
       if (sortedRoles.length > 0 && !formData.role) {
-        console.log('Setting default role:', sortedRoles[0].name);
-        setFormData(prev => ({ ...prev, role: sortedRoles[0].name }));
+        const defaultRole = sortedRoles.find((r: any) => r.name !== 'SUPER_ADMIN');
+        console.log('Setting default role:', defaultRole?.name);
+        if (defaultRole) {
+          setFormData(prev => ({ ...prev, role: defaultRole.name }));
+        }
       }
     } catch (err) {
       console.error('Error fetching roles');
@@ -124,7 +127,16 @@ export default function UsersPage() {
         await api.post('/users', formData);
         success('Foydalanuvchi muvaffaqiyatli yaratildi!');
       }
-      setFormData({ username: '', password: '', role: roles[0]?.name || '', branchId: '', phone: '', fullName: '', parentPhone: '' });
+      const defaultRole = roles.find(r => r.name !== 'SUPER_ADMIN');
+      setFormData({ 
+        username: '', 
+        password: '', 
+        role: defaultRole?.name || '', 
+        branchId: '', 
+        phone: '', 
+        fullName: '', 
+        parentPhone: '' 
+      });
       setEditingUser(null);
       setShowForm(false);
       fetchUsers();
@@ -182,7 +194,16 @@ export default function UsersPage() {
   const handleCloseForm = () => {
     setShowForm(false);
     setEditingUser(null);
-    setFormData({ username: '', password: '', role: roles[0]?.name || '', branchId: '', phone: '', fullName: '', parentPhone: '' });
+    const defaultRole = roles.find(r => r.name !== 'SUPER_ADMIN');
+    setFormData({ 
+      username: '', 
+      password: '', 
+      role: defaultRole?.name || '', 
+      branchId: '', 
+      phone: '', 
+      fullName: '', 
+      parentPhone: '' 
+    });
   };
 
   const getRoleBadge = (role: string) => {
@@ -260,12 +281,12 @@ export default function UsersPage() {
         showAddButton={true}
         addButtonText="Foydalanuvchi qo'shish"
         onAddClick={() => {
-          const defaultRole = roles.length > 0 ? roles[0].name : '';
-          console.log('Opening form with default role:', defaultRole);
+          const defaultRole = roles.find(r => r.name !== 'SUPER_ADMIN');
+          console.log('Opening form with default role:', defaultRole?.name);
           setFormData({ 
             username: '', 
             password: '', 
-            role: defaultRole, 
+            role: defaultRole?.name || '', 
             branchId: '', 
             phone: '', 
             fullName: '',
@@ -319,11 +340,13 @@ export default function UsersPage() {
                 disabled={editingUser?.role === 'SUPER_ADMIN'}
               >
                 {roles.length === 0 && <option value="">Yuklanmoqda...</option>}
-                {roles.map((role) => (
-                  <option key={role._id} value={role.name}>
-                    {role.displayName} ({role.name})
-                  </option>
-                ))}
+                {roles
+                  .filter(role => role.name !== 'SUPER_ADMIN') // Фильтруем SUPER_ADMIN
+                  .map((role) => (
+                    <option key={role._id} value={role.name}>
+                      {role.displayName} ({role.name})
+                    </option>
+                  ))}
               </Select>
               
               <Select
@@ -398,7 +421,16 @@ export default function UsersPage() {
             </p>
             {!searchQuery && (
               <Button onClick={() => {
-                setFormData({ username: '', password: '', role: roles[0]?.name || '', branchId: '', phone: '', fullName: '', parentPhone: '' });
+                const defaultRole = roles.find(r => r.name !== 'SUPER_ADMIN');
+                setFormData({ 
+                  username: '', 
+                  password: '', 
+                  role: defaultRole?.name || '', 
+                  branchId: '', 
+                  phone: '', 
+                  fullName: '', 
+                  parentPhone: '' 
+                });
                 setShowForm(true);
               }} size="lg">
               <Plus className="w-5 h-5 mr-2" />

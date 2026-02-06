@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -18,6 +19,7 @@ export default function BranchesPage() {
   const [editingBranch, setEditingBranch] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', location: '' });
   const { success, error } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchBranches();
@@ -169,7 +171,8 @@ export default function BranchesPage() {
           {filteredBranches.map((branch, index) => (
             <Card 
               key={branch._id} 
-              className="hover:shadow-xl transition-all hover:-translate-y-1"
+              className="hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer"
+              onClick={() => navigate(`/admin/branches/${branch._id}/statistics`)}
             >
               <CardContent className="p-4 sm:p-6">
                 <div className="flex items-start justify-between mb-3 sm:mb-4">

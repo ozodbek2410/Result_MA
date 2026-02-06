@@ -107,7 +107,7 @@ ws['!cols'] = [
 XLSX.utils.book_append_sheet(wb, ws, 'Iqtisod yo\'nalishi');
 
 // Сохраняем файл
-const outputPath = path.join(process.cwd(), 'server', 'uploads', 'student_import_template_example.xlsx');
+const outputPath = path.join(process.cwd(), 'uploads', 'student_import_template_example.xlsx');
 XLSX.writeFile(wb, outputPath);
 
 console.log(`✅ Excel файл создан: ${outputPath}`);

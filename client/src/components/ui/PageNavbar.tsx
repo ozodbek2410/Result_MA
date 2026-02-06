@@ -56,7 +56,7 @@ export function PageNavbar({
           <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent truncate">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent break-words">
                   {title}
                 </h1>
                 {badge && (
@@ -73,8 +73,12 @@ export function PageNavbar({
             
             {/* Add Button - now in top row */}
             {showAddButton && (
-              <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
-                {extraActions}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+                {extraActions && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {extraActions}
+                  </div>
+                )}
                 <Button 
                   onClick={onAddClick} 
                   className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all"

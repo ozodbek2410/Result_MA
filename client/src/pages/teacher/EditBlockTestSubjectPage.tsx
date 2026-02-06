@@ -201,7 +201,7 @@ export default function EditBlockTestSubjectPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-32">
+    <div className="space-y-6 animate-fade-in pb-48 lg:pb-32">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -358,7 +358,7 @@ export default function EditBlockTestSubjectPage() {
       </div>
 
       {/* Fixed Bottom Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg xl:left-72 z-40 pb-20 xl:pb-0">
         <div className="max-w-7xl mx-auto px-4 py-4 flex gap-3">
           <Button
             onClick={handleSave}

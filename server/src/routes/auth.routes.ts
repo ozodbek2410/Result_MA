@@ -4,10 +4,11 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Role from '../models/Role';
 import { UserRole } from '../models/User';
+import { authLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     

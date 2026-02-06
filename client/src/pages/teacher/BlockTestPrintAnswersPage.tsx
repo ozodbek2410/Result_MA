@@ -288,53 +288,52 @@ export default function BlockTestPrintAnswersPage() {
               height: '297mm',
               margin: '0 auto',
               position: 'relative',
-              padding: sheetsPerPage === 1 ? '5mm' : '2mm',
+              padding: sheetsPerPage === 1 ? '5mm' : sheetsPerPage === 2 ? '2mm 5mm' : '2mm',
               backgroundColor: '#ffffff',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              justifyContent: 'flex-start'
             }}>
               <div className={`${
-                sheetsPerPage === 2 ? 'flex flex-col gap-1' : 
+                sheetsPerPage === 2 ? 'flex flex-col' : 
                 sheetsPerPage === 4 ? 'grid grid-cols-2 gap-1' : 
                 ''
               }`} style={{ 
                 width: '100%',
                 height: '100%',
-                gap: sheetsPerPage > 1 ? '2mm' : '0'
+                gap: sheetsPerPage === 2 ? '0' : sheetsPerPage === 4 ? '2mm' : '0'
               }}>
                 {variantsOnPage.map((variant, idx) => (
                   <div 
                     key={variant.student._id}
                     style={{
                       width: '100%',
-                      height: sheetsPerPage === 2 ? 'calc(50% - 1mm)' : sheetsPerPage === 4 ? 'calc(50% - 1mm)' : '100%',
-                      overflow: 'hidden',
+                      height: sheetsPerPage === 2 ? '50%' : sheetsPerPage === 4 ? 'calc(50% - 1mm)' : '100%',
+                      overflow: 'visible',
                       position: 'relative',
-                      border: sheetsPerPage > 1 ? '1px dashed #ccc' : 'none'
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'center'
                     }}
                   >
-                    <div style={{
-                      transform: sheetsPerPage === 2 ? 'scale(0.485)' : sheetsPerPage === 4 ? 'scale(0.485)' : 'scale(0.98)',
-                      transformOrigin: 'top left',
-                      width: sheetsPerPage === 2 ? '206%' : sheetsPerPage === 4 ? '206%' : '102%',
-                      height: sheetsPerPage === 2 ? '206%' : sheetsPerPage === 4 ? '206%' : '102%'
-                    }}>
-                      <AnswerSheet
-                        student={{
-                          fullName: variant.student.fullName || `${variant.student.firstName} ${variant.student.lastName}`,
-                          variantCode: variant.variantCode
-                        }}
-                        test={{
-                          name: blockTest.name || 'Blok Test',
-                          subjectName: blockTest.subjectTests?.map((st: any) => st.subjectId?.nameUzb || st.subjectId).join(', ') || 'Fanlar',
-                          classNumber: blockTest.classNumber,
-                          groupLetter: variant.student.directionId?.nameUzb?.charAt(0) || 'A'
-                        }}
-                        questions={variant.questions.length}
-                        qrData={variant.qrPayload}
-                        columns={columnsCount}
-                      />
-                    </div>
+                    <AnswerSheet
+                      student={{
+                        fullName: variant.student.fullName || `${variant.student.firstName} ${variant.student.lastName}`,
+                        variantCode: variant.variantCode
+                      }}
+                      test={{
+                        name: blockTest.name || 'Blok Test',
+                        subjectName: blockTest.subjectTests?.map((st: any) => st.subjectId?.nameUzb || st.subjectId).join(', ') || 'Fanlar',
+                        classNumber: blockTest.classNumber,
+                        groupLetter: variant.student.directionId?.nameUzb?.charAt(0) || 'A',
+                        groupName: variant.student.groupId?.name || variant.student.groupId?.nameUzb || ''
+                      }}
+                      questions={variant.questions.length}
+                      qrData={variant.qrPayload}
+                      columns={columnsCount}
+                      compact={sheetsPerPage > 1}
+                    />
                   </div>
                 ))}
               </div>

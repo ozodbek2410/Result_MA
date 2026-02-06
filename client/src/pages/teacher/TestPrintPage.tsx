@@ -16,6 +16,7 @@ export default function TestPrintPage() {
   const [variants, setVariants] = useState<any[]>([]);
   const [columnsCount, setColumnsCount] = useState(2);
   const [testsPerPage, setTestsPerPage] = useState(1);
+  const [sheetsPerPage, setSheetsPerPage] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -219,39 +220,76 @@ export default function TestPrintPage() {
       return <div className="text-center text-gray-500 py-12">O'quvchilar tanlanmagan</div>;
     }
 
+    // Группируем варианты по страницам
+    const pages = [];
+    for (let i = 0; i < selectedStudents.length; i += sheetsPerPage) {
+      pages.push(selectedStudents.slice(i, i + sheetsPerPage));
+    }
+
     return (
       <div>
-        {selectedStudents.map((student) => {
-          const variant = variants.find(v => v.studentId?._id === student._id);
-          const variantCode = variant?.variantCode || variant?.qrPayload || '';
-          
-          console.log('Rendering sheet for student:', {
-            studentName: student.fullName,
-            variantCode,
-            hasVariant: !!variant,
-            variant
-          });
-          
-          return (
-            <div key={student._id} className="page-break">
-              <AnswerSheet
-                student={{
-                  fullName: student.fullName,
-                  variantCode: variantCode
-                }}
-                test={{
-                  name: test.name,
-                  subjectName: test.subjectId?.nameUzb || test.subjectId || 'Test',
-                  classNumber: test.classNumber || 10,
-                  groupLetter: test.groupId?.nameUzb?.charAt(0) || 'A'
-                }}
-                questions={test.questions.length}
-                qrData={variantCode}
-                columns={columnsCount}
-              />
+        {pages.map((studentsOnPage, pageIndex) => (
+          <div key={pageIndex} className="page-break" style={{ 
+            width: '210mm', 
+            height: '297mm',
+            margin: '0 auto',
+            position: 'relative',
+            padding: sheetsPerPage === 1 ? '5mm' : sheetsPerPage === 2 ? '2mm 3mm' : '2mm',
+            backgroundColor: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-start'
+          }}>
+            <div className={`${
+              sheetsPerPage === 2 ? 'flex flex-col' : 
+              sheetsPerPage === 4 ? 'grid grid-cols-2 gap-1' : 
+              ''
+            }`} style={{ 
+              width: '100%',
+              height: '100%',
+              gap: sheetsPerPage === 2 ? '0' : sheetsPerPage === 4 ? '2mm' : '0'
+            }}>
+              {studentsOnPage.map((student, idx) => {
+                const variant = variants.find(v => v.studentId?._id === student._id);
+                const variantCode = variant?.variantCode || variant?.qrPayload || '';
+                
+                return (
+                  <div 
+                    key={student._id}
+                    style={{
+                      width: '100%',
+                      height: sheetsPerPage === 2 ? '50%' : sheetsPerPage === 4 ? 'calc(50% - 1mm)' : '100%',
+                      overflow: 'visible',
+                      position: 'relative',
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <AnswerSheet
+                      student={{
+                        fullName: student.fullName,
+                        variantCode: variantCode
+                      }}
+                      test={{
+                        name: test.name,
+                        subjectName: test.subjectId?.nameUzb || test.subjectId || 'Test',
+                        classNumber: test.classNumber || 10,
+                        groupLetter: test.groupId?.nameUzb?.charAt(0) || 'A',
+                        groupName: test.groupId?.name || test.groupId?.nameUzb || ''
+                      }}
+                      questions={test.questions.length}
+                      qrData={variantCode}
+                      columns={columnsCount}
+                      compact={sheetsPerPage > 1}
+                    />
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     );
   };
@@ -397,36 +435,90 @@ export default function TestPrintPage() {
             )}
             
             {type === 'sheets' && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Ustunlar soni
-                </label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setColumnsCount(2)}
-                    className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
-                      columnsCount === 2
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
-                    }`}
-                  >
-                    2 ustun
-                  </button>
-                  <button
-                    onClick={() => setColumnsCount(3)}
-                    className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
-                      columnsCount === 3
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
-                    }`}
-                  >
-                    3 ustun
-                  </button>
+              <>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-3">
+                    Sahifada varaqlar soni
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="radio"
+                        name="sheetsPerPage"
+                        value="1"
+                        checked={sheetsPerPage === 1}
+                        onChange={() => setSheetsPerPage(1)}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                      <span className="ml-3 flex-1">
+                        <span className="font-medium">1 varaq</span>
+                        <span className="block text-xs text-gray-500">Katta o'lcham, to'liq sahifa</span>
+                      </span>
+                    </label>
+                    
+                    <label className="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="radio"
+                        name="sheetsPerPage"
+                        value="2"
+                        checked={sheetsPerPage === 2}
+                        onChange={() => setSheetsPerPage(2)}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                      <span className="ml-3 flex-1">
+                        <span className="font-medium">2 varaq</span>
+                        <span className="block text-xs text-gray-500">O'rtacha o'lcham, vertikal</span>
+                      </span>
+                    </label>
+                    
+                    <label className="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="radio"
+                        name="sheetsPerPage"
+                        value="4"
+                        checked={sheetsPerPage === 4}
+                        onChange={() => setSheetsPerPage(4)}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                      <span className="ml-3 flex-1">
+                        <span className="font-medium">4 varaq</span>
+                        <span className="block text-xs text-gray-500">Kichik o'lcham, 2x2 grid</span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  {columnsCount === 2 ? '60 tagacha savol uchun qulay' : '60 dan ortiq savol uchun qulay'}
-                </p>
-              </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">
+                    Ustunlar soni
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setColumnsCount(2)}
+                      className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                        columnsCount === 2
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      2 ustun
+                    </button>
+                    <button
+                      onClick={() => setColumnsCount(3)}
+                      className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                        columnsCount === 3
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      3 ustun
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {columnsCount === 2 ? '60 tagacha savol uchun qulay' : '60 dan ortiq savol uchun qulay'}
+                  </p>
+                </div>
+              </>
             )}
 
             <button

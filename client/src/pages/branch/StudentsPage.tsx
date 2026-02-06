@@ -472,7 +472,8 @@ export default function StudentsPage() {
             <Button
               variant="outline"
               onClick={() => setShowTemplateModal(true)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 flex-1 sm:flex-initial"
+              size="sm"
             >
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Template yuklab olish</span>
@@ -481,7 +482,8 @@ export default function StudentsPage() {
             <Button
               variant="outline"
               onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 flex-1 sm:flex-initial"
+              size="sm"
             >
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Excel orqali import</span>

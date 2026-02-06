@@ -294,7 +294,7 @@ export default function BranchStatisticsPage() {
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6"
             >
               {stats.groups.map((group, index) => {
-                const avgPercentage = (group as any).averagePercentage || 0;
+                const avgPercentage = group.averageScore || 0;
                 const isGood = avgPercentage >= 80;
                 const isAverage = avgPercentage >= 60 && avgPercentage < 80;
                 const isPoor = avgPercentage < 60;

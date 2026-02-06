@@ -4,8 +4,6 @@ import api from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/hooks/useToast';
 import MathText from '@/components/MathText';
 import { 
@@ -336,46 +334,65 @@ export default function AssignmentDetailPage() {
 
       {/* Students List */}
       <Card className="border-2 border-slate-200/50">
-        <CardContent className="p-3 sm:p-4">
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900 mb-3 flex items-center gap-2">
-            <Award className="w-5 h-5 text-orange-600" />
-            O'quvchilar ro'yxati
-          </h2>
+        <CardContent className="p-0">
+          <div className="p-3 sm:p-4 border-b border-slate-200">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
+              <Award className="w-5 h-5 text-orange-600" />
+              O'quvchilar ro'yxati
+            </h2>
+          </div>
           
           {submissions.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center py-12">
               <Users className="w-12 h-12 text-slate-400 mx-auto mb-3" />
               <p className="text-slate-600">O'quvchilar yo'q</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {submissions.map((submission, index) => (
-                <div 
-                  key={submission._id}
-                  className="border border-slate-200 rounded-lg p-2.5 hover:border-orange-300 transition-all bg-white"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900 text-sm truncate">
-                        {submission.studentId?.fullName || 'O\'quvchi nomi yo\'q'}
-                      </p>
-                      {submission.gradedAt && (
-                        <p className="text-xs text-slate-500">
-                          {new Date(submission.gradedAt).toLocaleDateString('uz-UZ')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-slate-600 font-medium mb-1 block">
-                          Ball (0-100%)
-                        </label>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-12">
+                      #
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      O'quvchi
+                    </th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-32">
+                      Ball (0-100%)
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Izoh
+                    </th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">
+                      Amallar
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {submissions.map((submission, index) => (
+                    <tr 
+                      key={submission._id}
+                      className="hover:bg-slate-50 transition-colors"
+                    >
+                      <td className="px-3 py-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                          {index + 1}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div>
+                          <p className="font-semibold text-slate-900 text-sm">
+                            {submission.studentId?.fullName || 'O\'quvchi nomi yo\'q'}
+                          </p>
+                          {submission.gradedAt && (
+                            <p className="text-xs text-slate-500">
+                              {new Date(submission.gradedAt).toLocaleDateString('uz-UZ')}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
                         <Input
                           type="number"
                           min={0}
@@ -383,34 +400,32 @@ export default function AssignmentDetailPage() {
                           value={grades[submission._id]?.percentage === '' ? '' : grades[submission._id]?.percentage}
                           onChange={(e) => handleGradeChange(submission._id, 'percentage', e.target.value)}
                           placeholder="0"
-                          className="text-center text-base font-bold h-9"
+                          className="text-center text-base font-bold h-9 w-full"
                         />
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-slate-600 font-medium mb-1 block">
-                          Izoh
-                        </label>
+                      </td>
+                      <td className="px-3 py-3">
                         <Input
                           type="text"
                           value={grades[submission._id]?.notes || ''}
                           onChange={(e) => handleGradeChange(submission._id, 'notes', e.target.value)}
                           placeholder="Izoh yozing..."
-                          className="h-9 text-sm"
+                          className="h-9 text-sm w-full"
                         />
-                      </div>
-                    </div>
-
-                    <Button
-                      onClick={() => handleSaveGrade(submission._id)}
-                      className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 h-9 text-sm"
-                    >
-                      <Save className="w-3.5 h-3.5 mr-1" />
-                      Saqlash
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <Button
+                          onClick={() => handleSaveGrade(submission._id)}
+                          size="sm"
+                          className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 h-9 px-4"
+                        >
+                          <Save className="w-3.5 h-3.5 mr-1" />
+                          Saqlash
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
