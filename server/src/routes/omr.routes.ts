@@ -103,7 +103,7 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     
     try {
       // QR-scanner skriptini ishlatish
-      const qrScriptPath = path.join(process.cwd(), 'python', 'qr_scanner.py');
+      const qrScriptPath = path.join(process.cwd(), 'server', 'python', 'qr_scanner.py');
       
       const pythonCmd = process.env.PYTHON_PATH || 
                        (process.platform === 'win32' ? 'python' : 'python3');
@@ -297,7 +297,7 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     console.log('🔍 2-bosqich: Javoblarni aniqlash...');
 
     // 2. Javoblarni aniqlash (omr_color.py - rangli blanklar uchun)
-    const pythonScript = path.join(process.cwd(), 'python', 'omr_color.py');
+    const pythonScript = path.join(process.cwd(), 'server', 'python', 'omr_color.py');
     
     // Python3 ni ishlatish (ko'p Linux serverlarida python3 bo'ladi)
     // Allow override via environment variable for production
