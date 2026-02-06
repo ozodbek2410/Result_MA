@@ -137,27 +137,25 @@ export default function TestViewPage() {
                     
                     {/* Answer Variants */}
                     {question.variants && question.variants.length > 0 && (
-                      <div className="space-y-2 ml-2">
+                      <div className="flex flex-wrap gap-2 ml-2">
                         {question.variants.map((variant: any, varIndex: number) => (
                           <div
                             key={varIndex}
-                            className={`p-3 rounded-lg border-2 ${
+                            className={`p-2 rounded-lg border-2 inline-flex items-center gap-2 ${
                               variant.letter === question.correctAnswer
                                 ? 'bg-green-50 border-green-400'
                                 : 'bg-white border-gray-200'
                             }`}
                           >
-                            <div className="flex items-start gap-2">
-                              <span className="font-bold text-gray-700 min-w-[28px]">
-                                {variant.letter})
-                              </span>
-                              <span className={`flex-1 ${variant.letter === question.correctAnswer ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
-                                <MathText text={variant.text} />
-                              </span>
-                              {variant.letter === question.correctAnswer && (
-                                <span className="text-green-600 font-bold">✓</span>
-                              )}
-                            </div>
+                            <span className="font-bold text-gray-700">
+                              {variant.letter})
+                            </span>
+                            <span className={`${variant.letter === question.correctAnswer ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                              <MathText text={variant.text} />
+                            </span>
+                            {variant.letter === question.correctAnswer && (
+                              <span className="text-green-600 font-bold">✓</span>
+                            )}
                           </div>
                         ))}
                       </div>

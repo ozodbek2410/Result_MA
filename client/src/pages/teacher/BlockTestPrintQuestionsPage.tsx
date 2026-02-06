@@ -110,7 +110,57 @@ export default function BlockTestPrintQuestionsPage() {
             v.studentId._id === student._id || v.studentId === student._id
           );
           
-          // Собираем вопросы для этого ученика
+          console.log(`Variant for ${student.fullName}:`, {
+            hasVariant: !!studentVariant,
+            hasShuffledQuestions: !!studentVariant?.shuffledQuestions,
+            shuffledQuestionsCount: studentVariant?.shuffledQuestions?.length || 0
+          });
+          
+          // Если есть перемешанные вопросы в варианте, используем их напрямую
+          if (studentVariant?.shuffledQuestions && studentVariant.shuffledQuestions.length > 0) {
+            console.log(`✅ Using shuffled questions for ${student.fullName}`);
+            const questions = studentVariant.shuffledQuestions.map((q: any, idx: number) => {
+              // Находим название предмета из mergedBlockTest
+              let subjectName = 'Fan';
+              if (q.subjectId) {
+                const subjectId = q.subjectId._id || q.subjectId;
+                console.log(`Question ${idx + 1} subjectId:`, subjectId);
+                const subjectTest = mergedBlockTest.subjectTests.find(
+                  (st: any) => {
+                    const stId = st.subjectId._id || st.subjectId;
+                    console.log(`  Comparing with:`, stId, st.subjectId?.nameUzb);
+                    return stId === subjectId;
+                  }
+                );
+                if (subjectTest?.subjectId?.nameUzb) {
+                  subjectName = subjectTest.subjectId.nameUzb;
+                  console.log(`  ✅ Found subject name:`, subjectName);
+                } else {
+                  console.log(`  ❌ Subject not found for ID:`, subjectId);
+                }
+              }
+              
+              return {
+                number: idx + 1,
+                subjectName,
+                question: q.text || q.question || '',
+                options: q.variants?.map((v: any) => v.text) || q.options || [],
+                correctAnswer: q.correctAnswer || '',
+                points: q.points || 1,
+                image: q.imageUrl || q.image
+              };
+            });
+            
+            variants.push({
+              student,
+              config,
+              questions
+            });
+            continue;
+          }
+          
+          console.log(`⚠️ No shuffled questions, using original for ${student.fullName}`);
+          // Fallback: собираем вопросы из оригинального теста
           const questions: any[] = [];
           let questionNumber = 1;
           
@@ -132,29 +182,15 @@ export default function BlockTestPrintQuestionsPage() {
               // Берем нужное количество вопросов
               const questionsToUse = subjectTest.questions.slice(0, subjectConfig.questionCount);
               
-              // Если есть перемешанный вариант, используем его
-              const subjectQuestions = questionsToUse.map((q: any, idx: number) => {
-                // Ищем перемешанный вопрос в shuffledQuestions
-                let questionData = q;
-                if (studentVariant?.shuffledQuestions) {
-                  const shuffledQ = studentVariant.shuffledQuestions.find(
-                    (sq: any) => sq._id === q._id || sq.text === q.text
-                  );
-                  if (shuffledQ) {
-                    questionData = shuffledQ;
-                  }
-                }
-                
-                return {
-                  number: questionNumber++,
-                  subjectName: subjectConfig.subjectId.nameUzb || 'Fan',
-                  question: questionData.text || questionData.question || '',
-                  options: questionData.variants?.map((v: any) => v.text) || questionData.options || [],
-                  correctAnswer: questionData.correctAnswer || '',
-                  points: questionData.points || 1,
-                  image: questionData.imageUrl || questionData.image
-                };
-              });
+              const subjectQuestions = questionsToUse.map((q: any) => ({
+                number: questionNumber++,
+                subjectName: subjectConfig.subjectId.nameUzb || 'Fan',
+                question: q.text || q.question || '',
+                options: q.variants?.map((v: any) => v.text) || q.options || [],
+                correctAnswer: q.correctAnswer || '',
+                points: q.points || 1,
+                image: q.imageUrl || q.image
+              }));
               
               console.log(`Questions for ${subjectConfig.subjectId.nameUzb}:`, subjectQuestions);
               questions.push(...subjectQuestions);
@@ -284,26 +320,33 @@ export default function BlockTestPrintQuestionsPage() {
               })
             );
 
-            // Варианты ответов
+            // Варианты ответов в одну строку
             if (question.options && question.options.length > 0) {
+              const variantsText: TextRun[] = [];
               question.options.forEach((option: string, idx: number) => {
                 const optionText = cleanText(option);
-                sections.push(
-                  new Paragraph({
-                    children: [
-                      new TextRun({
-                        text: `${String.fromCharCode(65 + idx)}) `,
-                        bold: true
-                      }),
-                      new TextRun({
-                        text: optionText
-                      })
-                    ],
-                    spacing: { after: 50 },
-                    indent: { left: 400 }
+                variantsText.push(
+                  new TextRun({
+                    text: `${String.fromCharCode(65 + idx)}) `,
+                    bold: true
+                  }),
+                  new TextRun({
+                    text: optionText
                   })
                 );
+                // Добавляем разделитель между вариантами (кроме последнего)
+                if (idx < question.options.length - 1) {
+                  variantsText.push(new TextRun({ text: '     ' })); // 5 пробелов между вариантами
+                }
               });
+              
+              sections.push(
+                new Paragraph({
+                  children: variantsText,
+                  spacing: { after: 100 },
+                  indent: { left: 400 }
+                })
+              );
             }
           }
 
@@ -325,7 +368,16 @@ export default function BlockTestPrintQuestionsPage() {
 
       const doc = new Document({
         sections: [{
-          properties: {},
+          properties: {
+            // Если выбрано 2 колонки, применяем колоночную верстку
+            ...(columnsCount === 2 && {
+              column: {
+                space: 708, // Расстояние между колонками (0.5 дюйма = 708 twips)
+                count: 2,
+                separate: true
+              }
+            })
+          },
           children: sections
         }]
       });
@@ -555,14 +607,13 @@ export default function BlockTestPrintQuestionsPage() {
                             )}
                             <div className={spacingClasses.options}>
                               {question.options?.map((option: string, idx: number) => (
-                                <div key={idx} className="flex items-start gap-1.5">
-                                  <span className="font-medium min-w-[20px]">
+                                <span key={idx} className="mr-4">
+                                  <span className="font-medium">
                                     {String.fromCharCode(65 + idx)})
                                   </span>
-                                  <div className="flex-1 leading-tight">
-                                    <MathText text={option} />
-                                  </div>
-                                </div>
+                                  {' '}
+                                  <MathText text={option} />
+                                </span>
                               ))}
                             </div>
                           </div>

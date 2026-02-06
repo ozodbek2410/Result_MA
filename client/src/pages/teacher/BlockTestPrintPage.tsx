@@ -32,6 +32,15 @@ export default function BlockTestPrintPage() {
   const fetchVariants = async () => {
     try {
       const { data } = await api.get(`/student-variants/block-test/${id}`);
+      console.log('📦 Loaded variants:', data.length);
+      if (data.length > 0) {
+        console.log('📝 First variant:', {
+          variantCode: data[0].variantCode,
+          hasShuffledQuestions: !!data[0].shuffledQuestions,
+          shuffledQuestionsCount: data[0].shuffledQuestions?.length || 0,
+          firstQuestion: data[0].shuffledQuestions?.[0]?.text?.substring(0, 50)
+        });
+      }
       setVariants(data);
     } catch (error) {
       console.error('Error fetching variants:', error);
@@ -90,8 +99,77 @@ export default function BlockTestPrintPage() {
     </div>
   );
 
-  const renderQuestionsContent = () => {
-    // Группируем вопросы по предметам
+  const renderQuestionsContent = (studentVariant?: any) => {
+    console.log('🎯 renderQuestionsContent called with variant:', {
+      hasVariant: !!studentVariant,
+      variantCode: studentVariant?.variantCode,
+      hasShuffledQuestions: !!studentVariant?.shuffledQuestions,
+      shuffledQuestionsCount: studentVariant?.shuffledQuestions?.length || 0
+    });
+    
+    // Если есть вариант студента с перемешанными вопросами, используем их
+    if (studentVariant?.shuffledQuestions && studentVariant.shuffledQuestions.length > 0) {
+      console.log('✅ Using shuffled questions from variant');
+      // Группируем перемешанные вопросы по предметам
+      const questionsBySubject = new Map<string, any[]>();
+      
+      studentVariant.shuffledQuestions.forEach((question: any, idx: number) => {
+        console.log(`Question ${idx + 1}:`, question.text?.substring(0, 50));
+        const subjectId = question.subjectId?._id || question.subjectId || 'unknown';
+        const subjectName = question.subjectId?.nameUzb || 'Fan';
+        
+        if (!questionsBySubject.has(subjectId)) {
+          questionsBySubject.set(subjectId, []);
+        }
+        questionsBySubject.get(subjectId)!.push({ ...question, subjectName });
+      });
+      
+      return (
+        <div className="space-y-8">
+          {Array.from(questionsBySubject.entries()).map(([subjectId, questions], subjectIndex) => (
+            <div key={subjectId}>
+              {/* Заголовок предмета */}
+              <div className="bg-blue-50 border-l-4 border-blue-500 px-4 py-3 mb-4">
+                <h3 className="text-xl font-bold text-blue-900">
+                  {questions[0]?.subjectName || 'Fan'}
+                </h3>
+              </div>
+              
+              {/* Вопросы предмета */}
+              <div className={`space-y-6 ${columnsCount === 2 ? 'columns-2 gap-4' : ''}`}>
+                {questions.map((question: any, qIndex: number) => (
+                  <div key={qIndex} className="border-b pb-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <span className="font-bold text-lg">{qIndex + 1}.</span>
+                      <div className="flex-1">
+                        <MathText text={question.text} />
+                      </div>
+                    </div>
+                    <div className="ml-6">
+                      {question.variants?.map((variant: any, varIndex: number) => (
+                        <span key={varIndex}>
+                          <span className="font-semibold">{variant.letter}) </span>
+                          <MathText text={variant.text} />
+                          {varIndex < question.variants.length - 1 && <span className="mx-2"></span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Разделитель между предметами */}
+              {subjectIndex < questionsBySubject.size - 1 && (
+                <div className="my-6 border-t-2 border-dashed border-gray-300"></div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    
+    console.log('⚠️ No shuffled questions, using original test questions');
+    // Fallback: используем оригинальные вопросы из теста
     const subjectGroups = test.subjectTests || [];
     
     return (
@@ -115,12 +193,13 @@ export default function BlockTestPrintPage() {
                       <MathText text={question.text} />
                     </div>
                   </div>
-                  <div className="ml-6 space-y-2">
+                  <div className="ml-6">
                     {question.variants?.map((variant: any, varIndex: number) => (
-                      <div key={varIndex} className="flex items-start gap-2">
-                        <span className="font-semibold">{variant.letter})</span>
+                      <span key={varIndex}>
+                        <span className="font-semibold">{variant.letter}) </span>
                         <MathText text={variant.text} />
-                      </div>
+                        {varIndex < question.variants.length - 1 && <span className="mx-2"></span>}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -137,7 +216,59 @@ export default function BlockTestPrintPage() {
     );
   };
 
-  const renderAnswersContent = () => {
+  const renderAnswersContent = (studentVariant?: any) => {
+    // Если есть вариант студента с перемешанными вопросами, используем их
+    if (studentVariant?.shuffledQuestions && studentVariant.shuffledQuestions.length > 0) {
+      // Группируем перемешанные вопросы по предметам
+      const questionsBySubject = new Map<string, any[]>();
+      
+      studentVariant.shuffledQuestions.forEach((question: any) => {
+        const subjectId = question.subjectId?._id || question.subjectId || 'unknown';
+        const subjectName = question.subjectId?.nameUzb || 'Fan';
+        
+        if (!questionsBySubject.has(subjectId)) {
+          questionsBySubject.set(subjectId, []);
+        }
+        questionsBySubject.get(subjectId)!.push({ ...question, subjectName });
+      });
+      
+      return (
+        <div className="space-y-6">
+          {Array.from(questionsBySubject.entries()).map(([subjectId, questions], subjectIndex) => (
+            <div key={subjectId}>
+              {/* Заголовок предмета */}
+              <div className="bg-green-50 border-l-4 border-green-500 px-4 py-2 mb-3">
+                <h3 className="text-lg font-bold text-green-900">
+                  {questions[0]?.subjectName || 'Fan'}
+                </h3>
+              </div>
+              
+              {/* Ответы */}
+              <div className="space-y-2">
+                {questions.map((question: any, qIndex: number) => {
+                  const correctAnswer = question.correctAnswer;
+                  return (
+                    <div key={qIndex} className="flex items-center gap-4 border-b pb-2">
+                      <span className="font-bold w-12">{qIndex + 1}.</span>
+                      <span className="font-semibold text-green-600">
+                        {correctAnswer || '-'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Разделитель между предметами */}
+              {subjectIndex < questionsBySubject.size - 1 && (
+                <div className="my-4 border-t-2 border-dashed border-gray-300"></div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    
+    // Fallback: используем оригинальные вопросы из теста
     const subjectGroups = test.subjectTests || [];
     
     return (
@@ -212,7 +343,7 @@ export default function BlockTestPrintPage() {
           return (
             <div key={student._id} className="page-break">
               {renderStudentHeader(student, variantCode)}
-              {renderQuestionsContent()}
+              {renderQuestionsContent(variant)}
             </div>
           );
         })}
@@ -232,7 +363,7 @@ export default function BlockTestPrintPage() {
           return (
             <div key={student._id} className="page-break">
               {renderStudentHeader(student, variantCode)}
-              {renderAnswersContent()}
+              {renderAnswersContent(variant)}
             </div>
           );
         })}
@@ -437,11 +568,11 @@ export default function BlockTestPrintPage() {
                       {renderStudentHeader(student, variantCode)}
                       <div className="mb-8">
                         <h2 className="text-xl font-bold mb-4">Savollar</h2>
-                        {renderQuestionsContent()}
+                        {renderQuestionsContent(variant)}
                       </div>
                       <div className="page-break mb-8">
                         <h2 className="text-xl font-bold mb-4">Javoblar kaliti</h2>
-                        {renderAnswersContent()}
+                        {renderAnswersContent(variant)}
                       </div>
                       <div className="page-break">
                         <h2 className="text-xl font-bold mb-4">Javob varag'i</h2>

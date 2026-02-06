@@ -24,7 +24,7 @@ interface OMRResult {
  */
 async function processOMRImage(data: OMRJobData): Promise<OMRResult> {
   return new Promise((resolve, reject) => {
-    const pythonScript = path.join(process.cwd(), 'server', 'python', 'omr_final_v2.py');
+    const pythonScript = path.join(process.cwd(), 'python', 'omr_final_v2.py');
     const args = [pythonScript, data.imagePath];
 
     if (data.questionCount) {

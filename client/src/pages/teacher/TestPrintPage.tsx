@@ -20,6 +20,9 @@ export default function TestPrintPage() {
   const [testsPerPage, setTestsPerPage] = useState(1);
   const [sheetsPerPage, setSheetsPerPage] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [fontSize, setFontSize] = useState(12);
+  const [spacing, setSpacing] = useState('normal');
+  const [showSubjectLabels, setShowSubjectLabels] = useState(true);
 
   useEffect(() => {
     fetchTest();
@@ -58,6 +61,28 @@ export default function TestPrintPage() {
   const handlePrint = () => {
     window.print();
   };
+
+  // Spacing classes based on selected spacing
+  const spacingClasses = {
+    compact: {
+      container: 'space-y-1',
+      question: 'mb-1 pb-1',
+      header: 'mb-2 pb-2',
+      questions: 'space-y-1'
+    },
+    normal: {
+      container: 'space-y-2',
+      question: 'mb-2 pb-2',
+      header: 'mb-3 pb-3',
+      questions: 'space-y-2'
+    },
+    relaxed: {
+      container: 'space-y-4',
+      question: 'mb-3 pb-3',
+      header: 'mb-4 pb-4',
+      questions: 'space-y-3'
+    }
+  }[spacing];
 
   // Функция для очистки текста от HTML и LaTeX
   const cleanText = (text: string): string => {
@@ -148,26 +173,33 @@ export default function TestPrintPage() {
             })
           );
 
-          // Варианты ответов
+          // Варианты ответов в одну строку
           if (question.variants && question.variants.length > 0) {
-            question.variants.forEach((qVariant: any) => {
+            const variantsText: TextRun[] = [];
+            question.variants.forEach((qVariant: any, idx: number) => {
               const optionText = cleanText(qVariant.text);
-              sections.push(
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: `${qVariant.letter}) `,
-                      bold: true
-                    }),
-                    new TextRun({
-                      text: optionText
-                    })
-                  ],
-                  spacing: { after: 50 },
-                  indent: { left: 400 }
+              variantsText.push(
+                new TextRun({
+                  text: `${qVariant.letter}) `,
+                  bold: true
+                }),
+                new TextRun({
+                  text: optionText
                 })
               );
+              // Добавляем разделитель между вариантами (кроме последнего)
+              if (idx < question.variants.length - 1) {
+                variantsText.push(new TextRun({ text: '     ' })); // 5 пробелов между вариантами
+              }
             });
+            
+            sections.push(
+              new Paragraph({
+                children: variantsText,
+                spacing: { after: 100 },
+                indent: { left: 400 }
+              })
+            );
           }
         }
 
@@ -179,7 +211,16 @@ export default function TestPrintPage() {
 
       const doc = new Document({
         sections: [{
-          properties: {},
+          properties: {
+            // Если выбрано 2 колонки, применяем колоночную верстку
+            ...(columnsCount === 2 && {
+              column: {
+                space: 708, // Расстояние между колонками (0.5 дюйма = 708 twips)
+                count: 2,
+                separate: true
+              }
+            })
+          },
           children: sections
         }]
       });
@@ -221,7 +262,7 @@ export default function TestPrintPage() {
     }
 
     return (
-      <div>
+      <div style={{ fontSize: `${fontSize}px` }}>
         {pages.map((studentsOnPage, pageIndex) => (
           <div key={pageIndex} className="page-break mb-8">
             <div className={`grid gap-6 ${testsPerPage === 2 ? 'grid-cols-2' : testsPerPage === 4 ? 'grid-cols-2' : ''}`}>
@@ -237,11 +278,17 @@ export default function TestPrintPage() {
                 return (
                   <div key={student._id} className={testsPerPage > 1 ? 'border-2 border-gray-300 p-3' : ''}>
                     {/* Header */}
-                    <div className="flex justify-between items-start mb-3">
+                    <div className={`flex justify-between items-start ${spacingClasses.header}`}>
                       <div className={testsPerPage > 1 ? 'text-sm' : ''}>
-                        <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : 'text-xl'}`}>{student.fullName}</h2>
-                        <p className="text-xs">Variant: {variantCode}</p>
-                        <p className="text-xs">{test.subjectId?.nameUzb || test.subjectId || 'Test'} {test.classNumber || 10}{test.groupId?.nameUzb?.charAt(0) || 'A'}</p>
+                        <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
+                          {student.fullName}
+                        </h2>
+                        <p style={{ fontSize: `${fontSize - 2}px` }}>Variant: {variantCode}</p>
+                        {showSubjectLabels && (
+                          <p style={{ fontSize: `${fontSize - 2}px` }}>
+                            {test.subjectId?.nameUzb || test.subjectId || 'Test'} {test.classNumber || 10}{test.groupId?.nameUzb?.charAt(0) || 'A'}
+                          </p>
+                        )}
                       </div>
                       <div className="flex-shrink-0">
                         <QRCodeSVG 
@@ -254,40 +301,43 @@ export default function TestPrintPage() {
                       </div>
                     </div>
 
-                    <hr className="border-t-2 border-gray-800 mb-3" />
+                    <hr className="border-t-2 border-gray-800" style={{ marginBottom: spacingClasses.header.includes('mb-2') ? '0.5rem' : spacingClasses.header.includes('mb-3') ? '0.75rem' : '1rem' }} />
 
                     {/* Questions */}
-                    <div className={testsPerPage > 1 ? 'space-y-2' : 'space-y-4'}>
-                      {questionsToRender?.map((question: any, index: number) => (
-                        <div key={index} className="page-break-inside-avoid">
-                          <div className="mb-1">
-                            <span className={`font-bold ${testsPerPage > 1 ? 'text-xs' : ''}`}>{index + 1}. </span>
-                            <span className={testsPerPage > 1 ? 'text-xs' : ''}>
-                              <MathText text={question.text} />
-                            </span>
-                          </div>
-                          {question.imageUrl && testsPerPage === 1 && (
-                            <div className="my-2 ml-6">
-                              <img 
-                                src={question.imageUrl} 
-                                alt="Question" 
-                                className="max-w-full h-auto"
-                                style={{ maxHeight: '200px', objectFit: 'contain' }}
-                              />
+                    <div className={columnsCount === 2 ? 'columns-2 gap-4' : ''} style={{ columnGap: columnsCount === 2 ? '1rem' : '0' }}>
+                      <div className={spacingClasses.questions}>
+                        {questionsToRender?.map((question: any, index: number) => (
+                          <div key={index} className={`page-break-inside-avoid ${spacingClasses.question}`}>
+                            <div className="mb-1">
+                              <span className="font-bold">{index + 1}. </span>
+                              <span>
+                                <MathText text={question.text} />
+                              </span>
                             </div>
-                          )}
-                          <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
-                            {question.variants?.map((qVariant: any) => (
-                              <div key={qVariant.letter} className="mb-0.5">
-                                <span className={`font-semibold ${testsPerPage > 1 ? 'text-xs' : ''}`}>{qVariant.letter}) </span>
-                                <span className={testsPerPage > 1 ? 'text-xs' : ''}>
-                                  <MathText text={qVariant.text} />
-                                </span>
+                            {question.imageUrl && testsPerPage === 1 && (
+                              <div className="my-2 ml-6">
+                                <img 
+                                  src={question.imageUrl} 
+                                  alt="Question" 
+                                  className="max-w-full h-auto"
+                                  style={{ maxHeight: '200px', objectFit: 'contain' }}
+                                />
                               </div>
-                            ))}
+                            )}
+                            <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
+                              {question.variants?.map((qVariant: any, vIdx: number) => (
+                                <span key={qVariant.letter}>
+                                  <span className="font-semibold">{qVariant.letter}) </span>
+                                  <span>
+                                    <MathText text={qVariant.text} />
+                                  </span>
+                                  {vIdx < question.variants.length - 1 && <span className="mx-3"></span>}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
                 );
@@ -532,48 +582,130 @@ export default function TestPrintPage() {
             <h3 className="font-bold text-lg mb-4">Chop etish sozlamalari</h3>
             
             {type === 'questions' && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Bir sahifada testlar soni
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    onClick={() => setTestsPerPage(1)}
-                    className={`py-2 px-3 rounded border-2 font-medium transition-colors text-sm ${
-                      testsPerPage === 1
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
-                    }`}
-                  >
-                    1 test
-                  </button>
-                  <button
-                    onClick={() => setTestsPerPage(2)}
-                    className={`py-2 px-3 rounded border-2 font-medium transition-colors text-sm ${
-                      testsPerPage === 2
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
-                    }`}
-                  >
-                    2 test
-                  </button>
-                  <button
-                    onClick={() => setTestsPerPage(4)}
-                    className={`py-2 px-3 rounded border-2 font-medium transition-colors text-sm ${
-                      testsPerPage === 4
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
-                    }`}
-                  >
-                    4 test
-                  </button>
+              <>
+                {/* Font Size Slider */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">
+                    Shrift o'lchami: {fontSize}px
+                  </label>
+                  <input
+                    type="range"
+                    min="8"
+                    max="18"
+                    value={fontSize}
+                    onChange={(e) => setFontSize(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Kichik (8px)</span>
+                    <span>Katta (18px)</span>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  {testsPerPage === 1 && 'Katta shrift, rasmlar bilan'}
-                  {testsPerPage === 2 && 'O\'rtacha shrift, 2 ustunda'}
-                  {testsPerPage === 4 && 'Kichik shrift, 2x2 grid'}
-                </p>
-              </div>
+
+                {/* Spacing */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">
+                    Oraliq
+                  </label>
+                  <select
+                    value={spacing}
+                    onChange={(e) => setSpacing(e.target.value)}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="compact">Zich</option>
+                    <option value="normal">O'rtacha</option>
+                    <option value="relaxed">Keng</option>
+                  </select>
+                </div>
+
+                {/* Columns */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">
+                    Ustunlar soni
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setColumnsCount(1)}
+                      className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                        columnsCount === 1
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      1 ustun
+                    </button>
+                    <button
+                      onClick={() => setColumnsCount(2)}
+                      className={`flex-1 py-2 px-4 rounded border-2 font-medium transition-colors ${
+                        columnsCount === 2
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      2 ustun
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Katta shrift uchun qulay
+                  </p>
+                </div>
+
+                {/* Show Subject Labels */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={showSubjectLabels}
+                      onChange={(e) => setShowSubjectLabels(e.target.checked)}
+                      className="w-4 h-4 accent-blue-500"
+                    />
+                    <span className="text-sm">Fan nomlarini ko'rsatish</span>
+                  </label>
+                </div>
+                
+                <div className="mb-4 border-t pt-4">
+                  <label className="block text-sm font-medium mb-2">
+                    Bir sahifada testlar soni
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => setTestsPerPage(1)}
+                      className={`py-2 px-3 rounded border-2 font-medium transition-colors text-sm ${
+                        testsPerPage === 1
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      1 test
+                    </button>
+                    <button
+                      onClick={() => setTestsPerPage(2)}
+                      className={`py-2 px-3 rounded border-2 font-medium transition-colors text-sm ${
+                        testsPerPage === 2
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      2 test
+                    </button>
+                    <button
+                      onClick={() => setTestsPerPage(4)}
+                      className={`py-2 px-3 rounded border-2 font-medium transition-colors text-sm ${
+                        testsPerPage === 4
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      4 test
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {testsPerPage === 1 && 'Katta shrift, rasmlar bilan'}
+                    {testsPerPage === 2 && 'O\'rtacha shrift, 2 ustunda'}
+                    {testsPerPage === 4 && 'Kichik shrift, 2x2 grid'}
+                  </p>
+                </div>
+              </>
             )}
             
             {type === 'sheets' && (

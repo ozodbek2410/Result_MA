@@ -14,7 +14,7 @@ import { TestImportService } from '../services/testImportService';
 const router = express.Router();
 
 // Multer configuration for file uploads
-const uploadDir = path.join(process.cwd(), 'server', 'uploads');
+const uploadDir = path.join(process.cwd(), 'uploads');
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);

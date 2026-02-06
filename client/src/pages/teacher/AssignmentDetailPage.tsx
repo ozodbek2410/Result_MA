@@ -291,33 +291,31 @@ export default function AssignmentDetailPage() {
                         </p>
                       </div>
                       {q.variants && q.variants.length > 0 && (
-                        <div className="p-2 space-y-1">
+                        <div className="p-2 flex flex-wrap gap-2">
                           {q.variants.map((v: any, vIdx: number) => {
                             const isCorrect = v.letter === q.correctAnswer;
                             return (
                               <div 
                                 key={vIdx} 
-                                className={`p-2 rounded-lg border transition-all text-sm ${
+                                className={`p-2 rounded-lg border transition-all text-sm inline-flex items-center gap-2 ${
                                   isCorrect 
                                     ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300' 
                                     : 'bg-slate-50 border-slate-200'
                                 }`}
                               >
-                                <div className="flex items-center gap-2">
-                                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold flex-shrink-0 text-xs ${
-                                    isCorrect ? 'bg-green-500 text-white' : 'bg-slate-300 text-slate-700'
-                                  }`}>
-                                    {v.letter}
-                                  </div>
-                                  <span className={`flex-1 ${isCorrect ? 'text-green-900 font-semibold' : 'text-slate-700'}`}>
-                                    <MathText text={v.text} />
-                                  </span>
-                                  {isCorrect && (
-                                    <div className="flex items-center gap-1 text-green-600 font-bold text-xs">
-                                      <span>✓</span>
-                                    </div>
-                                  )}
+                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold flex-shrink-0 text-xs ${
+                                  isCorrect ? 'bg-green-500 text-white' : 'bg-slate-300 text-slate-700'
+                                }`}>
+                                  {v.letter}
                                 </div>
+                                <span className={`${isCorrect ? 'text-green-900 font-semibold' : 'text-slate-700'}`}>
+                                  <MathText text={v.text} />
+                                </span>
+                                {isCorrect && (
+                                  <div className="flex items-center gap-1 text-green-600 font-bold text-xs">
+                                    <span>✓</span>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
