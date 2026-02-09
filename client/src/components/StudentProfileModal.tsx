@@ -78,9 +78,11 @@ export default function StudentProfileModal({ studentId, onClose }: StudentProfi
                   <h2 className="text-2xl font-bold text-gray-900 mb-1">{student.fullName}</h2>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="info">{student.classNumber}-sinf</Badge>
-                    {student.directionId && (
+                    {student.classNumber < 7 ? (
+                      <Badge variant="success">Umumiy</Badge>
+                    ) : student.directionId ? (
                       <Badge variant="purple">{student.directionId.nameUzb}</Badge>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>

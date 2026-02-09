@@ -176,6 +176,23 @@ export default function StudentsPage() {
   };
 
   const getAllStudentSubjects = () => {
+    // Для младших классов (< 7) возвращаем все предметы класса
+    if (formData.classNumber < 7) {
+      // Получаем уникальные предметы из групп класса
+      const classGroups = groups.filter(g => g.classNumber === formData.classNumber);
+      const uniqueSubjects = new Map();
+      
+      classGroups.forEach(g => {
+        const subjectId = typeof g.subjectId === 'object' ? g.subjectId._id : g.subjectId;
+        const subject = subjects.find(s => s._id === subjectId);
+        if (subject && !uniqueSubjects.has(subject._id)) {
+          uniqueSubjects.set(subject._id, subject);
+        }
+      });
+      
+      return Array.from(uniqueSubjects.values());
+    }
+    
     const directionSubjects = getDirectionSubjects();
     const mandatory = getMandatorySubjects();
     
@@ -210,7 +227,14 @@ export default function StudentsPage() {
         error('F.I.Sh va sinf majburiy');
         return;
       }
-      setStep(2);
+      
+      // Для младших классов (< 7) пропускаем выбор направления
+      if (formData.classNumber < 7) {
+        setFormData({ ...formData, directionId: '', selectedSubjects: {} });
+        setStep(4);
+      } else {
+        setStep(2);
+      }
     } else if (step === 2) {
       if (!formData.directionId) {
         error('Yo\'nalish tanlang');
@@ -238,11 +262,14 @@ export default function StudentsPage() {
     const allSubjects = getAllStudentSubjects();
     const subjectIds = allSubjects.map(s => s._id);
     
-    // Проверяем что для каждого предмета выбрана группа
-    if (!formData.groups || formData.groups.length !== subjectIds.length) {
-      error('Barcha fanlar uchun guruh tanlang');
-      return;
+    // Для старших классов (>= 7) проверяем что для каждого предмета выбрана группа
+    if (formData.classNumber >= 7) {
+      if (!formData.groups || formData.groups.length !== subjectIds.length) {
+        error('Barcha fanlar uchun guruh tanlang');
+        return;
+      }
     }
+    // Для младших классов (< 7) группы опциональны - сервер добавит автоматически
     
     setLoading(true);
     try {
@@ -250,9 +277,10 @@ export default function StudentsPage() {
         fullName: formData.fullName,
         classNumber: formData.classNumber,
         phone: formData.phone || undefined,
-        directionId: formData.directionId,
+        directionId: formData.classNumber < 7 ? undefined : formData.directionId,
         subjectIds,
-        groups: formData.groups
+        groups: formData.groups || [],
+        isYoungStudent: formData.classNumber < 7
       };
 
       if (editingStudent) {
@@ -832,8 +860,8 @@ export default function StudentsPage() {
               </div>
             )}
 
-            {/* Шаг 2: Выбор направления и предметов */}
-            {step === 2 && (
+            {/* Шаг 2: Выбор направления и предметов (только для классов >= 7) */}
+            {step === 2 && formData.classNumber >= 7 && (
               <div className="space-y-4">
                 <Select
                   label="Yo'nalish"
@@ -951,11 +979,19 @@ export default function StudentsPage() {
             {/* Шаг 4: Выбор групп */}
             {step === 4 && (
               <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                  <p className="text-sm text-blue-900">
-                    <strong>Oxirgi qadam:</strong> Har bir fan uchun guruh tanlang
-                  </p>
-                </div>
+                {formData.classNumber < 7 ? (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
+                    <p className="text-sm text-green-900">
+                      <strong>Kichik sinf o'quvchisi:</strong> Guruhlarni tanlash ixtiyoriy. Agar tanlamasangiz, barcha mavjud guruhlar avtomatik qo'shiladi.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                    <p className="text-sm text-blue-900">
+                      <strong>Oxirgi qadam:</strong> Har bir fan uchun guruh tanlang
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-3 max-h-[400px] overflow-y-auto">
                   {getAllStudentSubjects().map((subject: any) => {
@@ -985,6 +1021,18 @@ export default function StudentsPage() {
                             <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
                               ⚠️ Bu fan uchun {formData.classNumber}-sinf guruhi yo'q
                             </div>
+                          ) : formData.classNumber < 7 ? (
+                            <Select
+                              value={selectedGroup?.groupId || ''}
+                              onChange={(e) => handleGroupSelect(subject._id, e.target.value)}
+                            >
+                              <option value="">Guruh tanlang (ixtiyoriy)</option>
+                              {subjectGroups.map((g: any) => (
+                                <option key={g._id} value={g._id}>
+                                  {g.letter}-guruh {g.teacherId ? `(${g.teacherId.fullName})` : ''}
+                                </option>
+                              ))}
+                            </Select>
                           ) : (
                             <Select
                               value={selectedGroup?.groupId || ''}
@@ -1006,7 +1054,7 @@ export default function StudentsPage() {
                 </div>
 
                 <div className="flex gap-2 pt-4 border-t">
-                  <Button type="button" variant="outline" onClick={() => setStep(2)}>
+                  <Button type="button" variant="outline" onClick={() => setStep(formData.classNumber < 7 ? 1 : 2)}>
                     Orqaga
                   </Button>
                   <Button type="submit" loading={loading} className="flex-1">
@@ -1070,11 +1118,15 @@ export default function StudentsPage() {
                         {student.fullName}
                       </h3>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {student.directionId && (
+                        {student.classNumber < 7 ? (
+                          <Badge variant="success" size="sm">
+                            Umumiy
+                          </Badge>
+                        ) : student.directionId ? (
                           <Badge variant="info" size="sm">
                             {student.directionId.nameUzb}
                           </Badge>
-                        )}
+                        ) : null}
                         <Badge variant="default" size="sm">
                           {student.classNumber}-sinf
                         </Badge>

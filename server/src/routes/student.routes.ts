@@ -201,7 +201,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 router.post('/', authenticate, async (req: AuthRequest, res) => {
   try {
     console.log('Creating student:', req.body);
-    const { fullName, classNumber, phone, directionId, subjectIds, groups } = req.body;
+    const { fullName, classNumber, phone, directionId, subjectIds, groups, isYoungStudent } = req.body;
     
     if (!fullName || !classNumber) {
       return res.status(400).json({ message: 'F.I.Sh va sinf majburiy' });
@@ -209,20 +209,31 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     
     const profileToken = uuidv4();
     
-    const student = new Student({
+    // For young students (< 7), directionId is not required
+    const studentData: any = {
       branchId: req.user?.branchId,
       fullName,
       classNumber,
       phone: phone || undefined,
-      directionId: directionId || undefined,
-      subjectIds: subjectIds || [],
       profileToken
-    });
+    };
     
+    // Only add directionId for older students
+    if (classNumber >= 7 && directionId) {
+      studentData.directionId = directionId;
+      studentData.subjectIds = subjectIds || [];
+    } else if (classNumber < 7) {
+      // For young students, collect subjects from their groups
+      studentData.subjectIds = [];
+    }
+    
+    const student = new Student(studentData);
     await student.save();
-    console.log('Student created:', student._id);
+    console.log('✅ Student created:', student._id);
     
-    if (groups && Array.isArray(groups)) {
+    // Handle group assignments
+    if (groups && Array.isArray(groups) && groups.length > 0) {
+      // User manually selected groups
       for (const group of groups) {
         if (group.groupId && group.subjectId) {
           await StudentGroup.create({
@@ -231,6 +242,34 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
             subjectId: group.subjectId
           });
         }
+      }
+      console.log(`✅ Added student to ${groups.length} manually selected groups`);
+    } else if (classNumber < 7) {
+      // For young students without manual selection, add to all class groups
+      const classGroups = await Group.find({
+        branchId: req.user?.branchId,
+        classNumber: classNumber
+      }).lean();
+      
+      console.log(`🔍 Found ${classGroups.length} groups for class ${classNumber}`);
+      
+      if (classGroups.length > 0) {
+        const studentGroups = classGroups.map(g => ({
+          studentId: student._id,
+          groupId: g._id,
+          subjectId: g.subjectId
+        }));
+        
+        await StudentGroup.insertMany(studentGroups);
+        
+        // Update student's subjectIds
+        const uniqueSubjectIds = [...new Set(classGroups.map(g => g.subjectId.toString()))];
+        student.subjectIds = uniqueSubjectIds as any;
+        await student.save();
+        
+        console.log(`✅ Auto-added young student to all ${classGroups.length} class groups`);
+      } else {
+        console.log(`⚠️ No groups found for class ${classNumber}, student created without groups`);
       }
     }
     
@@ -250,7 +289,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       profileUrl: `/p/${profileToken}`
     });
   } catch (error: any) {
-    console.error('Error creating student:', error);
+    console.error('❌ Error creating student:', error);
     res.status(500).json({ message: 'Server xatosi', error: error.message });
   }
 });
