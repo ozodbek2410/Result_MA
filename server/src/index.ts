@@ -114,6 +114,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    name: 'ResultMA API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      public: '/api/public',
+      docs: 'https://github.com/your-repo'
+    }
+  });
+});
+
 // Health check routes (no rate limiting)
 app.use('/api/health', healthRoutes);
 

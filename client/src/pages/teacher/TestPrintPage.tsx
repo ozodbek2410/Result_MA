@@ -313,12 +313,31 @@ export default function TestPrintPage() {
       <div>
         {pages.map((studentsOnPage, pageIndex) => (
           <div key={pageIndex} className="page-break" style={{
-            width: sheetsPerPage === 1 ? '50%' : '100%',
-            margin: '0 auto',
-            display: sheetsPerPage === 1 ? 'block' : 'grid',
-            gridTemplateColumns: sheetsPerPage === 2 ? '1fr 1fr' : sheetsPerPage === 4 ? '1fr 1fr' : '1fr',
-            gridTemplateRows: sheetsPerPage === 4 ? '1fr 1fr' : '1fr',
-            gap: sheetsPerPage > 1 ? '10mm' : '0'
+            width: '100%',
+            margin: '0',
+            display: sheetsPerPage === 1 ? 'flex' : 'grid',
+            justifyContent: sheetsPerPage === 1 ? 'center' : undefined,
+            gridTemplateColumns: 
+              sheetsPerPage === 6 ? '1fr 1fr 1fr' : 
+              sheetsPerPage === 4 ? '1fr 1fr' : 
+              sheetsPerPage === 2 ? '1fr 1fr' : 
+              '1fr',
+            gridTemplateRows: 
+              sheetsPerPage === 6 ? '1fr 1fr' : 
+              sheetsPerPage === 4 ? '1fr 1fr' : 
+              '1fr',
+            gap: 
+              sheetsPerPage === 6 ? '3mm' :
+              sheetsPerPage === 4 ? '5mm' : 
+              sheetsPerPage === 2 ? '8mm' : 
+              '0',
+            minHeight: '277mm',
+            padding: sheetsPerPage === 6 ? '5mm' : '10mm',
+            boxSizing: 'border-box',
+            pageBreakAfter: 'always',
+            breakAfter: 'page',
+            pageBreakInside: 'avoid',
+            breakInside: 'avoid'
           }}>
             {studentsOnPage.map((student) => {
               const variant = variants.find(v => v.studentId?._id === student._id);
@@ -328,7 +347,13 @@ export default function TestPrintPage() {
                 : test.questions;
 
               return (
-                <div key={student._id}>
+                <div key={student._id} style={{
+                  width: sheetsPerPage === 1 ? '50%' : '100%',
+                  height: '100%',
+                  overflow: 'visible',
+                  pageBreakInside: 'avoid',
+                  breakInside: 'avoid'
+                }}>
                   <AnswerSheet
                     student={{
                       fullName: student.fullName,
@@ -508,12 +533,12 @@ export default function TestPrintPage() {
           <div className="mb-4">
             <h3 className="font-semibold text-gray-900 mb-3">Sozlamalar</h3>
             <label className="block text-sm font-medium mb-2 text-gray-700">Bir sahifada varaqlar</label>
-            <div className="flex gap-2">
-              {[1, 2, 4].map((count) => (
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 2, 4, 6].map((count) => (
                 <button 
                   key={count}
                   onClick={() => setSheetsPerPage(count)} 
-                  className={`flex-1 py-2 rounded border ${sheetsPerPage === count ? 'bg-blue-500 text-white border-blue-500' : 'bg-white border-gray-300 hover:bg-gray-50'}`}
+                  className={`py-2 rounded border ${sheetsPerPage === count ? 'bg-blue-500 text-white border-blue-500' : 'bg-white border-gray-300 hover:bg-gray-50'}`}
                 >
                   {count}
                 </button>
@@ -544,7 +569,7 @@ export default function TestPrintPage() {
           .print-page {
             position: relative;
             width: 100%;
-            padding: 0.5cm;
+            padding: 0;
             box-sizing: border-box;
             page-break-after: always;
             page-break-inside: avoid;

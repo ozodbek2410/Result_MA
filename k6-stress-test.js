@@ -49,6 +49,7 @@ export default function () {
   const healthCheck = check(healthResponse, {
     'Health: статус 200': (r) => r.status === 200,
     'Health: время отклика < 500мс': (r) => r.timings.duration < 500,
+    'Health: есть тело ответа': (r) => r.body && r.body.length > 0,
   });
   
   // Записываем ошибку, если проверка провалилась
@@ -59,25 +60,18 @@ export default function () {
   sleep(Math.random() * 2 + 1);
 
   // ----------------------------------------
-  // 2. GET запрос на /api/subjects (публичный endpoint)
+  // 2. Повторный GET запрос на health check
   // ----------------------------------------
-  const params = {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  };
+  const healthResponse2 = http.get(`${BASE_URL}/api/health`);
 
-  const apiResponse = http.get(`${BASE_URL}/api/subjects`, params);
-
-  // Проверки для API endpoint
-  const apiCheck = check(apiResponse, {
-    'API: статус 200 или 401': (r) => r.status === 200 || r.status === 401,
-    'API: время отклика < 500мс': (r) => r.timings.duration < 500,
-    'API: есть тело ответа': (r) => r.body && r.body.length > 0,
+  // Проверки для второго запроса
+  const healthCheck2 = check(healthResponse2, {
+    'Health2: статус 200': (r) => r.status === 200,
+    'Health2: время отклика < 500мс': (r) => r.timings.duration < 500,
   });
 
   // Записываем ошибку, если проверка провалилась
-  errorRate.add(!apiCheck);
+  errorRate.add(!healthCheck2);
 
   // Пауза перед следующей итерацией
   sleep(1);

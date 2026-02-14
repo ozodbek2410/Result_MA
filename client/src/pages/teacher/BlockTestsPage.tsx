@@ -380,16 +380,17 @@ export default function BlockTestsPage() {
       localStorage.setItem('selectedStudents', JSON.stringify(selectedStudentsData));
       
       let url = '';
+      const studentParams = selectedStudentIds.length > 0 ? `?students=${selectedStudentIds.join(',')}` : '';
       
       switch (printMode) {
         case 'questions':
-          url = `/teacher/block-tests/${configBlockTest._id}/print/questions`;
+          url = `/teacher/block-tests/${configBlockTest._id}/print/questions${studentParams}`;
           break;
         case 'answers':
-          url = `/teacher/block-tests/${configBlockTest._id}/print/answers`;
+          url = `/teacher/block-tests/${configBlockTest._id}/print/sheets${studentParams}`;
           break;
         case 'sheets':
-          url = `/teacher/block-tests/${configBlockTest._id}/print/sheets`;
+          url = `/teacher/block-tests/${configBlockTest._id}/print/sheets${studentParams}`;
           break;
       }
       

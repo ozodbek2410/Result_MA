@@ -231,16 +231,17 @@ export default function ConfigureBlockTestPage() {
       localStorage.setItem('selectedStudents', JSON.stringify(selectedStudentsData));
       
       let url = '';
+      const studentParams = selectedStudentIds.length > 0 ? `?students=${selectedStudentIds.join(',')}` : '';
       
       switch (printMode) {
         case 'questions':
-          url = `/teacher/block-tests/${id}/print/questions`;
+          url = `/teacher/block-tests/${id}/print/questions${studentParams}`;
           break;
         case 'answers':
-          url = `/teacher/block-tests/${id}/print/answers`;
+          url = `/teacher/block-tests/${id}/print/sheets${studentParams}`;
           break;
         case 'sheets':
-          url = `/teacher/block-tests/${id}/print/sheets`;
+          url = `/teacher/block-tests/${id}/print/sheets${studentParams}`;
           break;
       }
       
