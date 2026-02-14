@@ -238,7 +238,7 @@ export default function ConfigureBlockTestPage() {
           url = `/teacher/block-tests/${id}/print/questions${studentParams}`;
           break;
         case 'answers':
-          url = `/teacher/block-tests/${id}/print/sheets${studentParams}`;
+          url = `/teacher/block-tests/${id}/answer-sheets${studentParams}`;
           break;
       }
       

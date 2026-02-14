@@ -387,10 +387,7 @@ export default function BlockTestsPage() {
           url = `/teacher/block-tests/${configBlockTest._id}/print/questions${studentParams}`;
           break;
         case 'answers':
-          url = `/teacher/block-tests/${configBlockTest._id}/print/sheets${studentParams}`;
-          break;
-        case 'sheets':
-          url = `/teacher/block-tests/${configBlockTest._id}/print/sheets${studentParams}`;
+          url = `/teacher/block-tests/${configBlockTest._id}/answer-sheets${studentParams}`;
           break;
       }
       
