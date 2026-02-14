@@ -240,9 +240,6 @@ export default function ConfigureBlockTestPage() {
         case 'answers':
           url = `/teacher/block-tests/${id}/print/sheets${studentParams}`;
           break;
-        case 'sheets':
-          url = `/teacher/block-tests/${id}/print/sheets${studentParams}`;
-          break;
       }
       
       // Используем navigate вместо window.open для сохранения контекста

@@ -174,14 +174,7 @@ export default function ConfigureTestPage() {
               >
           </Button>
 
-          <Button
-            onClick={() => setShowShuffleModal(true)}
-            variant="outline"
-            className="border-purple-300 text-purple-700 hover:bg-purple-50"
-          >
-            <Shuffle className="w-4 h-4 mr-2" />
-            Qayta aralashtirib berish
-          </Button>
+
         </div>
 
         {/* Students List */}

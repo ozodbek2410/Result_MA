@@ -136,7 +136,7 @@ router.post('/create-for-block-test/:studentId/:blockTestId', authenticate, asyn
     let studentGroupLetter = null;
     try {
       const studentGroup = await StudentGroup.findOne({ studentId: student._id })
-        .populate('groupId', 'letter')
+        .populate<{ groupId: { letter: string } }>('groupId', 'letter')
         .lean();
       
       studentGroupLetter = studentGroup?.groupId?.letter || null;

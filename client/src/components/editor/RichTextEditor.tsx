@@ -144,7 +144,7 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
             }
             
             // Очищаем редактор и вставляем части
-            editor.commands.clearContent({ emitUpdate: false });
+            editor.commands.clearContent();
             
             parts.forEach(part => {
               if (part.type === 'formula') {
