@@ -18,6 +18,7 @@ export interface IBlockTest extends Document {
   periodYear: number; // год
   subjectTests: {
     subjectId: mongoose.Types.ObjectId;
+    groupLetter?: string; // A, B, C, D или null для общих тестов
     questions: IQuestion[];
   }[];
   studentConfigs: IStudentConfig[];
@@ -46,6 +47,7 @@ const BlockTestSchema = new Schema<IBlockTest>({
   periodYear: { type: Number, required: true },
   subjectTests: [{
     subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
+    groupLetter: { type: String, required: false, default: null }, // A, B, C, D или null для общих
     questions: [Schema.Types.Mixed]
   }],
   studentConfigs: [StudentConfigSchema],

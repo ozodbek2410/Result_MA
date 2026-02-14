@@ -9,7 +9,7 @@ interface StudentSelectionPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   students: any[];
-  mode: 'all' | 'questions' | 'answers';
+  mode: 'questions' | 'answers' | 'sheets';
   onPrint: (selectedStudentIds: string[], fontSize?: number) => void;
 }
 
@@ -52,8 +52,6 @@ export default function StudentSelectionPrintModal({
 
   const getTitle = () => {
     switch (mode) {
-      case 'all':
-        return 'Hammasi chop etish';
       case 'questions':
         return 'Savollarni chop etish';
       case 'answers':
@@ -63,8 +61,6 @@ export default function StudentSelectionPrintModal({
 
   const getDescription = () => {
     switch (mode) {
-      case 'all':
-        return 'Savollar va javob varaqlari ketma-ket chop etiladi';
       case 'questions':
         return 'Faqat test savollari chop etiladi';
       case 'answers':

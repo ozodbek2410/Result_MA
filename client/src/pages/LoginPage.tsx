@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api from '../lib/api';
 import { Lock, User, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import '../landing-animations.css';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -25,17 +24,8 @@ export default function LoginPage() {
       const { data } = await api.post('/auth/login', { username, password });
       setAuth(data.user, data.token);
       
-      const role = data.user.role;
-      
-      if (role === 'SUPER_ADMIN') {
-        navigate('/admin/dashboard');
-      } else if (role === 'FIL_ADMIN') {
-        navigate('/custom/dashboard');
-      } else if (role === 'TEACHER') {
-        navigate('/teacher/groups');
-      } else {
-        navigate('/custom/dashboard');
-      }
+      // Redirect all users to teacher panel
+      navigate('/teacher/dashboard');
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || 'Login yoki parol noto\'g\'ri';
       setError(errorMessage);

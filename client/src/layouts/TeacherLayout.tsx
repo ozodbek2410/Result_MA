@@ -22,16 +22,17 @@ const MyGroupsPage = lazy(() => import('../pages/teacher/MyGroupsPage'));
 const GroupDetailPage = lazy(() => import('../pages/teacher/GroupDetailPage'));
 const TestsPage = lazy(() => import('../pages/teacher/TestsPage'));
 const CreateTestPage = lazy(() => import('../pages/teacher/CreateTestPage'));
-const ImportTestPage = lazy(() => import('../pages/teacher/ImportTestPage'));
 const BlockTestsPage = lazy(() => import('../pages/teacher/BlockTestsPage'));
 const ImportBlockTestPage = lazy(() => import('../pages/teacher/ImportBlockTestPage'));
+
+// Unified Test Import Page
+const UnifiedTestImportPage = lazy(() => import('../pages/teacher/Tests/TestImportPage'));
 const ConfigureBlockTestPage = lazy(() => import('../pages/teacher/ConfigureBlockTestPage'));
 const ConfigureTestPage = lazy(() => import('../pages/teacher/ConfigureTestPage'));
 const TeacherDashboardPage = lazy(() => import('../pages/teacher/TeacherDashboardPage'));
 const TestViewPage = lazy(() => import('../pages/teacher/TestViewPage'));
 const TestPrintPage = lazy(() => import('../pages/teacher/TestPrintPage'));
 const BlockTestVariantsPage = lazy(() => import('../pages/teacher/BlockTestVariantsPage'));
-const BlockTestPrintPage = lazy(() => import('../pages/teacher/BlockTestPrintPage'));
 const EditBlockTestPage = lazy(() => import('../pages/teacher/EditBlockTestPage'));
 const TitulGeneratorPage = lazy(() => import('../pages/teacher/TitulGeneratorPage'));
 const MergeBlockTestsPage = lazy(() => import('../pages/teacher/MergeBlockTestsPage'));
@@ -330,13 +331,18 @@ export default function TeacherLayout() {
               <Route path="/assignments/:id" element={<AssignmentDetailPage />} />
               <Route path="/tests" element={<TestsPage />} />
               <Route path="/tests/create" element={<CreateTestPage />} />
-              <Route path="/tests/import" element={<ImportTestPage />} />
+              
+              {/* Unified import route (handles both regular and block tests) */}
+              <Route path="/tests/import" element={<UnifiedTestImportPage />} />
+              
               <Route path="/tests/edit/:id" element={<CreateTestPage />} />
               <Route path="/tests/:id" element={<TestViewPage />} />
               <Route path="/tests/:id/configure" element={<ConfigureTestPage />} />
               <Route path="/tests/:id/print/:type" element={<TestPrintPage />} />
               <Route path="/block-tests" element={<BlockTestsPage />} />
               <Route path="/block-tests/create" element={<CreateBlockTestPage />} />
+              
+              {/* Block test import - still using old page (can be updated to unified later) */}
               <Route path="/block-tests/import" element={<ImportBlockTestPage />} />
               <Route path="/block-tests/merge" element={<MergeBlockTestsPage />} />
               <Route path="/block-tests/:id/configure" element={<ConfigureBlockTestPage />} />
@@ -344,7 +350,7 @@ export default function TeacherLayout() {
               <Route path="/block-tests/:id/edit" element={<EditBlockTestPage />} />
               <Route path="/block-tests/:id/edit-subject/:subjectIndex" element={<EditBlockTestSubjectPage />} />
               <Route path="/block-tests/:id/variants" element={<BlockTestVariantsPage />} />
-              <Route path="/block-tests/:id/print/:type" element={<BlockTestPrintPage />} />
+              <Route path="/block-tests/:id/print/:type" element={<TestPrintPage />} />
               <Route path="/titul-generator" element={<TitulGeneratorPage />} />
               <Route path="/scanner" element={<OMRCheckerPage />} />
             </Routes>

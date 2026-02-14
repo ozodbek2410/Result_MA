@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import StudentTestConfig from '../models/StudentTestConfig';
 import Student from '../models/Student';
+import StudentGroup from '../models/StudentGroup';
 import Direction from '../models/Direction';
 import Subject from '../models/Subject';
 import { authenticate, AuthRequest } from '../middleware/auth';
@@ -131,6 +132,20 @@ router.post('/create-for-block-test/:studentId/:blockTestId', authenticate, asyn
       return res.status(400).json({ message: 'Blok testda fanlar topilmadi' });
     }
     
+    // Получаем букву группы студента
+    let studentGroupLetter = null;
+    try {
+      const studentGroup = await StudentGroup.findOne({ studentId: student._id })
+        .populate('groupId', 'letter')
+        .lean();
+      
+      studentGroupLetter = studentGroup?.groupId?.letter || null;
+      console.log(`🔍 Creating config for student ${student.fullName}, group letter: ${studentGroupLetter || 'umumiy'}, studentGroup:`, studentGroup);
+    } catch (groupError) {
+      console.error('Error loading student group:', groupError);
+      // Продолжаем без буквы группы
+    }
+    
     // Дефолтное общее количество вопросов
     const DEFAULT_TOTAL_QUESTIONS = 90;
     
@@ -143,6 +158,7 @@ router.post('/create-for-block-test/:studentId/:blockTestId', authenticate, asyn
       return {
         subjectId: subject.subjectId,
         questionCount: Math.min(questionCount, subject.maxQuestions),
+        groupLetter: studentGroupLetter || undefined, // Добавляем букву группы
         isAdditional: false
       };
     });

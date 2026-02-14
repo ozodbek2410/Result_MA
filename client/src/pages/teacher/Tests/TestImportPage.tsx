@@ -1,0 +1,678 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/Button';
+import {
+  Upload,
+  X,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  ArrowLeft,
+  Trash2,
+  ImagePlus,
+} from 'lucide-react';
+import api from '@/lib/api';
+import { useImportTest } from '@/hooks/useTests';
+import { useImportBlockTest } from '@/hooks/useBlockTests';
+import RichTextEditor from '@/components/editor/RichTextEditor';
+import { convertLatexToTiptapJson } from '@/lib/latexUtils';
+import { useTestType } from '@/hooks/useTestType';
+import { TestTypeSwitch } from './components/TestTypeSwitch';
+import {
+  RegularTestImportForm,
+  type RegularTestFormData,
+} from './components/RegularTestImportForm';
+import {
+  BlockTestImportForm,
+  type BlockTestFormData,
+} from './components/BlockTestImportForm';
+
+interface ParsedQuestion {
+  text: string;
+  variants: { letter: string; text: string }[];
+  correctAnswer: string;
+  points: number;
+  image?: string;
+}
+
+/**
+ * Unified Test Import Page
+ * Handles both Regular and Block test imports with conditional rendering
+ */
+export default function TestImportPage() {
+  const navigate = useNavigate();
+  const { testType, setTestType, isRegular, isBlock } = useTestType('regular');
+
+  // React Query mutations
+  const importTestMutation = useImportTest();
+  const importBlockTestMutation = useImportBlockTest();
+
+  // Common state
+  const [file, setFile] = useState<File | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
+  const [error, setError] = useState<string>('');
+  const [step, setStep] = useState<'upload' | 'preview' | 'complete'>('upload');
+
+  // File handling
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setError('');
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+
+    setIsProcessing(true);
+    setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Determine format by file extension
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      const format = ['jpg', 'jpeg', 'png'].includes(ext || '') ? 'image' : 'word';
+      formData.append('format', format);
+
+      console.log('%c🤖 AI Parsing Started', 'color: #3b82f6; font-weight: bold; font-size: 14px');
+      console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #3b82f6');
+
+      const { data } = await api.post('/tests/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      // Log AI parsing logs
+      if (data.logs && data.logs.length > 0) {
+        console.log('%c📊 AI Parsing Logs:', 'color: #8b5cf6; font-weight: bold; font-size: 12px');
+        data.logs.forEach((log: any) => {
+          const timestamp = new Date(log.timestamp).toLocaleTimeString();
+          const keyInfo = log.keyIndex ? ` [Key #${log.keyIndex}]` : '';
+
+          let color = '#6b7280';
+          let icon = '•';
+
+          if (log.level === 'success') {
+            color = '#10b981';
+            icon = '✅';
+          } else if (log.level === 'error') {
+            color = '#ef4444';
+            icon = '❌';
+          } else if (log.level === 'warning') {
+            color = '#f59e0b';
+            icon = '⚠️';
+          } else if (log.level === 'info') {
+            color = '#3b82f6';
+            icon = '🔵';
+          }
+
+          console.log(
+            `%c${icon} [${timestamp}]${keyInfo} ${log.message}`,
+            `color: ${color}; font-size: 11px`
+          );
+        });
+        console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #3b82f6');
+      }
+
+      // Convert LaTeX formulas to TipTap JSON
+      const questionsWithFormulas = (data.questions || []).map((q: ParsedQuestion) => {
+        const hasFormulas = q.text.includes('\\(') || q.text.includes('\\[');
+        const questionJson = hasFormulas ? convertLatexToTiptapJson(q.text) : null;
+
+        // Convert variants with formulas
+        const convertedVariants = q.variants.map((v) => {
+          const variantHasFormulas = v.text.includes('\\(') || v.text.includes('\\[');
+          if (variantHasFormulas) {
+            const variantJson = convertLatexToTiptapJson(v.text);
+            return {
+              ...v,
+              text: variantJson || v.text,
+            };
+          }
+          return v;
+        });
+
+        return {
+          ...q,
+          text: questionJson || q.text,
+          variants: convertedVariants,
+        };
+      });
+
+      setParsedQuestions(questionsWithFormulas);
+      setStep('preview');
+    } catch (err: any) {
+      console.error('Import error:', err);
+
+      // Log error logs if available
+      if (err.response?.data?.logs) {
+        console.log('%c📊 AI Parsing Logs (Error):', 'color: #ef4444; font-weight: bold; font-size: 12px');
+        err.response.data.logs.forEach((log: any) => {
+          const timestamp = new Date(log.timestamp).toLocaleTimeString();
+          const keyInfo = log.keyIndex ? ` [Key #${log.keyIndex}]` : '';
+
+          let color = '#6b7280';
+          let icon = '•';
+
+          if (log.level === 'success') {
+            color = '#10b981';
+            icon = '✅';
+          } else if (log.level === 'error') {
+            color = '#ef4444';
+            icon = '❌';
+          } else if (log.level === 'warning') {
+            color = '#f59e0b';
+            icon = '⚠️';
+          } else if (log.level === 'info') {
+            color = '#3b82f6';
+            icon = '🔵';
+          }
+
+          console.log(
+            `%c${icon} [${timestamp}]${keyInfo} ${log.message}`,
+            `color: ${color}; font-size: 11px`
+          );
+        });
+        console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #ef4444');
+      }
+
+      const errorMessage = err.response?.data?.message || 'Faylni yuklashda xatolik yuz berdi';
+      const errorHint = err.response?.data?.hint || '';
+      setError(errorMessage + (errorHint ? '\n\n💡 ' + errorHint : ''));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Regular test confirmation
+  const handleRegularTestConfirm = async (formData: RegularTestFormData) => {
+    setIsProcessing(true);
+    setError('');
+
+    try {
+      console.log('🔄 Importing regular test...');
+
+      // Format questions for saving
+      const questionsFormatted = parsedQuestions.map((q) => {
+        let textToSave = q.text;
+
+        // If text is object (TipTap JSON), convert to string
+        if (typeof q.text === 'object' && q.text !== null) {
+          textToSave = JSON.stringify(q.text);
+        }
+
+        // Process variants
+        const variantsFormatted = (q.variants || []).map((v: any) => {
+          let variantText = v.text;
+          if (typeof v.text === 'object' && v.text !== null) {
+            variantText = JSON.stringify(v.text);
+          }
+          return { ...v, text: variantText };
+        });
+
+        return {
+          ...q,
+          text: textToSave,
+          variants: variantsFormatted,
+          imageUrl: q.image,
+          image: undefined,
+        };
+      });
+
+      await importTestMutation.mutateAsync({
+        questions: questionsFormatted,
+        testName: formData.testName,
+        groupId: formData.groupId,
+        subjectId: formData.subjectId,
+        classNumber: formData.classNumber,
+      });
+
+      console.log('✅ Regular test imported successfully');
+
+      setStep('complete');
+
+      setTimeout(() => {
+        navigate('/teacher/tests', { state: { refresh: true } });
+      }, 2000);
+    } catch (err: any) {
+      console.error('❌ Error importing regular test:', err);
+      setError(err.response?.data?.message || 'Saqlashda xatolik');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Block test confirmation
+  const handleBlockTestConfirm = async (formData: BlockTestFormData) => {
+    setIsProcessing(true);
+    setError('');
+
+    try {
+      console.log('🔄 Importing block test...');
+
+      // Format questions for saving
+      const questionsFormatted = parsedQuestions.map((q) => {
+        let textToSave = q.text;
+
+        if (typeof q.text === 'object' && q.text !== null) {
+          textToSave = JSON.stringify(q.text);
+        }
+
+        const variantsFormatted = (q.variants || []).map((v: any) => {
+          let variantText = v.text;
+          if (typeof v.text === 'object' && v.text !== null) {
+            variantText = JSON.stringify(v.text);
+          }
+          return { ...v, text: variantText };
+        });
+
+        return {
+          ...q,
+          text: textToSave,
+          variants: variantsFormatted,
+          imageUrl: q.image,
+          image: undefined,
+        };
+      });
+
+      await importBlockTestMutation.mutateAsync({
+        questions: questionsFormatted,
+        classNumber: formData.classNumber,
+        subjectId: formData.subjectId,
+        periodMonth: formData.periodMonth,
+        periodYear: formData.periodYear,
+      });
+
+      console.log('✅ Block test imported successfully');
+
+      setStep('complete');
+
+      setTimeout(() => {
+        navigate('/teacher/block-tests', { state: { refresh: true } });
+      }, 2000);
+    } catch (err: any) {
+      console.error('❌ Error importing block test:', err);
+      setError(err.response?.data?.message || 'Saqlashda xatolik');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Question editing handlers
+  const handleQuestionChange = (index: number, field: string, value: any) => {
+    const updated = [...parsedQuestions];
+    if (field === 'text') {
+      updated[index].text = value;
+    } else if (field === 'correctAnswer') {
+      updated[index].correctAnswer = value;
+    } else if (field === 'points') {
+      updated[index].points = parseInt(value) || 1;
+    }
+    setParsedQuestions(updated);
+  };
+
+  const handleVariantChange = (questionIndex: number, variantIndex: number, value: string) => {
+    const updated = [...parsedQuestions];
+    updated[questionIndex].variants[variantIndex].text = value;
+    setParsedQuestions(updated);
+  };
+
+  const handleAddVariant = (questionIndex: number) => {
+    const updated = [...parsedQuestions];
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const usedLetters = updated[questionIndex].variants.map((v) => v.letter);
+    const nextLetter = letters.find((l) => !usedLetters.includes(l));
+
+    if (nextLetter) {
+      updated[questionIndex].variants.push({
+        letter: nextLetter,
+        text: '',
+      });
+      setParsedQuestions(updated);
+    }
+  };
+
+  const handleRemoveVariant = (questionIndex: number, variantIndex: number) => {
+    const updated = [...parsedQuestions];
+    if (updated[questionIndex].variants.length > 0) {
+      updated[questionIndex].variants.splice(variantIndex, 1);
+      setParsedQuestions(updated);
+    }
+  };
+
+  const handleRemoveQuestion = (index: number) => {
+    const updated = parsedQuestions.filter((_, i) => i !== index);
+    setParsedQuestions(updated);
+  };
+
+  const handleAddQuestion = () => {
+    const newQuestion: ParsedQuestion = {
+      text: '',
+      variants: [
+        { letter: 'A', text: '' },
+        { letter: 'B', text: '' },
+        { letter: 'C', text: '' },
+        { letter: 'D', text: '' },
+      ],
+      correctAnswer: 'A',
+      points: 1,
+    };
+    setParsedQuestions([...parsedQuestions, newQuestion]);
+  };
+
+  const handleImageUpload = async (questionIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      console.log('🔄 Uploading image to server...');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const { data } = await api.post('/uploads', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      console.log('✅ Image uploaded:', data.path);
+
+      const updated = [...parsedQuestions];
+      updated[questionIndex].image = data.path;
+      setParsedQuestions(updated);
+    } catch (error) {
+      console.error('❌ Error uploading image:', error);
+      alert('Rasmni yuklashda xatolik');
+    }
+  };
+
+  const handleRemoveImage = (questionIndex: number) => {
+    const updated = [...parsedQuestions];
+    delete updated[questionIndex].image;
+    setParsedQuestions(updated);
+  };
+
+  const handleBack = () => {
+    if (step === 'preview') {
+      setStep('upload');
+      setParsedQuestions([]);
+    } else {
+      navigate(isRegular ? '/teacher/tests' : '/teacher/block-tests');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 -m-4 sm:-m-6 lg:-m-8">
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={handleBack}>
+                <ArrowLeft className="w-5 h-5 mr-2" />
+                Orqaga
+              </Button>
+              <div className="flex items-center gap-2">
+                <Upload className="w-6 h-6 text-primary" />
+                <h1 className="text-2xl font-bold">Test import qilish</h1>
+              </div>
+            </div>
+            {step === 'preview' && (
+              <div className="text-sm text-gray-600">
+                Topilgan savollar: <span className="font-bold text-gray-900">{parsedQuestions.length} ta</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Step 1: File Upload */}
+        {step === 'upload' && (
+          <div className="max-w-2xl mx-auto space-y-6">
+            <div className="text-center mb-8">
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Test import qilish</h3>
+              <p className="text-gray-600">Word, PDF yoki rasm formatida test yuklang</p>
+            </div>
+
+
+
+            <label className="block">
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer">
+                <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-900 font-medium text-lg mb-2">
+                  {file ? file.name : 'Faylni tanlang yoki bu yerga tashlang'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Word (.doc, .docx), PDF (.pdf) yoki Rasm (.jpg, .png)
+                </p>
+              </div>
+              <input
+                type="file"
+                className="hidden"
+                accept=".doc,.docx,.pdf,.jpg,.jpeg,.png"
+                onChange={handleFileChange}
+              />
+            </label>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-red-900">Xatolik</p>
+                  <p className="text-sm text-red-700 whitespace-pre-line">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {file && (
+              <div className="flex gap-3">
+                <Button onClick={handleUpload} disabled={isProcessing} className="flex-1" size="lg">
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Qayta ishlanmoqda...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5 mr-2" />
+                      Yuklash va tahlil qilish
+                    </>
+                  )}
+                </Button>
+                <Button variant="outline" onClick={() => setFile(null)} disabled={isProcessing} size="lg">
+                  Bekor qilish
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 2: Preview Questions */}
+        {step === 'preview' && (
+          <div className="space-y-6 pb-48 lg:pb-32">
+            {/* Test Settings Form - Conditional Rendering */}
+            <div className="bg-white border-2 border-blue-200 p-6 rounded-xl">
+              {isRegular ? (
+                <RegularTestImportForm
+                  parsedQuestions={parsedQuestions}
+                  onConfirm={handleRegularTestConfirm}
+                  isProcessing={isProcessing}
+                />
+              ) : (
+                <BlockTestImportForm
+                  parsedQuestions={parsedQuestions}
+                  onConfirm={handleBlockTestConfirm}
+                  isProcessing={isProcessing}
+                />
+              )}
+            </div>
+
+            {/* Add Question Button */}
+            <div className="flex justify-end">
+              <Button onClick={handleAddQuestion} variant="outline">
+                + Savol qo'shish
+              </Button>
+            </div>
+
+            {/* Questions List */}
+            <div className="space-y-4">
+              {parsedQuestions.map((q, idx) => (
+                <div key={idx} className="bg-white border-2 border-gray-200 p-6 rounded-xl space-y-4">
+                  {/* Question Header */}
+                  <div className="flex items-start gap-3">
+                    <span className="font-bold text-gray-700 text-lg mt-2">{idx + 1}.</span>
+                    <div className="flex-1 space-y-3">
+                      <div className="border rounded-lg">
+                        <RichTextEditor
+                          value={q.text}
+                          onChange={(value) => handleQuestionChange(idx, 'text', value)}
+                          placeholder="Savol matni..."
+                        />
+                      </div>
+
+                      {/* Image Upload */}
+                      {q.image ? (
+                        <div className="relative inline-block">
+                          <img
+                            src={q.image}
+                            alt="Question"
+                            className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg transition-colors"
+                            title="Rasmni o'chirish"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer">
+                          <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
+                            <ImagePlus className="w-5 h-5 text-gray-500" />
+                            <span className="text-sm text-gray-600">Rasm qo'shish</span>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleImageUpload(idx, e)}
+                          />
+                        </label>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveQuestion(idx)}
+                      className="text-red-500 hover:text-red-700 p-2"
+                      title="Savolni o'chirish"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Variants */}
+                  {q.variants.length > 0 ? (
+                    <div className="space-y-3 ml-8">
+                      {q.variants.map((v, vIdx) => (
+                        <div key={vIdx} className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleQuestionChange(idx, 'correctAnswer', v.letter)}
+                            className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
+                              q.correctAnswer === v.letter
+                                ? 'bg-green-500 border-green-600 text-white shadow-lg'
+                                : 'bg-gray-50 border-gray-300 text-gray-700 hover:border-green-400 hover:bg-green-50'
+                            }`}
+                            title={`Вариант ${v.letter} - to'g'ri javob sifatida belgilash`}
+                          >
+                            <span className="font-bold text-xl">{v.letter}</span>
+                          </button>
+                          <div className="flex-1 border rounded-lg">
+                            <RichTextEditor
+                              value={v.text}
+                              onChange={(value) => handleVariantChange(idx, vIdx, value)}
+                              placeholder="Variant matni..."
+                            />
+                          </div>
+
+                          <button
+                            onClick={() => handleRemoveVariant(idx, vIdx)}
+                            className="text-red-500 hover:text-red-700 p-2"
+                            title="Variantni o'chirish"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => handleAddVariant(idx)}
+                        className="ml-16 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        + Variant qo'shish
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="ml-8">
+                      <p className="text-sm text-gray-500 italic">Variantsiz savol (to'ldirish uchun)</p>
+                    </div>
+                  )}
+
+                  {/* Settings */}
+                  <div className="flex items-center gap-6 ml-8 pt-4 border-t">
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm text-gray-600 font-medium">Ball:</label>
+                      <input
+                        type="number"
+                        value={q.points}
+                        onChange={(e) => handleQuestionChange(idx, 'points', e.target.value)}
+                        className="w-20 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
+                        min="1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-red-900">Xatolik</p>
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Fixed Bottom Bar */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg xl:left-72 z-40 pb-20 xl:pb-0">
+              <div className="max-w-7xl mx-auto px-4 py-4 flex gap-3">
+                <Button variant="outline" onClick={handleBack} disabled={isProcessing} size="lg">
+                  Bekor qilish
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Complete */}
+        {step === 'complete' && (
+          <div className="max-w-md mx-auto text-center py-16">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-10 h-10 text-green-600" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">Muvaffaqiyatli yuklandi!</h3>
+            <p className="text-gray-600 text-lg">
+              {parsedQuestions.length} ta savol muvaffaqiyatli yuklandi va saqlandi.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

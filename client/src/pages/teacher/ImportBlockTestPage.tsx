@@ -32,6 +32,7 @@ export default function ImportBlockTestPage() {
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [subjects, setSubjects] = useState<any[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [groupLetter, setGroupLetter] = useState(''); // A, B, C, D или пусто для общих
   
   const [periodMonth, setPeriodMonth] = useState(new Date().getMonth() + 1);
   const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
@@ -155,10 +156,20 @@ export default function ImportBlockTestPage() {
       });
       
       // Используем React Query mutation
+      console.log('📤 Sending import request:', {
+        classNumber: parseInt(classNumber),
+        subjectId: selectedSubjectId,
+        groupLetter: groupLetter || null,
+        periodMonth,
+        periodYear,
+        questionsCount: questionsFormatted.length
+      });
+      
       const savedBlockTest = await importBlockTestMutation.mutateAsync({
         questions: questionsFormatted,
         classNumber: parseInt(classNumber),
         subjectId: selectedSubjectId,
+        groupLetter: groupLetter || null, // Пустая строка → null
         periodMonth,
         periodYear,
       });
@@ -353,7 +364,7 @@ export default function ImportBlockTestPage() {
         {step === 'preview' && (
           <div className="space-y-3 pb-48 lg:pb-32">
             <div className="bg-white border p-3 rounded-lg">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Sinf *</label>
                   <select
@@ -387,6 +398,21 @@ export default function ImportBlockTestPage() {
                       ))}
                     </select>
                   )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Guruh harfi</label>
+                  <select
+                    value={groupLetter}
+                    onChange={(e) => setGroupLetter(e.target.value)}
+                    className="w-full px-2 py-1.5 border rounded text-sm focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Umumiy</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                  </select>
                 </div>
 
                 <div>

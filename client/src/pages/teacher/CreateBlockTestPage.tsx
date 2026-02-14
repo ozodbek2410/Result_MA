@@ -21,6 +21,7 @@ export default function CreateBlockTestPage() {
     periodMonth: new Date().getMonth() + 1,
     periodYear: new Date().getFullYear(),
     subjectId: '',
+    groupLetter: '', // A, B, C, D или пусто для общих
     questions: [] as any[]
   });
 
@@ -67,6 +68,7 @@ export default function CreateBlockTestPage() {
         periodYear: formData.periodYear,
         subjectTests: [{
           subjectId: formData.subjectId,
+          groupLetter: formData.groupLetter || null, // Пустая строка → null
           questions: formData.questions.map((q: any, index: number) => ({
             questionNumber: index + 1,
             text: q.text || '',
@@ -186,6 +188,19 @@ export default function CreateBlockTestPage() {
                         {subject.nameUzb}
                       </option>
                     ))}
+                  </Select>
+
+                  <Select
+                    label="Guruh harfi (ixtiyoriy)"
+                    value={formData.groupLetter}
+                    onChange={(e) => setFormData({ ...formData, groupLetter: e.target.value })}
+                    className="text-lg"
+                  >
+                    <option value="">Umumiy (barcha guruhlar uchun)</option>
+                    <option value="A">A guruh</option>
+                    <option value="B">B guruh</option>
+                    <option value="C">C guruh</option>
+                    <option value="D">D guruh</option>
                   </Select>
 
                   <div className="flex gap-3 pt-6 border-t">

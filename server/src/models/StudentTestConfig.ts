@@ -3,6 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface ISubjectConfig {
   subjectId: mongoose.Types.ObjectId;
   questionCount: number;
+  groupLetter?: string; // буква группы для этого предмета (A, B, C, D или null)
   isAdditional: boolean; // дополнительный предмет (не из направления)
 }
 
@@ -25,6 +26,7 @@ export interface IStudentTestConfig extends Document {
 const SubjectConfigSchema = new Schema({
   subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
   questionCount: { type: Number, required: true, min: 1 },
+  groupLetter: { type: String, required: false }, // A, B, C, D или null
   isAdditional: { type: Boolean, default: false }
 }, { _id: false });
 

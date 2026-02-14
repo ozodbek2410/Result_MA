@@ -235,6 +235,16 @@ export default function EditBlockTestPage() {
               <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                 <div className="flex-1">
                   <span className="font-medium">{st.subjectId?.nameUzb || 'Fan'}</span>
+                  {st.groupLetter && (
+                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                      {st.groupLetter} guruh
+                    </span>
+                  )}
+                  {!st.groupLetter && (
+                    <span className="ml-2 px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded-full">
+                      Umumiy
+                    </span>
+                  )}
                   <span className="text-sm text-gray-600 ml-3">{st.questions?.length || 0} ta savol</span>
                 </div>
                 <div className="flex gap-2">

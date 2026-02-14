@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
-import { Plus, Trash2, Save, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, RotateCcw } from 'lucide-react';
 import api from '@/lib/api';
 
 interface StudentConfigModalProps {
@@ -28,6 +28,7 @@ export default function StudentConfigModal({
   const [allSubjects, setAllSubjects] = useState<any[]>([]);
   const [directionSubjects, setDirectionSubjects] = useState<any[]>([]);
   const [pointsConfig, setPointsConfig] = useState<any[]>([]);
+  const [availableLetters, setAvailableLetters] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +37,8 @@ export default function StudentConfigModal({
       setLoading(true);
       Promise.all([
         loadAllSubjects(),
-        loadDirectionSubjects()
+        loadDirectionSubjects(),
+        loadAvailableLetters()
       ]).finally(() => {
         console.log('✅ All data loaded');
       });
@@ -47,11 +49,26 @@ export default function StudentConfigModal({
     if (isOpen && directionSubjects.length > 0 && allSubjects.length > 0) {
       console.log('🔍 StudentConfigModal: config:', config);
       console.log('🔍 Direction subjects:', directionSubjects);
+      console.log('🔍 Student data:', student);
+      
+      // Получаем букву группы студента
+      const studentGroupLetter = student?.groupId?.letter || student?.groupLetter || null;
+      console.log('🔍 Student group letter:', studentGroupLetter);
       
       // Если у ученика есть конфигурация с предметами, используем её
       if (config && config.subjects && config.subjects.length > 0) {
         console.log('🔍 Using existing config subjects:', config.subjects.length);
-        setSubjects(config.subjects);
+        
+        // Если в конфигурации нет букв, подставляем букву группы студента
+        const subjectsWithLetters = config.subjects.map((s: any) => {
+          if (!s.groupLetter && studentGroupLetter) {
+            console.log(`🔍 Setting default letter ${studentGroupLetter} for subject ${s.subjectId?.nameUzb || s.subjectId}`);
+            return { ...s, groupLetter: studentGroupLetter };
+          }
+          return s;
+        });
+        
+        setSubjects(subjectsWithLetters);
       } else {
         // Если конфигурации нет, создаём из предметов направления
         console.log('🔍 Creating default subjects from direction');
@@ -65,6 +82,7 @@ export default function StudentConfigModal({
           return {
             subjectId: subject,
             questionCount: maxQuestions > 0 ? Math.min(10, maxQuestions) : 0,
+            groupLetter: studentGroupLetter || undefined, // Подставляем букву группы
             isAdditional: false
           };
         }).filter(Boolean); // Убираем null значения
@@ -80,7 +98,7 @@ export default function StudentConfigModal({
       
       setLoading(false);
     }
-  }, [config, isOpen, directionSubjects, allSubjects]);
+  }, [config, isOpen, directionSubjects, allSubjects, student]);
 
   const loadAllSubjects = async () => {
     try {
@@ -204,6 +222,21 @@ export default function StudentConfigModal({
     }
   };
 
+  const loadAvailableLetters = async () => {
+    try {
+      if (!blockTest?.classNumber) {
+        console.log('🔍 No classNumber in blockTest');
+        return;
+      }
+      
+      const { data } = await api.get(`/groups/letters/${blockTest.classNumber}`);
+      console.log('🔍 Available letters:', data);
+      setAvailableLetters(data);
+    } catch (error) {
+      console.error('Error loading available letters:', error);
+    }
+  };
+
   const getMaxQuestionsForSubject = (subjectId: string): number => {
     if (!blockTest?.subjectTests) return 0;
     const subjectTest = blockTest.subjectTests.find(
@@ -219,6 +252,12 @@ export default function StudentConfigModal({
     setSubjects(newSubjects);
   };
 
+  const handleGroupLetterChange = (index: number, letter: string) => {
+    const newSubjects = [...subjects];
+    newSubjects[index].groupLetter = letter === '' ? undefined : letter;
+    setSubjects(newSubjects);
+  };
+
   const handleAddSubject = () => {
     const existingIds = subjects.map(s => s.subjectId?._id || s.subjectId);
     const availableSubjects = allSubjects.filter(
@@ -230,11 +269,15 @@ export default function StudentConfigModal({
       const maxForSubject = getMaxQuestionsForSubject(firstAvailable._id);
       const defaultCount = maxForSubject > 0 ? Math.min(10, maxForSubject) : 0;
       
+      // Получаем букву группы студента для новых предметов
+      const studentGroupLetter = student?.groupId?.letter || student?.groupLetter || undefined;
+      
       setSubjects([
         ...subjects,
         {
           subjectId: firstAvailable,
           questionCount: defaultCount,
+          groupLetter: studentGroupLetter,
           isAdditional: true
         }
       ]);
@@ -262,8 +305,13 @@ export default function StudentConfigModal({
     const newSubjects = [...subjects];
     const subject = allSubjects.find(s => s._id === subjectId);
     const maxQuestions = getMaxQuestionsForSubject(subjectId);
+    
+    // Сохраняем текущую букву группы при смене предмета
+    const currentGroupLetter = newSubjects[index].groupLetter;
+    
     newSubjects[index].subjectId = subject;
     newSubjects[index].questionCount = maxQuestions > 0 ? Math.min(10, maxQuestions) : 0;
+    newSubjects[index].groupLetter = currentGroupLetter;
     setSubjects(newSubjects);
   };
 
@@ -356,6 +404,7 @@ export default function StudentConfigModal({
         subjects: validSubjects.map(s => ({
           subjectId: s.subjectId?._id || s.subjectId,
           questionCount: s.questionCount,
+          groupLetter: s.groupLetter || undefined,
           isAdditional: s.isAdditional || false
         })),
         pointsConfig: pointsConfig.sort((a, b) => a.from - b.from)
@@ -373,7 +422,7 @@ export default function StudentConfigModal({
   };
 
   const handleReset = async () => {
-    if (!confirm('Bu o\'quvchi uchun sozlamalarni tiklashni xohlaysizmi?\n\nBu amal:\n• Barcha fanlarni o\'chiradi\n• Blok test fanlariga qaytaradi\n• Dефолт savollar soniga qaytaradi')) {
+    if (!confirm('Bu o\'quvchi uchun sozlamalarni tiklashni xohlaysizmi?\n\nBu amal:\n• Barcha fanlarni o\'chiradi\n• Blok test fanlariga qaytaradi\n• Default savollar soniga qaytaradi')) {
       return;
     }
 
@@ -388,11 +437,12 @@ export default function StudentConfigModal({
         await api.post(`/student-test-configs/create-for-block-test/${student._id}/${blockTest._id}`);
       }
       
+      // Вызываем onSave для обновления списка и закрываем модал
       onSave();
       onClose();
     } catch (error: any) {
       console.error('Error resetting config:', error);
-      alert('Sozlamalarni tiklashda xatolik');
+      alert('Sozlamalarni tiklashda xatolik: ' + (error.response?.data?.message || error.message));
     } finally {
       setSaving(false);
     }
@@ -419,12 +469,12 @@ export default function StudentConfigModal({
                   {student?.directionId?.nameUzb || 'Yo\'nalish ko\'rsatilmagan'}
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
-                  ⓘ Yo'nalish fanlari va qo'shimcha fanlar
+                  ⓘ Har bir fan uchun guruh harfini tanlang (umumiy yoki A/B/C/D)
                 </p>
               </div>
             </div>
 
-        <div className="mb-6">
+          <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -445,8 +495,15 @@ export default function StudentConfigModal({
             </Button>
           </div>
 
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {subjects.map((subject, index) => {
+          {/* Заголовки колонок */}
+          <div className="flex items-center gap-3 px-4 pb-2 text-xs font-medium text-gray-600">
+            <div className="flex-1">Fan nomi</div>
+            <div className="w-32 text-center">Savollar</div>
+            <div className="w-32 text-center">Guruh</div>
+            <div className="w-10"></div>
+          </div>
+
+          <div className="space-y-3 max-h-96 overflow-y-auto">{subjects.map((subject, index) => {
               const subjectId = subject.subjectId?._id || subject.subjectId;
               const subjectName = subject.subjectId?.nameUzb || 'Fan';
               const isAdditional = subject.isAdditional;
@@ -553,6 +610,21 @@ export default function StudentConfigModal({
                     )}
                   </div>
 
+                  <div className="w-32">
+                    <Select
+                      value={subject.groupLetter || ''}
+                      onChange={(e) => handleGroupLetterChange(index, e.target.value)}
+                      className="w-full text-sm"
+                    >
+                      <option value="">Umumiy</option>
+                      {availableLetters.map(letter => (
+                        <option key={letter} value={letter}>
+                          {letter} guruh
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
                   <Button
                     variant="ghost"
                     size="sm"
@@ -655,13 +727,6 @@ export default function StudentConfigModal({
         <div className="flex gap-3">
           <Button
             variant="outline"
-            onClick={onClose}
-            disabled={saving}
-          >
-            Bekor qilish
-          </Button>
-          <Button
-            variant="outline"
             onClick={handleReset}
             disabled={saving}
             className="text-orange-600 hover:text-orange-700 hover:border-orange-300"
@@ -670,13 +735,14 @@ export default function StudentConfigModal({
             Tiklash
           </Button>
           <Button
-            onClick={handleSave}
+            onClick={async () => {
+              await handleSave();
+            }}
             className="flex-1"
             disabled={saving}
             loading={saving}
           >
-            <Save className="w-4 h-4 mr-2" />
-            Saqlash
+            Yopish
           </Button>
         </div>
           </>

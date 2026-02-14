@@ -174,19 +174,6 @@ export default function TestViewPage() {
         </div>
       </button>
 
-      {/* Additional Actions */}
-      {!hasVariants && (
-        <Button
-          onClick={handleGenerateVariants}
-          disabled={generating}
-          loading={generating}
-          className="w-full bg-purple-600 hover:bg-purple-700"
-        >
-          <Shuffle className="w-4 h-4 mr-2" />
-          {generating ? 'Variantlar yaratilmoqda...' : 'Variantlar yaratish'}
-        </Button>
-      )}
-
       {/* Students List */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="bg-slate-50 border-b border-slate-200 px-4 py-3">

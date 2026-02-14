@@ -183,10 +183,10 @@ export function convertTiptapJsonToText(json: any): string {
       return node.text || '';
     }
     
-    // Формула
+    // Формула - возвращаем в LaTeX формате для MathText
     if (node.type === 'formula') {
       const latex = node.attrs?.latex || '';
-      return `<span data-type="formula" data-latex="${latex}"></span>`;
+      return `\\(${latex}\\)`;
     }
     
     // Параграф

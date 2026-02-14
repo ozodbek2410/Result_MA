@@ -62,9 +62,10 @@ export default function BlockTestsPage() {
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [printMode, setPrintMode] = useState<'all' | 'questions' | 'answers'>('all');
+  const [printMode, setPrintMode] = useState<'questions' | 'answers' | 'sheets'>('questions');
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isShuffling, setIsShuffling] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
 
   // Prefetch cache для предзагрузки
@@ -236,15 +237,19 @@ export default function BlockTestsPage() {
   );
 
   const groupedArray = useMemo(() => {
+    console.log('📊 Grouping block tests:', blockTests.length);
+    
     const groupedTests = filteredTests.reduce((acc: any, test) => {
-      const dateKey = new Date(test.date).toISOString().split('T')[0];
-      const key = `${test.classNumber}-${dateKey}`;
+      // Группируем по классу и периоду (месяц+год), а не по дате создания
+      const key = `${test.classNumber}-${test.periodMonth}-${test.periodYear}`;
+      
+      console.log(`📝 Test: class=${test.classNumber}, period=${test.periodMonth}/${test.periodYear}, key=${key}`);
       
       if (!acc[key]) {
         acc[key] = {
           classNumber: test.classNumber,
           date: test.date,
-          dateKey: dateKey,
+          dateKey: new Date(test.date).toISOString().split('T')[0],
           periodMonth: test.periodMonth,
           periodYear: test.periodYear,
           tests: []
@@ -370,61 +375,32 @@ export default function BlockTestsPage() {
     try {
       console.log('handlePrint called with:', { selectedStudentIds, printMode, id: configBlockTest._id, fontSize });
       
-      const studentIdsParam = selectedStudentIds.join(',');
+      // Сохраняем выбранных студентов в localStorage
+      const selectedStudentsData = students.filter(s => selectedStudentIds.includes(s._id));
+      localStorage.setItem('selectedStudents', JSON.stringify(selectedStudentsData));
+      
       let url = '';
       
       switch (printMode) {
-        case 'all':
-          url = `/teacher/block-tests/${configBlockTest._id}/print-all?students=${studentIdsParam}&fontSize=${fontSize}`;
-          break;
         case 'questions':
-          url = `/teacher/block-tests/${configBlockTest._id}/print-questions?students=${studentIdsParam}&fontSize=${fontSize}`;
+          url = `/teacher/block-tests/${configBlockTest._id}/print/questions`;
           break;
         case 'answers':
-          url = `/teacher/block-tests/${configBlockTest._id}/print-answers?students=${studentIdsParam}&fontSize=${fontSize}`;
+          url = `/teacher/block-tests/${configBlockTest._id}/print/answers`;
+          break;
+        case 'sheets':
+          url = `/teacher/block-tests/${configBlockTest._id}/print/sheets`;
           break;
       }
       
       console.log('Opening URL:', url);
       
-      // Используем navigate вместо window.open для сохранения контекста
       navigate(url);
       
       setShowPrintModal(false);
     } catch (err: any) {
       console.error('Error printing:', err);
       error('Chop etishda xatolik');
-    }
-  };
-
-  const handleShuffle = async (selectedStudentIds: string[]) => {
-    try {
-      setSaving(true);
-      
-      // Generate variants via API
-      await api.post(`/block-tests/${configBlockTest._id}/generate-variants`, {
-        studentIds: selectedStudentIds
-      });
-      
-      success(`${selectedStudentIds.length} ta o'quvchi uchun variantlar aralashtirildi`);
-      setShowShuffleModal(false);
-      
-      // Обновляем только данные студентов, не открываем окно конфигурации
-      const { data: studentsData } = await api.get('/students', { 
-        params: { classNumber: configBlockTest.classNumber } 
-      });
-      setStudents(studentsData);
-      
-      // Обновляем конфигурации студентов
-      const studentIds = studentsData.map((s: any) => s._id);
-      const { data: configs } = await api.post('/student-test-configs/batch', { studentIds });
-      setStudentConfigs(configs);
-      
-    } catch (err: any) {
-      console.error('Error shuffling:', err);
-      error('Variantlarni aralashtirishda xatolik');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -691,11 +667,6 @@ export default function BlockTestsPage() {
             setShowActionsModal(false);
             navigate(`/teacher/block-tests/${configBlockTest._id}/answer-sheets`);
           }}
-          onPrintAll={() => {
-            setShowActionsModal(false);
-            setPrintMode('all');
-            setShowPrintModal(true);
-          }}
           onPrintQuestions={() => {
             setShowActionsModal(false);
             setPrintMode('questions');
@@ -707,23 +678,26 @@ export default function BlockTestsPage() {
             setShowPrintModal(true);
           }}
           onShuffle={async () => {
-            setShowActionsModal(false);
             // Сразу перемешиваем для всех студентов без модального окна
             try {
-              setSaving(true);
+              setIsShuffling(true);
               const studentIds = students.map(s => s._id);
-              await api.post(`/block-tests/${selectedBlockTest._id}/generate-variants`, {
+              await api.post(`/block-tests/${configBlockTest._id}/generate-variants`, {
                 studentIds
               });
-              success(`${studentIds.length} ta o'quvchi uchun variantlar aralashtirildi`);
-              await loadStudents(selectedBlockTest._id);
+              
+              // Показываем уведомление
+              success(`${studentIds.length} ta o'quvchi uchun variantlar muvaffaqiyatli aralashtirildi!`);
+              
+              await loadConfigData(configBlockTest._id);
             } catch (err: any) {
               console.error('Error shuffling:', err);
               error('Variantlarni aralashtirishda xatolik');
             } finally {
-              setSaving(false);
+              setIsShuffling(false);
             }
           }}
+          isShuffling={isShuffling}
         />
 
         {/* Print Modal */}
@@ -739,7 +713,7 @@ export default function BlockTestsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-rose-50 pb-24 sm:pb-24">
+    <div className="min-h-screen bg-white pb-24 sm:pb-24">
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <PageNavbar
@@ -785,12 +759,9 @@ export default function BlockTestsPage() {
                   onMouseEnter={() => prefetchBlockTestData(firstTest._id)}
                 >
                   <div 
-                    className="glass-card h-full border border-white/20 hover:border-white/40 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/30 hover:-translate-y-2 overflow-hidden cursor-pointer p-6 relative"
+                    className="bg-gradient-to-br from-white via-purple-50/30 to-pink-50/30 border border-purple-100 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer p-6 relative"
                     onClick={() => handleCardClick(firstTest)}
                   >
-                    {/* Background Gradient Decoration */}
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-400 to-pink-500 opacity-10 rounded-full -mr-16 -mt-16 group-hover:opacity-20 transition-opacity"></div>
-                    
                     {/* Icon & Actions */}
                     <div className="flex items-start justify-between mb-5 relative z-10">
                       <div className="w-16 h-16 bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
@@ -849,7 +820,7 @@ export default function BlockTestsPage() {
             })}
           </div>
         ) : (
-          <div className="glass-card border border-white/20 p-16 text-center">
+          <div className="bg-gradient-to-br from-white via-purple-50/30 to-pink-50/30 border border-purple-100 rounded-2xl shadow-lg p-16 text-center">
             <div className="w-24 h-24 bg-gradient-to-br from-purple-400 via-pink-500 to-rose-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-purple-500/30">
               <BookOpen className="w-12 h-12 text-white" />
             </div>

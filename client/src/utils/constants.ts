@@ -34,9 +34,6 @@ export const ROLES = {
 export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
-  LANDING: '/landing',
-  ADMIN: '/admin',
-  CUSTOM: '/custom',
   TEACHER: '/teacher',
 } as const;
 

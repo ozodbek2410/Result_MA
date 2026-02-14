@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/Button';
 import { FileText, Eye, Shuffle, Printer } from 'lucide-react';
 import { useState } from 'react';
+import AnswerKeyModal from './AnswerKeyModal';
 
 interface BlockTestActionsModalProps {
   isOpen: boolean;
@@ -11,10 +12,10 @@ interface BlockTestActionsModalProps {
   onViewAnswerKeys: () => void;
   onViewAllTests: () => void;
   onViewAnswerSheets: () => void;
-  onPrintAll: () => void;
   onPrintQuestions: () => void;
   onPrintAnswers: () => void;
   onShuffle: () => void;
+  isShuffling?: boolean;
 }
 
 export default function BlockTestActionsModal({
@@ -25,12 +26,15 @@ export default function BlockTestActionsModal({
   onViewAnswerKeys,
   onViewAllTests,
   onViewAnswerSheets,
-  onPrintAll,
   onPrintQuestions,
   onPrintAnswers,
   onShuffle,
+  isShuffling = false,
 }: BlockTestActionsModalProps) {
+  const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
+
   return (
+    <>
     <Dialog open={isOpen} onClose={onClose}>
       <DialogHeader>
         <DialogTitle>
@@ -39,6 +43,15 @@ export default function BlockTestActionsModal({
       </DialogHeader>
 
       <DialogContent>
+        {isShuffling && (
+          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
+            <div className="text-center">
+              <div className="animate-spin w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+              <p className="text-lg font-semibold text-gray-900">Aralashtirilmoqda...</p>
+              <p className="text-sm text-gray-600 mt-2">Iltimos kuting</p>
+            </div>
+          </div>
+        )}
         <div className="space-y-4">
           {/* Info Banner */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -57,47 +70,9 @@ export default function BlockTestActionsModal({
 
           {/* View Options */}
           <div className="space-y-2">
-            {/* Answer Keys */}
+            {/* Answer Sheets - renamed to Javoblar kaliti */}
             <div 
-              onClick={onViewAnswerKeys}
-              className="bg-orange-50 border border-orange-200 rounded-lg p-4 hover:bg-orange-100 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center">
-                    <Eye className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Javob kalitlari</h3>
-                    <p className="text-sm text-gray-600">Har bir variant uchun to'g'ri javoblar</p>
-                  </div>
-                </div>
-                <Eye className="w-5 h-5 text-orange-600" />
-              </div>
-            </div>
-
-            {/* All Tests */}
-            <div 
-              onClick={onViewAllTests}
-              className="bg-purple-50 border border-purple-200 rounded-lg p-4 hover:bg-purple-100 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Savollar bilan testlar</h3>
-                    <p className="text-sm text-gray-600">Har bir o'quvchi uchun savollar va javoblar</p>
-                  </div>
-                </div>
-                <Eye className="w-5 h-5 text-purple-600" />
-              </div>
-            </div>
-
-            {/* Answer Sheets */}
-            <div 
-              onClick={onViewAnswerSheets}
+              onClick={() => setShowAnswerKeyModal(true)}
               className="bg-green-50 border border-green-200 rounded-lg p-4 hover:bg-green-100 transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between">
@@ -106,7 +81,7 @@ export default function BlockTestActionsModal({
                     <FileText className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900">Bo'sh javob varaqlari</h3>
+                    <h3 className="font-bold text-gray-900">Javoblar kaliti</h3>
                     <p className="text-sm text-gray-600">O'quvchilar to'ldirishi uchun bo'sh varaqalar</p>
                   </div>
                 </div>
@@ -146,28 +121,11 @@ export default function BlockTestActionsModal({
                     <FileText className="w-5 h-5 text-white" />
                   </div>
                   <div className="text-left">
-                    <p className="font-semibold text-gray-900">Bo'sh javob varaqlari</p>
+                    <p className="font-semibold text-gray-900">Javoblar varaqasi</p>
                     <p className="text-xs text-gray-600">O'quvchilar to'ldirishi uchun</p>
                   </div>
                 </div>
                 <Printer className="w-5 h-5 text-green-600" />
-              </button>
-
-              {/* Print All */}
-              <button
-                onClick={onPrintAll}
-                className="w-full flex items-center justify-between p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                    <Printer className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-semibold">Hammasi</p>
-                    <p className="text-xs opacity-90">Savollar, javoblar va bo'sh varaqalar</p>
-                  </div>
-                </div>
-                <Printer className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -183,7 +141,8 @@ export default function BlockTestActionsModal({
             </Button>
             <Button
               onClick={onShuffle}
-              className="flex-1 bg-purple-600 hover:bg-purple-700"
+              disabled={isShuffling}
+              className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Shuffle className="w-5 h-5 mr-2" />
               Aralashtirib berish
@@ -192,5 +151,13 @@ export default function BlockTestActionsModal({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Answer Key Modal */}
+    <AnswerKeyModal
+      isOpen={showAnswerKeyModal}
+      onClose={() => setShowAnswerKeyModal(false)}
+      test={blockTest}
+    />
+  </>
   );
 }

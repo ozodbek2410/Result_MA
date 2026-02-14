@@ -160,35 +160,28 @@ export default function ConfigureTestPage() {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
-          {!hasVariants && (
-            <Button
-              onClick={handleGenerateVariants}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              <Shuffle className="w-4 h-4 mr-2" />
-              Variantlar yaratish
-            </Button>
-          )}
-          
-          {hasVariants && (
-            <>
-              <Button
-                onClick={() => setShowOptionsModal(true)}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                Ko'rish va chop etish
+          <Button
+            onClick={() => setShowOptionsModal(true)}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Eye className="w-4 h-4 mr-2" />
+            Ko'rish va chop etish
               </Button>
               
               <Button
                 onClick={handleGenerateVariants}
                 variant="outline"
               >
-                <Shuffle className="w-4 h-4 mr-2" />
-                Qayta aralashtirib berish
-              </Button>
-            </>
-          )}
+          </Button>
+
+          <Button
+            onClick={() => setShowShuffleModal(true)}
+            variant="outline"
+            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+          >
+            <Shuffle className="w-4 h-4 mr-2" />
+            Qayta aralashtirib berish
+          </Button>
         </div>
 
         {/* Students List */}

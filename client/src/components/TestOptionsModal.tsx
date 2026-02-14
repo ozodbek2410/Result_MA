@@ -5,6 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/Button';
 import { FileText, Eye, Shuffle, Printer } from 'lucide-react';
 import StudentSelectionModal from './StudentSelectionModal';
+import AnswerKeyModal from './AnswerKeyModal';
+import { useToast } from '@/hooks/useToast';
 
 interface TestOptionsModalProps {
   isOpen: boolean;
@@ -13,7 +15,7 @@ interface TestOptionsModalProps {
   onRefresh?: () => void;
 }
 
-type PrintType = 'questions' | 'answers' | 'sheets' | 'all' | null;
+type PrintType = 'questions' | 'answers' | 'sheets' | null;
 
 export default function TestOptionsModal({
   isOpen,
@@ -24,6 +26,7 @@ export default function TestOptionsModal({
   const navigate = useNavigate();
   const [variantCount, setVariantCount] = useState(0);
   const [showStudentSelection, setShowStudentSelection] = useState(false);
+  const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
   const [pendingPrintType, setPendingPrintType] = useState<PrintType>(null);
   
   useEffect(() => {
@@ -83,10 +86,12 @@ export default function TestOptionsModal({
     setShowStudentSelection(true);
   };
 
+  const [isShuffling, setIsShuffling] = useState(false);
+  const { success: showSuccess, error: showError } = useToast();
+
   const handleRegenerateVariants = async () => {
     try {
-      // Закрываем модалку
-      onClose();
+      setIsShuffling(true);
       
       // Перемешиваем варианты
       if (test?.subjectTests) {
@@ -95,17 +100,22 @@ export default function TestOptionsModal({
         await api.post(`/tests/${test._id}/generate-variants`);
       }
       
-      // Обновляем данные
+      // Обновляем счетчик вариантов
+      await fetchVariantCount();
+      
+      // Обновляем данные теста
       if (onRefresh) {
         await onRefresh();
       }
       
-      // Переоткрываем модалку через небольшую задержку
-      setTimeout(() => {
-        // Модалка откроется автоматически через onRefresh
-      }, 100);
+      // Показываем уведомление
+      showSuccess('Variantlar muvaffaqiyatli aralashtirildi!');
+      
     } catch (error) {
       console.error('Error regenerating variants:', error);
+      showError('Xatolik yuz berdi');
+    } finally {
+      setIsShuffling(false);
     }
   };
 
@@ -121,11 +131,6 @@ export default function TestOptionsModal({
 
   const handlePrintSheets = () => {
     setPendingPrintType('sheets');
-    setShowStudentSelection(true);
-  };
-
-  const handlePrintAll = () => {
-    setPendingPrintType('all');
     setShowStudentSelection(true);
   };
 
@@ -161,6 +166,15 @@ export default function TestOptionsModal({
         </DialogHeader>
 
       <DialogContent>
+        {isShuffling && (
+          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
+            <div className="text-center">
+              <div className="animate-spin w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+              <p className="text-lg font-semibold text-gray-900">Aralashtirilmoqda...</p>
+              <p className="text-sm text-gray-600 mt-2">Iltimos kuting</p>
+            </div>
+          </div>
+        )}
         <div className="space-y-3">
           {/* Info Banner */}
           {variantCount === 0 ? (
@@ -207,43 +221,9 @@ export default function TestOptionsModal({
             </div>
           )}
 
-          {/* Original Questions */}
+          {/* Answer Sheets - renamed to Javoblar kaliti */}
           <button
-            onClick={handleViewOriginal}
-            className="w-full flex items-center justify-between p-4 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center">
-                <Eye className="w-6 h-6 text-white" />
-              </div>
-              <div className="text-left">
-                <h3 className="font-bold text-gray-900">Javob kalitlari</h3>
-                <p className="text-sm text-gray-600">Har bir variant uchun to'g'ri javoblar</p>
-              </div>
-            </div>
-            <Eye className="w-5 h-5 text-orange-600" />
-          </button>
-
-          {/* Shuffled Variants */}
-          <button
-            onClick={handleViewVariants}
-            className="w-full flex items-center justify-between p-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center">
-                <FileText className="w-6 h-6 text-white" />
-              </div>
-              <div className="text-left">
-                <h3 className="font-bold text-gray-900">Savollar bilan testlar</h3>
-                <p className="text-sm text-gray-600">Har bir o'quvchi uchun savollar va javoblar</p>
-              </div>
-            </div>
-            <Eye className="w-5 h-5 text-purple-600" />
-          </button>
-
-          {/* Answer Sheets */}
-          <button
-            onClick={handlePrintAnswers}
+            onClick={() => setShowAnswerKeyModal(true)}
             className="w-full flex items-center justify-between p-4 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -251,7 +231,7 @@ export default function TestOptionsModal({
                 <FileText className="w-6 h-6 text-white" />
               </div>
               <div className="text-left">
-                <h3 className="font-bold text-gray-900">Bo'sh javob varaqlari</h3>
+                <h3 className="font-bold text-gray-900">Javoblar kaliti</h3>
                 <p className="text-sm text-gray-600">O'quvchilar to'ldirishi uchun bo'sh varaqalar</p>
               </div>
             </div>
@@ -288,28 +268,11 @@ export default function TestOptionsModal({
                     <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                   </div>
                   <div className="text-left min-w-0">
-                    <p className="font-semibold text-gray-900 text-xs sm:text-sm truncate">Bo'sh javob varaqlari</p>
+                    <p className="font-semibold text-gray-900 text-xs sm:text-sm truncate">Javoblar varaqasi</p>
                     <p className="text-xs text-gray-600 hidden sm:block">O'quvchilar to'ldirishi uchun</p>
                   </div>
                 </div>
                 <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
-              </button>
-
-              {/* Print All */}
-              <button
-                onClick={handlePrintAll}
-                className="w-full flex items-center justify-between p-2 sm:p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-              >
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                  </div>
-                  <div className="text-left min-w-0">
-                    <p className="font-semibold text-xs sm:text-sm truncate">Hammasi</p>
-                    <p className="text-xs opacity-90 hidden sm:block">Savollar, javoblar va bo'sh varaqalar</p>
-                  </div>
-                </div>
-                <Printer className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
               </button>
             </div>
           </div>
@@ -325,7 +288,8 @@ export default function TestOptionsModal({
             </Button>
             <Button
               onClick={handleRegenerateVariants}
-              className="w-full sm:flex-1 bg-purple-600 hover:bg-purple-700"
+              disabled={isShuffling}
+              className="w-full sm:flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Shuffle className="w-4 h-4 mr-2" />
               Aralashtirib berish
@@ -345,6 +309,13 @@ export default function TestOptionsModal({
       groupId={test?.groupId?._id || test?.groupId}
       onConfirm={handleStudentSelectionConfirm}
       title="Savollar chop etish"
+    />
+
+    {/* Answer Key Modal */}
+    <AnswerKeyModal
+      isOpen={showAnswerKeyModal}
+      onClose={() => setShowAnswerKeyModal(false)}
+      test={test}
     />
   </>
   );

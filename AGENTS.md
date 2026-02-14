@@ -593,7 +593,10 @@ beads/
 
 Нет активных задач. Жду новых поручений.
 
-**Последняя выполненная:**
+**Последние выполненные:**
+- ✅ Remove Landing Page - 2026-02-13
+- ✅ Remove Admin Panels - 2026-02-13
+- ✅ Unified Test Pages Refactor - 2026-02-13
 - ✅ DOCX import - OMML → LaTeX Direct Conversion - 2026-02-12
 
 

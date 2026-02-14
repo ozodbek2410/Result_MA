@@ -65,7 +65,7 @@ export default function TestsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 pb-24 sm:pb-24">
+    <div className="min-h-screen bg-white pb-24 sm:pb-24">
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <PageNavbar
@@ -94,7 +94,7 @@ export default function TestsPage() {
 
         {/* Tests Grid */}
         {filteredTests.length === 0 ? (
-          <div className="glass-card border border-white/20 p-16 text-center">
+          <div className="bg-gradient-to-br from-white via-emerald-50/30 to-green-50/30 border border-emerald-100 rounded-2xl shadow-lg p-16 text-center">
             <div className="w-24 h-24 bg-gradient-to-br from-green-400 via-emerald-500 to-teal-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-green-500/30">
               <FileText className="w-12 h-12 text-white" />
             </div>
@@ -127,12 +127,9 @@ export default function TestsPage() {
                 className="group animate-slide-in"
               >
                 <div 
-                  className="glass-card h-full border border-white/20 hover:border-white/40 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/30 hover:-translate-y-2 overflow-hidden cursor-pointer p-6 relative"
+                  className="bg-gradient-to-br from-white via-emerald-50/30 to-green-50/30 border border-emerald-100 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer p-6 relative"
                   onClick={() => handleCardClick(test)}
                 >
-                  {/* Background Gradient Decoration */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-400 to-emerald-500 opacity-10 rounded-full -mr-16 -mt-16 group-hover:opacity-20 transition-opacity"></div>
-                  
                   {/* Icon & Actions */}
                   <div className="flex items-start justify-between mb-5 relative z-10">
                     <div className="w-16 h-16 bg-gradient-to-br from-green-400 via-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">

@@ -32,6 +32,7 @@ export default function ConfigureBlockTestPage() {
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isShuffling, setIsShuffling] = useState(false);
   const [blockTest, setBlockTest] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [studentConfigs, setStudentConfigs] = useState<any[]>([]);
@@ -41,7 +42,7 @@ export default function ConfigureBlockTestPage() {
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [printMode, setPrintMode] = useState<'all' | 'questions' | 'answers'>('all');
+  const [printMode, setPrintMode] = useState<'questions' | 'answers'>('questions');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -225,18 +226,21 @@ export default function ConfigureBlockTestPage() {
 
   const handlePrint = async (selectedStudentIds: string[], fontSize: number = 12) => {
     try {
-      const studentIdsParam = selectedStudentIds.join(',');
+      // Сохраняем выбранных студентов в localStorage
+      const selectedStudentsData = students.filter(s => selectedStudentIds.includes(s._id));
+      localStorage.setItem('selectedStudents', JSON.stringify(selectedStudentsData));
+      
       let url = '';
       
       switch (printMode) {
-        case 'all':
-          url = `/teacher/block-tests/${id}/print-all?students=${studentIdsParam}&fontSize=${fontSize}`;
-          break;
         case 'questions':
-          url = `/teacher/block-tests/${id}/print-questions?students=${studentIdsParam}&fontSize=${fontSize}`;
+          url = `/teacher/block-tests/${id}/print/questions`;
           break;
         case 'answers':
-          url = `/teacher/block-tests/${id}/print-answers?students=${studentIdsParam}&fontSize=${fontSize}`;
+          url = `/teacher/block-tests/${id}/print/answers`;
+          break;
+        case 'sheets':
+          url = `/teacher/block-tests/${id}/print/sheets`;
           break;
       }
       
@@ -247,26 +251,6 @@ export default function ConfigureBlockTestPage() {
     } catch (err: any) {
       console.error('Error printing:', err);
       error('Chop etishda xatolik');
-    }
-  };
-
-  const handleShuffle = async (selectedStudentIds: string[]) => {
-    try {
-      setSaving(true);
-      
-      // Generate variants via API
-      await api.post(`/block-tests/${id}/generate-variants`, {
-        studentIds: selectedStudentIds
-      });
-      
-      success(`${selectedStudentIds.length} ta o'quvchi uchun variantlar aralashtirildi`);
-      setShowShuffleModal(false);
-      await loadData();
-    } catch (err: any) {
-      console.error('Error shuffling:', err);
-      error('Variantlarni aralashtirishda xatolik');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -515,11 +499,6 @@ export default function ConfigureBlockTestPage() {
           setShowActionsModal(false);
           navigate(`/teacher/block-tests/${id}/answer-sheets`);
         }}
-        onPrintAll={() => {
-          setShowActionsModal(false);
-          setPrintMode('all');
-          setShowPrintModal(true);
-        }}
         onPrintQuestions={() => {
           setShowActionsModal(false);
           setPrintMode('questions');
@@ -531,23 +510,26 @@ export default function ConfigureBlockTestPage() {
           setShowPrintModal(true);
         }}
         onShuffle={async () => {
-          setShowActionsModal(false);
           // Сразу перемешиваем для всех студентов без модального окна
           try {
-            setSaving(true);
+            setIsShuffling(true);
             const studentIds = students.map(s => s._id);
             await api.post(`/block-tests/${id}/generate-variants`, {
               studentIds
             });
-            success(`${studentIds.length} ta o'quvchi uchun variantlar aralashtirildi`);
+            
+            // Показываем уведомление
+            success(`${studentIds.length} ta o'quvchi uchun variantlar muvaffaqiyatli aralashtirildi!`);
+            
             await loadData();
           } catch (err: any) {
             console.error('Error shuffling:', err);
             error('Variantlarni aralashtirishda xatolik');
           } finally {
-            setSaving(false);
+            setIsShuffling(false);
           }
         }}
+        isShuffling={isShuffling}
       />
 
       {/* Print Modal */}

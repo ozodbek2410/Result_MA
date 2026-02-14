@@ -287,4 +287,26 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
+// Get available group letters by class number
+router.get('/letters/:classNumber', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const classNumber = parseInt(req.params.classNumber);
+    
+    const groups = await Group.find({
+      branchId: req.user?.branchId,
+      classNumber
+    })
+      .select('letter')
+      .lean();
+    
+    // Получаем уникальные буквы
+    const letters = [...new Set(groups.map(g => g.letter))].sort();
+    
+    res.json(letters);
+  } catch (error) {
+    console.error('Error fetching group letters:', error);
+    res.status(500).json({ message: 'Server xatosi' });
+  }
+});
+
 export default router;

@@ -204,39 +204,23 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
           .exec();
         
         const variants = [];
+        
         for (const sg of studentGroups) {
           const variantCode = uuidv4().substring(0, 8).toUpperCase();
-          const questionOrder = shuffleArray([...Array(test.questions.length).keys()]);
           
-          // Перемешиваем ответы для каждого вопроса
-          const shuffledQuestions = questionOrder.map((qIndex) => {
-            const originalQuestion = test.questions[qIndex] as any;
+          // 1. Перемешиваем порядок вопросов
+          const questionIndices = [...Array(test.questions.length).keys()];
+          const shuffledQuestionIndices = shuffleArray(questionIndices);
+          
+          // 2. Для каждого вопроса перемешиваем варианты ответов
+          const shuffledQuestions = shuffledQuestionIndices.map((qIndex) => {
+            const originalQuestion = test.questions[qIndex];
             
-            if (!originalQuestion.variants || !originalQuestion.correctAnswer) {
-              return {
-                ...originalQuestion,
-                originalQuestionIndex: qIndex
-              };
-            }
-            
-            const answerIndices = [...Array(originalQuestion.variants.length).keys()];
-            const shuffledAnswerIndices = shuffleArray(answerIndices);
-            
-            // Перемешиваем варианты И обновляем буквы A, B, C, D
-            const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
-            const shuffledVariants = shuffledAnswerIndices.map((idx, newIdx) => ({
-              ...originalQuestion.variants[idx],
-              letter: letters[newIdx] // Обновляем букву на новую позицию
-            }));
-            
-            const originalCorrectIndex = originalQuestion.correctAnswer.charCodeAt(0) - 65;
-            const newCorrectIndex = shuffledAnswerIndices.indexOf(originalCorrectIndex);
-            const newCorrectAnswer = String.fromCharCode(65 + newCorrectIndex);
+            // Перемешиваем варианты ответов используя ту же функцию
+            const shuffledQuestion = shuffleQuestionVariants(originalQuestion);
             
             return {
-              ...originalQuestion,
-              variants: shuffledVariants,
-              correctAnswer: newCorrectAnswer,
+              ...shuffledQuestion,
               originalQuestionIndex: qIndex
             };
           });
@@ -248,17 +232,18 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
             studentId: sg.studentId._id,
             variantCode,
             qrPayload,
-            questionOrder,
+            questionOrder: shuffledQuestionIndices,
             shuffledQuestions
           });
           
+          variant.markModified('shuffledQuestions');
           await variant.save();
           variants.push(variant);
         }
         
-        console.log(`Auto-generated ${variants.length} variants for test ${test._id}`);
+        console.log(`✅ Auto-generated ${variants.length} variants for test ${test._id}`);
       } catch (variantError) {
-        console.error('Error auto-generating variants:', variantError);
+        console.error('❌ Error auto-generating variants:', variantError);
         // Не прерываем создание теста, если не удалось создать варианты
       }
     }
@@ -269,9 +254,10 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// Helper function to shuffle answer variants (A, B, C, D) - SAME AS BLOCK TESTS
 router.post('/:id/generate-variants', authenticate, async (req, res) => {
   try {
-    const test = await Test.findById(req.params.id);
+    const test = await Test.findById(req.params.id).lean();
     if (!test) {
       return res.status(404).json({ message: 'Test topilmadi' });
     }
@@ -291,77 +277,32 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
     console.log('🗑️ Deleted', deleteResult.deletedCount, 'old variants');
     
     const variants = [];
+    
     for (const sg of studentGroups) {
       const variantCode = uuidv4().substring(0, 8).toUpperCase();
-      const questionOrder = shuffleArray([...Array(test.questions.length).keys()]);
       
-      // Перемешиваем ответы для каждого вопроса
-      const shuffledQuestions = questionOrder.map((qIndex) => {
-        const originalQuestion = test.questions[qIndex] as any;
+      // 1. Перемешиваем порядок вопросов
+      const questionIndices = [...Array(test.questions.length).keys()];
+      const shuffledQuestionIndices = shuffleArray(questionIndices);
+      
+      console.log(`\n👤 Student: ${(sg.studentId as any).fullName}`);
+      console.log('🔢 Question order:', shuffledQuestionIndices);
+      
+      // 2. Для каждого вопроса перемешиваем варианты ответов
+      const shuffledQuestions = shuffledQuestionIndices.map((qIndex) => {
+        const originalQuestion = test.questions[qIndex];
         
-        console.log(`\n🔀 Processing question ${qIndex + 1}:`, {
-          text: originalQuestion.text?.substring(0, 50),
-          hasVariants: !!originalQuestion.variants,
-          variantsCount: originalQuestion.variants?.length || 0,
-          correctAnswer: originalQuestion.correctAnswer
-        });
+        console.log(`\n📝 Question ${qIndex + 1}:`, originalQuestion.text?.substring(0, 50));
         
-        // Проверяем наличие variants и correctAnswer
-        if (!originalQuestion.variants || !originalQuestion.correctAnswer) {
-          console.log('⚠️ Question has no variants or correctAnswer, skipping shuffle');
-          return {
-            ...originalQuestion,
-            originalQuestionIndex: qIndex
-          };
-        }
-        
-        console.log('📝 BEFORE shuffle:');
-        originalQuestion.variants.forEach((v: any, i: number) => {
-          console.log(`  ${v.letter}: ${v.text?.substring(0, 30)}`);
-        });
-        console.log(`  Correct: ${originalQuestion.correctAnswer}`);
-        
-        // Создаем массив индексов ответов [0, 1, 2, 3, ...]
-        const answerIndices = [...Array(originalQuestion.variants.length).keys()];
-        
-        // Перемешиваем индексы
-        const shuffledAnswerIndices = shuffleArray(answerIndices);
-        
-        console.log('🔄 Shuffled indices:', shuffledAnswerIndices);
-        
-        // Создаем новый массив ответов в перемешанном порядке И обновляем буквы
-        const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
-        const shuffledVariants = shuffledAnswerIndices.map((oldIdx, newIdx) => {
-          const oldVariant = originalQuestion.variants[oldIdx];
-          const newLetter = letters[newIdx];
-          console.log(`  Moving ${oldVariant.letter} (idx ${oldIdx}) → ${newLetter} (idx ${newIdx})`);
-          return {
-            ...oldVariant,
-            letter: newLetter // Обновляем букву на новую позицию
-          };
-        });
-        
-        // Находим новую позицию правильного ответа
-        const originalCorrectIndex = originalQuestion.correctAnswer.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
-        const newCorrectIndex = shuffledAnswerIndices.indexOf(originalCorrectIndex);
-        const newCorrectAnswer = String.fromCharCode(65 + newCorrectIndex); // 0=A, 1=B, 2=C, 3=D
-        
-        console.log('✅ AFTER shuffle:');
-        shuffledVariants.forEach((v: any, i: number) => {
-          console.log(`  ${v.letter}: ${v.text?.substring(0, 30)}`);
-        });
-        console.log(`  Correct: ${newCorrectAnswer} (was ${originalQuestion.correctAnswer} at idx ${originalCorrectIndex}, now at idx ${newCorrectIndex})`);
+        // Перемешиваем варианты ответов
+        const shuffledQuestion = shuffleQuestionVariants(originalQuestion);
         
         return {
-          ...originalQuestion,
-          variants: shuffledVariants,
-          correctAnswer: newCorrectAnswer,
+          ...shuffledQuestion,
           originalQuestionIndex: qIndex
         };
       });
       
-      // Simple QR payload - just variant code (easy to scan)
-      // Full data can be retrieved via API using this code
       const qrPayload = variantCode;
       
       const variant = new StudentVariant({
@@ -369,7 +310,7 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
         studentId: sg.studentId._id,
         variantCode,
         qrPayload,
-        questionOrder,
+        questionOrder: shuffledQuestionIndices,
         shuffledQuestions
       });
       
@@ -378,39 +319,32 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
       
       await variant.save();
       
-      // Проверяем что сохранилось в базу
+      // Проверяем что сохранилось
       const savedVariant = await StudentVariant.findById(variant._id).lean();
-      console.log(`\n💾 SAVED to DB for student ${sg.studentId._id}:`, {
+      console.log(`\n💾 SAVED variant for ${(sg.studentId as any).fullName}:`, {
         variantCode: savedVariant?.variantCode,
         hasShuffledQuestions: !!savedVariant?.shuffledQuestions,
-        firstQuestionVariants: savedVariant?.shuffledQuestions?.[0]?.variants?.map((v: any) => 
-          `${v.letter}: ${v.text?.substring(0, 20)}`
-        ),
-        firstQuestionCorrect: savedVariant?.shuffledQuestions?.[0]?.correctAnswer
+        questionsCount: savedVariant?.shuffledQuestions?.length || 0,
+        firstQuestion: savedVariant?.shuffledQuestions?.[0] ? {
+          text: savedVariant.shuffledQuestions[0].text?.substring(0, 30),
+          correctAnswer: savedVariant.shuffledQuestions[0].correctAnswer,
+          variants: savedVariant.shuffledQuestions[0].variants?.map((v: any) => 
+            `${v.letter}: ${v.text?.substring(0, 15)}`
+          )
+        } : null
       });
       
       variants.push(variant);
-      
-      // Логируем КАЖДЫЙ вариант для проверки
-      const studentName = typeof sg.studentId === 'object' && sg.studentId !== null && 'fullName' in sg.studentId 
-        ? (sg.studentId as any).fullName 
-        : 'Unknown';
-      
-      if (shuffledQuestions.length > 0 && shuffledQuestions[0].variants) {
-        console.log(`📝 Saved variant for ${studentName}:`, {
-          variantCode,
-          firstQuestionVariants: shuffledQuestions[0].variants.map((v: any) => 
-            `${v.letter}: ${v.text?.substring(0, 20)}`
-          ),
-          firstQuestionCorrect: shuffledQuestions[0].correctAnswer
-        });
-      }
     }
     
-    console.log(`✅ Generated ${variants.length} variants for test ${test._id}`);
+    console.log(`\n✅ Generated ${variants.length} variants for test ${test._id}`);
     
-    res.json({ message: 'Variantlar yaratildi', count: variants.length, variants });
+    res.json({ 
+      message: 'Variantlar yaratildi', 
+      count: variants.length
+    });
   } catch (error) {
+    console.error('❌ Error generating variants:', error);
     res.status(500).json({ message: 'Server xatosi' });
   }
 });
@@ -783,6 +717,68 @@ router.post('/scan-results', authenticate, async (req: AuthRequest, res) => {
     res.status(500).json({ message: 'Natijalarni saqlashda xatolik', error: error.message });
   }
 });
+
+// Helper function to shuffle answer variants (A, B, C, D) - SAME AS BLOCK TESTS
+function shuffleQuestionVariants(question: any) {
+  // Если нет вариантов - возвращаем как есть
+  if (!question.variants || question.variants.length === 0) {
+    console.log('⚠️ Question has no variants:', question.text?.substring(0, 50));
+    return question;
+  }
+
+  // Deep copy вопроса
+  const shuffledQuestion = JSON.parse(JSON.stringify(question));
+  
+  console.log('🔀 BEFORE shuffle:', {
+    text: question.text?.substring(0, 50),
+    correctAnswer: question.correctAnswer,
+    variants: question.variants.map((v: any) => `${v.letter}: ${v.text?.substring(0, 20)}`)
+  });
+  
+  // Находим правильный вариант по букве
+  const originalCorrectVariant = question.variants.find(
+    (v: any) => v.letter === question.correctAnswer
+  );
+  
+  if (!originalCorrectVariant) {
+    console.log('⚠️ Could not find correct answer:', question.correctAnswer);
+    return question;
+  }
+  
+  console.log('✅ Original correct variant:', originalCorrectVariant.text?.substring(0, 30));
+  
+  // Перемешиваем массив вариантов
+  const shuffledVariants = shuffleArray([...question.variants]);
+  
+  console.log('🔄 After shuffleArray:', shuffledVariants.map((v: any) => `${v.letter}: ${v.text?.substring(0, 20)}`));
+  
+  // Находим новую позицию правильного ответа (по тексту)
+  const newIndex = shuffledVariants.findIndex(
+    (v: any) => v.text === originalCorrectVariant.text
+  );
+  
+  console.log('📍 Correct answer new index:', newIndex);
+  
+  if (newIndex !== -1) {
+    // Обновляем буквы A, B, C, D на новые позиции
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const reorderedVariants = shuffledVariants.map((v: any, idx: number) => ({
+      ...v,
+      letter: letters[idx]
+    }));
+    
+    // Обновляем правильный ответ на новую букву
+    shuffledQuestion.correctAnswer = letters[newIndex];
+    shuffledQuestion.variants = reorderedVariants;
+    
+    console.log('✅ AFTER shuffle:', {
+      correctAnswer: shuffledQuestion.correctAnswer,
+      variants: shuffledQuestion.variants.map((v: any) => `${v.letter}: ${v.text?.substring(0, 20)}`)
+    });
+  }
+  
+  return shuffledQuestion;
+}
 
 function shuffleArray(array: any[]) {
   const arr = [...array];

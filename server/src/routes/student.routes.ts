@@ -168,25 +168,46 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const skip = (pageNum - 1) * limitNum;
     
     const students = await Student.find(filter)
-      .select('fullName classNumber phone directionId branchId _id profileToken')
+      .select('fullName classNumber phone directionId branchId _id profileToken subjectIds')
       .populate('directionId', 'nameUzb')
       .populate('branchId', 'name')
+      .populate('subjectIds', 'nameUzb')
       .sort({ fullName: 1 })
       .skip(skip)
       .limit(limitNum)
       .lean()
       .exec();
     
-    // Return students with all necessary fields for display
-    const studentsWithDetails = students.map((student: any) => ({
-      _id: student._id,
-      fullName: student.fullName,
-      classNumber: student.classNumber,
-      phone: student.phone,
-      profileToken: student.profileToken,
-      directionId: student.directionId,
-      branchId: student.branchId
-    }));
+    // Получаем группы студентов через StudentGroup
+    const studentIds = students.map((s: any) => s._id);
+    const studentGroups = await StudentGroup.find({ 
+      studentId: { $in: studentIds } 
+    })
+      .populate('groupId', 'name letter classNumber')
+      .lean();
+    
+    // Создаем Map: studentId -> group
+    const studentGroupMap = new Map();
+    studentGroups.forEach((sg: any) => {
+      studentGroupMap.set(sg.studentId.toString(), sg.groupId);
+    });
+    
+    // Return students with all necessary fields for display including group info
+    const studentsWithDetails = students.map((student: any) => {
+      const group = studentGroupMap.get(student._id.toString());
+      return {
+        _id: student._id,
+        fullName: student.fullName,
+        classNumber: student.classNumber,
+        phone: student.phone,
+        profileToken: student.profileToken,
+        directionId: student.directionId,
+        branchId: student.branchId,
+        subjectIds: student.subjectIds,
+        groupId: group || null, // Добавляем информацию о группе
+        groupLetter: group?.letter || null // Добавляем букву группы
+      };
+    });
     
     // Cache the result
     cacheService.set(cacheKey, studentsWithDetails, CacheTTL.LIST);

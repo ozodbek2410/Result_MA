@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import { Printer, Settings } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { Printer, ArrowLeft } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
 
 export default function TestPrintPage() {
   const { id, type } = useParams<{ id: string; type: string }>();
+  const navigate = useNavigate();
   const [test, setTest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedStudents, setSelectedStudents] = useState<any[]>([]);
@@ -18,9 +18,16 @@ export default function TestPrintPage() {
   const [testsPerPage, setTestsPerPage] = useState(1);
   const [sheetsPerPage, setSheetsPerPage] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
-  const [fontSize, setFontSize] = useState(12);
+  const [fontSize, setFontSize] = useState(11);
+  const [fontFamily, setFontFamily] = useState('Calibri');
   const [spacing, setSpacing] = useState('normal');
-  const [showSubject, setShowSubject] = useState(false);
+  const [lineHeight, setLineHeight] = useState(1.5);
+  const [backgroundImage, setBackgroundImage] = useState<string>('/logo.png');
+  const [backgroundOpacity, setBackgroundOpacity] = useState(0.05);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
+  // Определяем тип теста по URL
+  const isBlockTest = window.location.pathname.includes('/block-tests/');
 
   useEffect(() => {
     fetchTest();
@@ -37,7 +44,11 @@ export default function TestPrintPage() {
 
   const fetchVariants = async () => {
     try {
-      const { data } = await api.get(`/student-variants/test/${id}`, {
+      const endpoint = isBlockTest 
+        ? `/student-variants/block-test/${id}`
+        : `/student-variants/test/${id}`;
+      
+      const { data } = await api.get(endpoint, {
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
       setVariants(data);
@@ -60,7 +71,8 @@ export default function TestPrintPage() {
 
   const fetchTest = async () => {
     try {
-      const { data } = await api.get(`/tests/${id}`);
+      const endpoint = isBlockTest ? `/block-tests/${id}` : `/tests/${id}`;
+      const { data } = await api.get(endpoint);
       setTest(data);
     } catch (error) {
       console.error('Error fetching test:', error);
@@ -71,6 +83,33 @@ export default function TestPrintPage() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBackgroundImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const resetBackground = () => {
+    setBackgroundImage('/logo.png');
+  };
+
+  const removeBackgroundImage = () => {
+    setBackgroundImage('');
+  };
+
+  const formatPeriod = (month: number, year: number) => {
+    const months = [
+      'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+      'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'
+    ];
+    return `${months[month - 1]} ${year}`;
   };
 
   const spacingClasses = {
@@ -106,10 +145,10 @@ export default function TestPrintPage() {
     }
 
     return (
-      <div className="max-w-5xl mx-auto px-4 print:px-0 print:max-w-full" style={{ fontSize: `${fontSize}px` }}>
+      <div className="print:px-0 print:max-w-full print:mx-0" style={{ fontSize: `${fontSize}px` }}>
         {pages.map((studentsOnPage, pageIndex) => (
-          <div key={pageIndex} className="page-break mb-8">
-            <div className={`grid gap-6 ${testsPerPage === 2 ? 'grid-cols-2' : testsPerPage === 4 ? 'grid-cols-2' : ''}`}>
+          <div key={pageIndex} className="page-break print-page mb-8 print:mb-0">
+            <div className={`grid gap-6 print:gap-0 ${testsPerPage === 2 ? 'grid-cols-2' : testsPerPage === 4 ? 'grid-cols-2' : ''}`}>
               {studentsOnPage.map((student) => {
                 const variant = variants.find(v => v.studentId?._id === student._id);
                 const variantCode = variant?.variantCode || '';
@@ -128,21 +167,51 @@ export default function TestPrintPage() {
                 });
 
                 return (
-                  <div key={student._id} className={testsPerPage > 1 ? 'border-2 border-gray-300 p-3' : ''}>
-                    <div className={`flex justify-between items-start ${spacingClasses.header}`}>
-                      <div className={testsPerPage > 1 ? 'text-sm' : ''}>
+                  <div 
+                    key={student._id} 
+                    className={testsPerPage > 1 ? 'border-2 border-gray-300 p-3' : ''} 
+                    style={{ 
+                      fontFamily,
+                      lineHeight,
+                      backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
+                      backgroundSize: 'contain',
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'no-repeat',
+                      position: 'relative'
+                    }}
+                  >
+                    {backgroundImage && (
+                      <div 
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          backgroundColor: 'white',
+                          opacity: 1 - backgroundOpacity,
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    )}
+                    
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                    <div className={`${spacingClasses.header}`}>
+                      <div className={`flex items-center gap-3 ${testsPerPage > 1 ? 'text-sm' : ''}`}>
                         <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
                           {student.fullName}
                         </h2>
-                        <p style={{ fontSize: `${fontSize - 2}px` }}>Variant: {variantCode}</p>
-                        {showSubject && (
-                          <p style={{ fontSize: `${fontSize - 2}px` }}>
-                            {test.subjectId?.nameUzb || test.subjectId || 'Test'} {test.classNumber || 10}{test.groupId?.nameUzb?.charAt(0) || 'A'}
-                          </p>
+                        <span style={{ fontSize: `${fontSize - 2}px` }}>| Variant: {variantCode}</span>
+                        {isBlockTest ? (
+                          <>
+                            <span style={{ fontSize: `${fontSize - 2}px` }}>| {test.classNumber}-sinf</span>
+                            <span style={{ fontSize: `${fontSize - 2}px` }}>| {formatPeriod(test.periodMonth, test.periodYear)}</span>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: `${fontSize - 2}px` }}>
+                            | {test.subjectId?.nameUzb || test.subjectId || 'Test'} {test.classNumber || 10}{test.groupId?.nameUzb?.charAt(0) || 'A'}
+                          </span>
                         )}
-                      </div>
-                      <div className="flex-shrink-0">
-                        <QRCodeSVG value={variantCode} size={testsPerPage > 1 ? 60 : 100} level="H" />
                       </div>
                     </div>
 
@@ -180,6 +249,7 @@ export default function TestPrintPage() {
                         })}
                       </div>
                     </div>
+                    </div>
                   </div>
                 );
               })}
@@ -212,7 +282,6 @@ export default function TestPrintPage() {
                   <p className="text-lg">{student.fullName}</p>
                   <p className="text-sm">Variant: {variantCode}</p>
                 </div>
-                <QRCodeSVG value={variantCode} size={100} level="H" />
               </div>
               <hr className="border-t-2 border-gray-800 mb-4" />
               <div>
@@ -286,81 +355,171 @@ export default function TestPrintPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 print:bg-white print-view-mode">
-      <div className="no-print mb-6 p-4 flex gap-3 bg-white max-w-5xl mx-auto">
-        <Button variant="outline" onClick={() => setShowSettings(!showSettings)}>
-          <Settings className="w-4 h-4 mr-2" />
-          Sozlamalar
-        </Button>
-        <Button onClick={handlePrint}>
-          <Printer className="w-4 h-4 mr-2" />
-          Chop etish
-        </Button>
+    <div className="min-h-screen bg-gray-50 print:bg-white print-view-mode print:min-h-0 print:m-0 print:p-0">
+      {/* Top Bar - Only Print Button */}
+      <div className="no-print mb-4 p-3 bg-white border-b shadow-sm">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => navigate(-1)}>
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Orqaga
+            </Button>
+            <Button size="sm" onClick={handlePrint}>
+              <Printer className="w-4 h-4 mr-1" />
+              Chop etish
+            </Button>
+            {(type === 'questions' || type === 'sheets') && (
+              <Button size="sm" variant="outline" onClick={() => setShowSettingsPanel(!showSettingsPanel)}>
+                Sozlamalar
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
-      {showSettings && (type === 'sheets' || type === 'questions') && (
-        <div className="no-print fixed top-20 right-4 z-50 bg-white border-2 border-gray-300 rounded-lg shadow-xl p-4 w-72">
-          <h3 className="font-bold text-lg mb-4">Chop etish sozlamalari</h3>
+      {/* Fixed Side Panel */}
+      {showSettingsPanel && type === 'questions' && (
+        <div className="no-print fixed right-4 top-20 w-80 bg-white border shadow-lg rounded-lg p-4 max-h-[calc(100vh-100px)] overflow-y-auto z-50">
+          <h3 className="font-semibold text-gray-900 mb-4">Sozlamalar</h3>
 
-          {type === 'questions' && (
-            <>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Shrift o'lchami: {fontSize}px</label>
-                <input type="range" min="8" max="18" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} className="w-full" />
+          <div className="space-y-4">
+              {/* Text Settings */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Shrift turi</label>
+                <select 
+                  value={fontFamily} 
+                  onChange={(e) => setFontFamily(e.target.value)}
+                  className="w-full p-2 border rounded text-sm"
+                  style={{ fontFamily }}
+                >
+                  <option value="Arial">Arial</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Calibri">Calibri</option>
+                  <option value="Georgia">Georgia</option>
+                  <option value="Verdana">Verdana</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">O'lchami: {fontSize}px</label>
+                <input 
+                  type="range" 
+                  min="8" 
+                  max="18" 
+                  value={fontSize} 
+                  onChange={(e) => setFontSize(Number(e.target.value))} 
+                  className="w-full"
+                />
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Oraliq</label>
-                <select value={spacing} onChange={(e) => setSpacing(e.target.value)} className="w-full p-2 border rounded">
-                  <option value="compact">Zich</option>
-                  <option value="normal">O'rtacha</option>
-                  <option value="relaxed">Keng</option>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Qatorlar oralig'i</label>
+                <select 
+                  value={lineHeight} 
+                  onChange={(e) => setLineHeight(Number(e.target.value))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value={1}>1.0</option>
+                  <option value={1.15}>1.15</option>
+                  <option value={1.5}>1.5</option>
+                  <option value={2}>2.0</option>
                 </select>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Ustunlar soni</label>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Ustunlar</label>
                 <div className="flex gap-2">
-                  <button onClick={() => setColumnsCount(1)} className={`flex-1 py-2 px-4 rounded border-2 ${columnsCount === 1 ? 'bg-blue-500 text-white' : 'bg-white'}`}>1</button>
-                  <button onClick={() => setColumnsCount(2)} className={`flex-1 py-2 px-4 rounded border-2 ${columnsCount === 2 ? 'bg-blue-500 text-white' : 'bg-white'}`}>2</button>
+                  <button 
+                    onClick={() => setColumnsCount(1)} 
+                    className={`flex-1 py-2 rounded text-sm ${columnsCount === 1 ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                  >
+                    1
+                  </button>
+                  <button 
+                    onClick={() => setColumnsCount(2)} 
+                    className={`flex-1 py-2 rounded text-sm ${columnsCount === 2 ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                  >
+                    2
+                  </button>
                 </div>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Bir sahifada testlar</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[1, 2, 4].map((count) => (
-                    <button key={count} onClick={() => setTestsPerPage(count)} className={`py-2 px-4 rounded border-2 ${testsPerPage === count ? 'bg-blue-500 text-white' : 'bg-white'}`}>{count}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <label className="flex items-center gap-2">
+              {/* Background Settings */}
+              <div className="border-t pt-4">
+                <label className="block text-xs font-medium text-gray-700 mb-2">Fon rasmi</label>
+                
+                <div className="flex gap-2 mb-2">
                   <input
-                    type="checkbox"
-                    checked={showSubject}
-                    onChange={(e) => setShowSubject(e.target.checked)}
-                    className="w-4 h-4 accent-blue-500"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="background-upload"
                   />
-                  <span className="text-sm">Fan nomini ko'rsatish</span>
-                </label>
-              </div>
-            </>
-          )}
-
-          {type === 'sheets' && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Bir sahifada varaqlar</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 4].map((count) => (
-                  <button key={count} onClick={() => setSheetsPerPage(count)} className={`py-2 px-4 rounded border-2 ${sheetsPerPage === count ? 'bg-blue-500 text-white' : 'bg-white'}`}>{count}</button>
-                ))}
+                  <label
+                    htmlFor="background-upload"
+                    className="flex-1 px-3 py-1.5 bg-blue-500 text-white rounded cursor-pointer hover:bg-blue-600 text-xs text-center"
+                  >
+                    Yuklash
+                  </label>
+                  
+                  <button
+                    onClick={resetBackground}
+                    className="flex-1 px-3 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
+                  >
+                    Logo
+                  </button>
+                  
+                  {backgroundImage && (
+                    <button
+                      onClick={removeBackgroundImage}
+                      className="flex-1 px-3 py-1.5 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                    >
+                      O'chirish
+                    </button>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Shaffoflik: {Math.round(backgroundOpacity * 100)}%</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={backgroundOpacity}
+                    onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+                
+                {backgroundImage && (
+                  <div className="mt-2 p-2 bg-gray-50 rounded border">
+                    <img src={backgroundImage} alt="Preview" className="h-16 mx-auto object-contain" />
+                  </div>
+                )}
               </div>
             </div>
-          )}
+        </div>
+      )}
 
-          <button onClick={() => setShowSettings(false)} className="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded">Yopish</button>
+      {showSettingsPanel && type === 'sheets' && (
+        <div className="no-print fixed right-4 top-20 w-80 bg-white border shadow-lg rounded-lg p-4 z-50">
+          <div className="mb-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Sozlamalar</h3>
+            <label className="block text-sm font-medium mb-2 text-gray-700">Bir sahifada varaqlar</label>
+            <div className="flex gap-2">
+              {[1, 2, 4].map((count) => (
+                <button 
+                  key={count}
+                  onClick={() => setSheetsPerPage(count)} 
+                  className={`flex-1 py-2 rounded border ${sheetsPerPage === count ? 'bg-blue-500 text-white border-blue-500' : 'bg-white border-gray-300 hover:bg-gray-50'}`}
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -374,20 +533,55 @@ export default function TestPrintPage() {
             margin: 0 !important; 
             padding: 0 !important; 
           }
+          
+          /* Настройки страницы без отступов */
+          @page { 
+            size: A4 portrait; 
+            margin: 0;
+          }
+          
+          /* Каждая печатная страница без рамки */
+          .print-page {
+            position: relative;
+            width: 100%;
+            padding: 0.5cm;
+            box-sizing: border-box;
+            page-break-after: always;
+            page-break-inside: avoid;
+            break-after: page;
+            break-inside: avoid;
+          }
+          
+          .print-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+          
           .no-print { display: none !important; }
-          .page-break { page-break-after: always; page-break-inside: avoid; }
-          .page-break:last-child { page-break-after: auto !important; }
-          .page-break-inside-avoid { page-break-inside: avoid; }
-          @page { size: A4 portrait; margin: 1cm; }
+          .page-break-inside-avoid { 
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          
           aside, nav, header, .sidebar { display: none !important; }
           
-          /* Центрирование контента при печати */
-          .max-w-5xl {
-            max-width: 100% !important;
-            margin: 0 auto !important;
-            padding: 0 !important;
+          /* Принудительная печать фоновых изображений */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
           }
         }
+        
+        /* Стили для экрана - показываем рамку в превью */
+        @media screen {
+          .print-page {
+            border: 1px dashed #ccc;
+            margin-bottom: 2rem;
+            padding: 1rem;
+          }
+        }
+        
         body:has(.print-view-mode) aside,
         body:has(.print-view-mode) nav,
         body:has(.print-view-mode) header,

@@ -1,6 +1,7 @@
 import express from 'express';
 import BlockTest from '../models/BlockTest';
 import Student from '../models/Student';
+import StudentGroup from '../models/StudentGroup';
 import StudentVariant from '../models/StudentVariant';
 import StudentTestConfig from '../models/StudentTestConfig';
 import { authenticate, AuthRequest } from '../middleware/auth';
@@ -11,7 +12,9 @@ const router = express.Router();
 // Import block test from file
 router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
   try {
-    const { questions, classNumber, subjectId, periodMonth, periodYear } = req.body;
+    console.log('📥 Import request body:', JSON.stringify(req.body, null, 2));
+    
+    const { questions, classNumber, subjectId, groupLetter, periodMonth, periodYear } = req.body;
 
     if (!questions || questions.length === 0) {
       return res.status(400).json({ message: 'Savollar topilmadi' });
@@ -29,45 +32,118 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ message: 'Davr tanlanmagan' });
     }
 
-    // Ищем существующий блок-тест для этого класса и периода
-    let blockTest = await BlockTest.findOne({
-      branchId: req.user?.branchId,
-      classNumber,
-      periodMonth,
-      periodYear
+    console.log('✅ Validation passed, creating/updating block test...');
+    console.log('📝 Period:', periodMonth, '/', periodYear, 'Types:', typeof periodMonth, typeof periodYear);
+    console.log('📝 Class:', classNumber, 'Type:', typeof classNumber);
+    console.log('📝 Subject:', subjectId);
+    console.log('📝 groupLetter:', groupLetter);
+    console.log('📝 BranchId:', req.user?.branchId);
+
+    // Преобразуем в числа для корректного поиска
+    const periodMonthNum = parseInt(periodMonth as any);
+    const periodYearNum = parseInt(periodYear as any);
+    const classNumberNum = parseInt(classNumber as any);
+    
+    console.log('📝 Converted values:', {
+      periodMonth: periodMonthNum,
+      periodYear: periodYearNum,
+      classNumber: classNumberNum
     });
 
+    // Ищем существующий блок-тест для этого класса и периода (месяц+год)
+    const searchQuery = {
+      branchId: req.user?.branchId,
+      classNumber: classNumberNum,
+      periodMonth: periodMonthNum,
+      periodYear: periodYearNum
+    };
+    
+    console.log('🔍 Searching for existing block test with query:', JSON.stringify(searchQuery));
+    
+    let blockTest = await BlockTest.findOne(searchQuery);
+    
+    console.log('🔍 Search result:', blockTest ? `Found: ${blockTest._id}` : 'Not found - will create new');
+
     if (blockTest) {
-      blockTest.subjectTests.push({
-        subjectId,
-        questions
+      console.log('📦 Found existing block test:', blockTest._id);
+      console.log('📦 Block test period:', blockTest.periodMonth, '/', blockTest.periodYear);
+      console.log('📦 Block test class:', blockTest.classNumber);
+      console.log('📦 Existing subjects:', blockTest.subjectTests.length);
+      
+      // Проверяем, нет ли уже ТОЧНО такого же предмета с такой же буквой
+      const existingSubjectIndex = blockTest.subjectTests.findIndex((st: any) => {
+        const sameSubject = st.subjectId.toString() === subjectId;
+        const sameLetter = st.groupLetter === (groupLetter || null);
+        return sameSubject && sameLetter;
       });
+      
+      if (existingSubjectIndex !== -1) {
+        console.log('⚠️ Exact same subject with same letter already exists, REPLACING questions...');
+        // Заменяем ТОЛЬКО вопросы, не весь предмет
+        blockTest.subjectTests[existingSubjectIndex].questions = questions as any;
+        blockTest.markModified('subjectTests');
+      } else {
+        console.log('✅ Adding new subject/letter combination to existing block test');
+        blockTest.subjectTests.push({
+          subjectId: subjectId as any,
+          groupLetter: groupLetter || null,
+          questions: questions as any
+        } as any);
+      }
+      
       await blockTest.save();
+      console.log('✅ Block test updated, total subjects:', blockTest.subjectTests.length);
     } else {
+      console.log('🆕 Creating new block test...');
+      console.log('🆕 Parameters:', {
+        branchId: req.user?.branchId,
+        classNumber: classNumberNum,
+        periodMonth: periodMonthNum,
+        periodYear: periodYearNum,
+        subjectId,
+        groupLetter: groupLetter || null
+      });
+      
       // Создаем новый блок-тест
       blockTest = new BlockTest({
         branchId: req.user?.branchId,
-        classNumber,
+        classNumber: classNumberNum,
         date: new Date(),
-        periodMonth,
-        periodYear,
+        periodMonth: periodMonthNum,
+        periodYear: periodYearNum,
         subjectTests: [{
-          subjectId,
-          questions
-        }],
+          subjectId: subjectId as any,
+          groupLetter: groupLetter || null,
+          questions: questions as any
+        }] as any,
         studentConfigs: [],
         createdBy: req.user?.id
       });
 
       await blockTest.save();
+      console.log('✅ New block test created:', blockTest._id);
+      console.log('✅ Block test details:', {
+        id: blockTest._id,
+        class: blockTest.classNumber,
+        period: `${blockTest.periodMonth}/${blockTest.periodYear}`,
+        subjects: blockTest.subjectTests.length
+      });
     }
 
     res.status(201).json({ 
       message: 'Blok test muvaffaqiyatli saqlandi',
-      blockTest
+      blockTest: {
+        _id: blockTest._id,
+        classNumber: blockTest.classNumber,
+        periodMonth: blockTest.periodMonth,
+        periodYear: blockTest.periodYear,
+        subjectTests: blockTest.subjectTests.length,
+        date: blockTest.date
+      }
     });
   } catch (error: any) {
-    console.error('Error saving imported block test:', error);
+    console.error('❌ Error saving imported block test:', error);
+    console.error('❌ Error stack:', error.stack);
     res.status(500).json({ message: 'Saqlashda xatolik', error: error.message });
   }
 });
@@ -358,10 +434,25 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
       return res.status(400).json({ message: 'O\'quvchilar ro\'yxati bo\'sh' });
     }
 
-    const blockTest = await BlockTest.findById(req.params.id);
+    const blockTest = await BlockTest.findById(req.params.id)
+      .populate('subjectTests.subjectId')
+      .lean();
+      
     if (!blockTest) {
       return res.status(404).json({ message: 'Blok test topilmadi' });
     }
+    
+    console.log(`📚 Block test loaded: ${blockTest.subjectTests?.length || 0} subjects`);
+    blockTest.subjectTests?.forEach((st: any) => {
+      console.log(`  - ${st.subjectId?.nameUzb || 'Unknown'}: ${st.questions?.length || 0} questions, letter: ${st.groupLetter || 'umumiy'}`);
+    });
+
+    // Удаляем старые варианты для этих студентов
+    await StudentVariant.deleteMany({
+      testId: blockTest._id,
+      studentId: { $in: studentIds }
+    });
+    console.log(`🗑️ Deleted old variants for ${studentIds.length} students`);
 
     // Calculate total questions in block test
     let totalQuestions = 0;
@@ -392,8 +483,8 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
         return question; // No variants to shuffle
       }
 
-      // Create a copy of the question
-      const shuffledQuestion = { ...question };
+      // Create a deep copy of the question
+      const shuffledQuestion = JSON.parse(JSON.stringify(question));
       
       console.log('🔀 BEFORE shuffle:', {
         text: question.text?.substring(0, 50),
@@ -411,13 +502,19 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
         return question; // Can't shuffle if we don't know the correct answer
       }
       
+      console.log('✅ Original correct variant:', originalCorrectVariant.text?.substring(0, 30));
+      
       // Shuffle the variants array
       const shuffledVariants = shuffleArray([...question.variants]);
+      
+      console.log('🔄 After shuffleArray:', shuffledVariants.map((v: any) => `${v.letter}: ${v.text?.substring(0, 20)}`));
       
       // Find where the correct answer ended up after shuffling
       const newIndex = shuffledVariants.findIndex(
         (v: any) => v.text === originalCorrectVariant.text
       );
+      
+      console.log('📍 Correct answer new index:', newIndex);
       
       if (newIndex !== -1) {
         // Assign new letters A, B, C, D based on new positions
@@ -449,6 +546,35 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
       studentId: { $in: studentIds } 
     }).populate('subjects.subjectId').lean();
     
+    // Получаем студентов
+    const students = await Student.find({ _id: { $in: studentIds } })
+      .lean();
+    
+    console.log(`👥 Found ${students.length} students`);
+    
+    // Получаем группы студентов через StudentGroup
+    const studentGroups = await StudentGroup.find({ 
+      studentId: { $in: studentIds } 
+    })
+      .populate('groupId')
+      .lean();
+    
+    // Создаем Map: studentId -> group
+    const studentGroupMap = new Map();
+    studentGroups.forEach((sg: any) => {
+      studentGroupMap.set(sg.studentId.toString(), sg.groupId);
+    });
+    
+    const studentMap = new Map();
+    students.forEach(student => {
+      const group = studentGroupMap.get(student._id.toString());
+      studentMap.set(student._id.toString(), {
+        ...student,
+        groupId: group
+      });
+      console.log(`📝 Student ${student.fullName}: groupId=${group?._id}, letter=${group?.letter || 'none'}`);
+    });
+
     // Создаем Map для быстрого доступа по studentId
     const configMap = new Map();
     studentConfigs.forEach(config => {
@@ -475,15 +601,68 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
       for (const subjectConfig of studentConfig.subjects) {
         const subjectId = (subjectConfig.subjectId._id || subjectConfig.subjectId).toString();
         const questionCount = subjectConfig.questionCount;
+        const groupLetter = subjectConfig.groupLetter || null; // Берем букву из конфигурации студента
         
-        // Находим этот предмет в блок-тесте
-        const subjectTest = blockTest.subjectTests.find(
+        console.log(`🔍 Student config: subject=${subjectId}, groupLetter=${groupLetter || 'umumiy'}, questionCount=${questionCount}`);
+        
+        // Показываем все доступные тесты для этого предмета
+        const availableTests = blockTest.subjectTests.filter(
           (st: any) => (st.subjectId._id || st.subjectId).toString() === subjectId
         );
+        console.log(`📚 Available tests for this subject:`, availableTests.map((st: any) => ({
+          letter: st.groupLetter || 'umumiy',
+          questions: st.questions?.length || 0
+        })));
+        
+        // Находим этот предмет в блок-тесте
+        // Сначала ищем с конкретной буквой, если не найдено - берем общий (без буквы)
+        let subjectTest = null;
+        
+        if (groupLetter) {
+          subjectTest = blockTest.subjectTests.find(
+            (st: any) => {
+              const matchSubject = (st.subjectId._id || st.subjectId).toString() === subjectId;
+              const matchLetter = st.groupLetter === groupLetter;
+              return matchSubject && matchLetter;
+            }
+          );
+          
+          if (subjectTest) {
+            console.log(`✅ Found test with letter ${groupLetter}`);
+          }
+        }
+        
+        // Fallback: если не нашли с конкретной буквой, берем общий тест (без буквы)
+        if (!subjectTest) {
+          if (groupLetter) {
+            console.log(`⚠️ No test found for letter ${groupLetter}, trying general test (umumiy)`);
+          }
+          subjectTest = blockTest.subjectTests.find(
+            (st: any) => {
+              const matchSubject = (st.subjectId._id || st.subjectId).toString() === subjectId;
+              const isGeneral = !st.groupLetter || st.groupLetter === null;
+              return matchSubject && isGeneral;
+            }
+          );
+          
+          if (subjectTest) {
+            console.log(`✅ Found general test (umumiy)`);
+          }
+        }
+        
+        // Fallback 2: если нет общего теста, берем ЛЮБОЙ доступный тест для этого предмета
+        if (!subjectTest && availableTests.length > 0) {
+          console.log(`⚠️ No general test found, using ANY available test for this subject`);
+          subjectTest = availableTests[0];
+          console.log(`✅ Using test with letter ${subjectTest.groupLetter || 'umumiy'}`);
+        }
         
         if (!subjectTest || !subjectTest.questions || subjectTest.questions.length === 0) {
+          console.log(`❌ No test found for subject ${subjectId}. Need to import test with letter ${groupLetter || 'umumiy'}`);
           continue;
         }
+        
+        console.log(`✅ Using test with ${subjectTest.questions.length} questions, groupLetter: ${subjectTest.groupLetter || 'umumiy'}`);
         
         // Берем только нужное количество вопросов
         const questionsToTake = Math.min(questionCount, subjectTest.questions.length);
