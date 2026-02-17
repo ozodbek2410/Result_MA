@@ -46,6 +46,9 @@ export class PDFGeneratorService {
   static async generatePDF(testData: TestData): Promise<Buffer> {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
+    
+    // Увеличиваем timeout для страницы
+    page.setDefaultTimeout(60000);
 
     try {
       // Генерируем HTML
@@ -54,23 +57,24 @@ export class PDFGeneratorService {
       // Загружаем HTML
       await page.setContent(html, { 
         waitUntil: 'networkidle',
-        timeout: 30000 
+        timeout: 60000  // Увеличено до 60 секунд
       });
 
-      // Ждем рендера KaTeX формул
+      // Ждем рендера KaTeX формул (увеличен timeout)
       await page.waitForFunction(`
         () => {
           const elements = document.querySelectorAll('.math-formula');
+          if (elements.length === 0) return true; // Нет формул
           return Array.from(elements).every(el => 
             el.querySelector('.katex') !== null
           );
         }
-      `, { timeout: 10000 }).catch(() => {
+      `, { timeout: 30000 }).catch(() => {  // Увеличено до 30 секунд
         console.warn('⚠️ KaTeX render timeout, continuing anyway');
       });
 
       // Небольшая задержка для стабильности
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(1000);  // Увеличено до 1 секунды
 
       // Генерируем PDF
       const pdfBuffer = await page.pdf({
