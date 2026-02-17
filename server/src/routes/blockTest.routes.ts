@@ -962,7 +962,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
         variantCode: studentVariants[0]?.variantCode || student._id.toString().slice(-8).toUpperCase(),
         questions
       };
-    }).filter(Boolean);
+    }).filter((s): s is { studentName: string; variantCode: string; questions: any[] } => s !== null);
     
     if (students.length === 0) {
       return res.status(400).json({ 
@@ -1283,7 +1283,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
         variantCode: studentVariants[0]?.variantCode || student._id.toString().slice(-8).toUpperCase(),
         questions
       };
-    }).filter(Boolean);
+    }).filter((s): s is { studentName: string; variantCode: string; questions: any[] } => s !== null);
     
     if (students.length === 0) {
       return res.status(400).json({ 

@@ -103,7 +103,7 @@ export class PandocDocxService {
     docxBuffer: Buffer,
     settings: NonNullable<TestData['settings']>
   ): Promise<Buffer> {
-    const zip = await JSZip.loadAsync(docxBuffer);
+    const zip = await JSZip.loadAsync(docxBuffer as any);
 
     // Обновляем styles.xml для изменения шрифта и размера
     const stylesFile = zip.file('word/styles.xml');
