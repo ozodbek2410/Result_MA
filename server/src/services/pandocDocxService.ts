@@ -71,11 +71,11 @@ export class PandocDocxService {
       await execAsync(pandocCmd);
 
       // Читаем готовый файл
-      let buffer = await fs.readFile(docxPath);
+      let buffer: Buffer = await fs.readFile(docxPath) as Buffer;
 
       // Применяем пользовательские настройки если есть
       if (testData.settings) {
-        buffer = await this.applyCustomSettings(buffer as Buffer, testData.settings);
+        buffer = await this.applyCustomSettings(buffer, testData.settings);
       }
 
       // Удаляем временные файлы
