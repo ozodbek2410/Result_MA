@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/authStore';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 120000, // 2 daqiqa - PDF generation uchun
+  timeout: 0, // No timeout - PDF generation can take long time
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
