@@ -16,7 +16,9 @@ router.get('/test/:testId', authenticate, async (req: AuthRequest, res) => {
     if (variants.length > 0) {
       console.log(`📦 Sample variant:`, {
         variantCode: variants[0].variantCode,
-        studentId: variants[0].studentId?._id,
+        studentId: variants[0].studentId,
+        studentIdType: typeof variants[0].studentId,
+        hasStudentIdObject: !!variants[0].studentId?._id,
         hasShuffledQuestions: !!variants[0].shuffledQuestions,
         shuffledQuestionsCount: variants[0].shuffledQuestions?.length,
         firstQuestionVariants: variants[0].shuffledQuestions?.[0]?.variants?.map((v: any) => 
@@ -24,12 +26,14 @@ router.get('/test/:testId', authenticate, async (req: AuthRequest, res) => {
         ),
         firstQuestionCorrect: variants[0].shuffledQuestions?.[0]?.correctAnswer
       });
+    } else {
+      console.log(`⚠️ No variants found for test ${req.params.testId}`);
     }
     
     res.json(variants);
-  } catch (error) {
-    console.error('Error fetching test variants:', error);
-    res.status(500).json({ message: 'Server xatosi' });
+  } catch (error: any) {
+    console.error('❌ Error fetching test variants:', error);
+    res.status(500).json({ message: 'Server xatosi', error: error.message });
   }
 });
 
@@ -45,17 +49,21 @@ router.get('/block-test/:blockTestId', authenticate, async (req: AuthRequest, re
     if (variants.length > 0) {
       console.log(`📦 Sample variant:`, {
         variantCode: variants[0].variantCode,
-        studentId: variants[0].studentId?._id,
+        studentId: variants[0].studentId,
+        studentIdType: typeof variants[0].studentId,
+        hasStudentIdObject: !!variants[0].studentId?._id,
         hasShuffledQuestions: !!variants[0].shuffledQuestions,
         shuffledQuestionsCount: variants[0].shuffledQuestions?.length,
         firstAnswer: variants[0].shuffledQuestions?.[0]?.correctAnswer
       });
+    } else {
+      console.log(`⚠️ No variants found for block test ${req.params.blockTestId}`);
     }
     
     res.json(variants);
-  } catch (error) {
-    console.error('Error fetching block test variants:', error);
-    res.status(500).json({ message: 'Server xatosi' });
+  } catch (error: any) {
+    console.error('❌ Error fetching block test variants:', error);
+    res.status(500).json({ message: 'Server xatosi', error: error.message });
   }
 });
 

@@ -87,6 +87,8 @@ debug.log
 *.bak
 *.backup
 ~*
+server/temp/
+temp/
 
 # Lock files (optional - uncomment if needed)
 # yarn.lock

@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Loader2, AlertCircle } from 'lucide-react';
 import api from '@/lib/api';
+import { useToast } from '@/hooks/useToast';
 
 interface BlockTestImportFormProps {
   parsedQuestions: any[];
   onConfirm: (data: BlockTestFormData) => Promise<void>;
+  onCancel: () => void;
   isProcessing: boolean;
 }
 
@@ -19,8 +21,10 @@ export interface BlockTestFormData {
 export function BlockTestImportForm({
   parsedQuestions,
   onConfirm,
+  onCancel,
   isProcessing,
 }: BlockTestImportFormProps) {
+  const { error: showErrorToast } = useToast();
   const [classNumber, setClassNumber] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -51,16 +55,19 @@ export function BlockTestImportForm({
     // Validation
     if (!classNumber) {
       setError('Iltimos, sinfni tanlang');
+      showErrorToast('Iltimos, sinfni tanlang');
       return;
     }
 
     if (!selectedSubjectId) {
       setError('Iltimos, fanni tanlang');
+      showErrorToast('Iltimos, fanni tanlang');
       return;
     }
 
     if (!periodMonth || !periodYear) {
       setError('Iltimos, davrni tanlang');
+      showErrorToast('Iltimos, davrni tanlang');
       return;
     }
 
@@ -206,8 +213,16 @@ export function BlockTestImportForm({
         </div>
       )}
 
-      {/* Submit Button */}
+      {/* Submit Buttons */}
       <div className="flex gap-3 pt-4">
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={isProcessing}
+          size="lg"
+        >
+          Bekor qilish
+        </Button>
         <Button
           onClick={handleSubmit}
           disabled={isProcessing || parsedQuestions.length === 0}

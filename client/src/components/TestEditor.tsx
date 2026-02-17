@@ -42,7 +42,7 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
         { letter: 'C', text: '' },
         { letter: 'D', text: '' }
       ],
-      correctAnswer: 'A',
+      correctAnswer: '', // Bo'sh qoldirish - foydalanuvchi o'zi tanlaydi
       points: 1
     };
     onChange([...questions, newQuestion]);
@@ -78,8 +78,8 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
     
     // Update correct answer if it was the removed variant
     const removedLetter = updated[qIndex].variants[vIndex]?.letter;
-    if (updated[qIndex].correctAnswer === removedLetter && variants.length > 0) {
-      updated[qIndex].correctAnswer = variants[0].letter;
+    if (updated[qIndex].correctAnswer === removedLetter) {
+      updated[qIndex].correctAnswer = ''; // Bo'sh qoldirish
     }
     
     onChange(updated);

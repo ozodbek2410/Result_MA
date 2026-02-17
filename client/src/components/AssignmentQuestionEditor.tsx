@@ -46,7 +46,7 @@ export default function AssignmentQuestionEditor({ type, questions, onChange }: 
         { letter: 'C', text: '' },
         { letter: 'D', text: '' }
       ] : [],
-      correctAnswer: needsVariants ? 'A' : undefined
+      correctAnswer: needsVariants ? '' : undefined // Bo'sh qoldirish
     };
     onChange([...questions, newQuestion]);
     setExpandedQuestion(questions.length);
@@ -89,8 +89,8 @@ export default function AssignmentQuestionEditor({ type, questions, onChange }: 
     }));
     
     // Update correct answer if needed
-    if (variants.length > 0 && updated[qIndex].correctAnswer === updated[qIndex].variants?.[vIndex]?.letter) {
-      updated[qIndex].correctAnswer = variants[0].letter;
+    if (updated[qIndex].correctAnswer === updated[qIndex].variants?.[vIndex]?.letter) {
+      updated[qIndex].correctAnswer = ''; // Bo'sh qoldirish
     }
     
     onChange(updated);

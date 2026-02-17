@@ -30,10 +30,13 @@ function AnswerSheet({ student, test, questions, qrData, columns, compact = fals
 
   useEffect(() => {
     if (qrRef.current && qrData) {
-      QRCode.toCanvas(qrRef.current, qrData, {
+      // Нормализуем данные перед генерацией QR-кода (trim + uppercase)
+      const normalizedData = qrData.trim().toUpperCase();
+      
+      QRCode.toCanvas(qrRef.current, normalizedData, {
         width: qrSize,
         margin: 1,
-        errorCorrectionLevel: 'M',
+        errorCorrectionLevel: 'H', // Высокий уровень коррекции ошибок для надежности
         color: {
           dark: '#000000',
           light: '#FFFFFF'
@@ -45,9 +48,22 @@ function AnswerSheet({ student, test, questions, qrData, columns, compact = fals
   }, [qrData, qrSize]);
 
   const headerMarginBottom = sheetsPerPage >= 4 ? 0.5 : 1;
-  const totalRows = 23;
-  const leftColumnQuestions = 23;
-  const rightColumnQuestions = 22;
+  
+  // Динамически вычисляем количество вопросов на основе пропса
+  const totalQuestions = questions || 45;
+  
+  // Динамически выбираем количество колонок в зависимости от количества вопросов
+  // До 44 вопросов - 2 колонки (более вертикальный формат)
+  // 45+ вопросов - 3 колонки (более горизонтальный формат)
+  const columnsCount = totalQuestions <= 44 ? 2 : 3;
+  const questionsPerColumn = Math.ceil(totalQuestions / columnsCount);
+  
+  // Вычисляем сколько вопросов в каждой колонке
+  const getColumnQuestions = (columnIndex: number) => {
+    const start = columnIndex * questionsPerColumn;
+    const end = Math.min(start + questionsPerColumn, totalQuestions);
+    return end - start;
+  };
 
   const circleSize = sheetsPerPage === 6 ? '3.5mm' : sheetsPerPage >= 4 ? '4mm' : '5mm';
   const fontSize = sheetsPerPage === 6 ? '8px' : sheetsPerPage === 4 ? '9px' : '11px';
@@ -157,54 +173,46 @@ function AnswerSheet({ student, test, questions, qrData, columns, compact = fals
         }}
       >
         <h2 className="font-bold text-center text-gray-900 border-b-2 border-gray-400 leading-tight flex-shrink-0 py-0.5" style={{ fontSize: headerFontSize }}>
-          JAVOBLAR (45 ta savol)
+          JAVOBLAR ({totalQuestions} ta savol)
         </h2>
 
         <div
           className="flex-grow flex"
           style={{
-            gap: 0,
+            gap: sheetsPerPage >= 4 ? '1mm' : '2mm',
             padding: sheetsPerPage >= 4 ? '1mm' : '2mm'
           }}
         >
-          {/* Left Column: Questions 1-23 */}
-          <div
-            className="flex-1 flex flex-col"
-            style={{
-              display: 'grid',
-              gridTemplateRows: `repeat(${totalRows}, 1fr)`,
-              gap
-            }}
-          >
-            {Array.from({ length: leftColumnQuestions }, (_, i) => {
-              const questionNumber = i + 1;
-              return (
-                <div key={`left-${questionNumber}`}>
-                  {renderQuestionRow(questionNumber)}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Right Column: Questions 24-45 */}
-          <div
-            className="flex-1 flex flex-col"
-            style={{
-              display: 'grid',
-              gridTemplateRows: `repeat(${totalRows}, 1fr)`,
-              gap
-            }}
-          >
-            {Array.from({ length: rightColumnQuestions }, (_, i) => {
-              const questionNumber = i + 24;
-              return (
-                <div key={`right-${questionNumber}`}>
-                  {renderQuestionRow(questionNumber)}
-                </div>
-              );
-            })}
-            <div key="placeholder" style={{ visibility: 'hidden' }} />
-          </div>
+          {/* Динамическое количество колонок (2 или 3) */}
+          {Array.from({ length: columnsCount }, (_, colIndex) => {
+            const startQuestion = colIndex * questionsPerColumn + 1;
+            const columnQuestionsCount = getColumnQuestions(colIndex);
+            
+            return (
+              <div
+                key={`column-${colIndex}`}
+                className="flex-1 flex flex-col"
+                style={{
+                  display: 'grid',
+                  gridTemplateRows: `repeat(${questionsPerColumn}, 1fr)`,
+                  gap
+                }}
+              >
+                {Array.from({ length: columnQuestionsCount }, (_, i) => {
+                  const questionNumber = startQuestion + i;
+                  return (
+                    <div key={`q-${questionNumber}`}>
+                      {renderQuestionRow(questionNumber)}
+                    </div>
+                  );
+                })}
+                {/* Добавляем пустые ячейки для выравнивания */}
+                {Array.from({ length: questionsPerColumn - columnQuestionsCount }, (_, i) => (
+                  <div key={`placeholder-${colIndex}-${i}`} style={{ visibility: 'hidden' }} />
+                ))}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

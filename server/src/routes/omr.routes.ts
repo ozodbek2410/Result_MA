@@ -142,9 +142,21 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
           const BlockTest = require('../models/BlockTest').default;
           
           console.log('🔍 Variant qidirilmoqda:', variantCode);
+          console.log('🔍 Variant code length:', variantCode.length);
+          console.log('🔍 Variant code bytes:', Buffer.from(variantCode).toString('hex'));
           
+          // Пробуем найти вариант с точным совпадением
           variantInfo = await StudentVariant.findOne({ variantCode: variantCode })
             .populate('studentId');
+          
+          // Если не найден, пробуем с trim и uppercase
+          if (!variantInfo) {
+            console.log('⚠️ Exact match not found, trying with trim and uppercase');
+            const cleanedCode = variantCode.trim().toUpperCase();
+            variantInfo = await StudentVariant.findOne({ 
+              variantCode: { $regex: new RegExp(`^${cleanedCode}$`, 'i') }
+            }).populate('studentId');
+          }
           
           console.log('📊 Variant topildi:', variantInfo ? 'Ha' : 'Yo\'q');
           
@@ -270,11 +282,23 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
             }
           } else {
             console.log('⚠️ Variant topilmadi:', variantCode);
+            console.log('⚠️ Variant code (raw):', JSON.stringify(variantCode));
+            console.log('⚠️ Variant code (trimmed):', JSON.stringify(variantCode.trim()));
             
             // Show all variants (for debugging)
-            const allVariants = await StudentVariant.find().limit(5);
-            console.log('Available variants (first 5):', 
-              allVariants.map((v: any) => v.variantCode).join(', '));
+            const allVariants = await StudentVariant.find().limit(10).select('variantCode');
+            console.log('📋 Available variants (first 10):', 
+              allVariants.map((v: any) => `"${v.variantCode}"`).join(', '));
+            
+            // Пробуем найти похожие варианты
+            const similarVariants = await StudentVariant.find({
+              variantCode: { $regex: variantCode.substring(0, 4), $options: 'i' }
+            }).limit(5).select('variantCode');
+            
+            if (similarVariants.length > 0) {
+              console.log('🔍 Similar variants found:', 
+                similarVariants.map((v: any) => v.variantCode).join(', '));
+            }
             
             qrData = { 
               variantCode: variantCode, 

@@ -219,6 +219,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     
     console.log('UpdateData после обработки:', updateData);
     
+    // Получаем старую группу для сравнения
+    const oldGroup = await Group.findById(req.params.id);
+    
     // Сначала обновляем без populate
     const updatedGroup = await Group.findByIdAndUpdate(
       req.params.id, 
@@ -236,6 +239,44 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       name: updatedGroup.name,
       teacherId: updatedGroup.teacherId || 'null'
     });
+    
+    // Если изменилась буква группы, обновляем конфигурации студентов
+    if (oldGroup && oldGroup.letter !== updatedGroup.letter) {
+      console.log(`🔄 Group letter changed: ${oldGroup.letter} → ${updatedGroup.letter}`);
+      
+      // Находим всех студентов этой группы
+      const StudentGroup = require('../models/StudentGroup').default;
+      const StudentTestConfig = require('../models/StudentTestConfig').default;
+      
+      const studentGroups = await StudentGroup.find({ groupId: req.params.id }).lean();
+      const studentIds = studentGroups.map(sg => sg.studentId);
+      
+      console.log(`📝 Updating configs for ${studentIds.length} students`);
+      
+      // Обновляем groupLetter в конфигурациях студентов
+      for (const studentId of studentIds) {
+        const config = await StudentTestConfig.findOne({ studentId });
+        
+        if (config && config.subjects) {
+          let updated = false;
+          
+          // Обновляем groupLetter для всех предметов, которые имели старую букву
+          config.subjects = config.subjects.map((s: any) => {
+            if (s.groupLetter === oldGroup.letter) {
+              updated = true;
+              return { ...s, groupLetter: updatedGroup.letter };
+            }
+            return s;
+          });
+          
+          if (updated) {
+            config.markModified('subjects');
+            await config.save();
+            console.log(`✅ Updated config for student ${studentId}`);
+          }
+        }
+      }
+    }
     
     // Теперь загружаем с populate
     const group = await Group.findById(updatedGroup._id)

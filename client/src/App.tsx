@@ -9,7 +9,6 @@ const TeacherLayout = lazy(() => import('./layouts/TeacherLayout'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
 const PublicTestResult = lazy(() => import('./pages/PublicTestResult'));
 const BlockTestAnswerKeysPage = lazy(() => import('./pages/teacher/BlockTestAnswerKeysPage'));
-const BlockTestAllTestsPage = lazy(() => import('./pages/teacher/BlockTestAllTestsPage'));
 const TestPrintPage = lazy(() => import('./pages/teacher/TestPrintPage'));
 
 function App() {
@@ -34,7 +33,6 @@ function App() {
           {user && (
             <>
               <Route path="/teacher/block-tests/:id/answer-keys" element={<BlockTestAnswerKeysPage />} />
-              <Route path="/teacher/block-tests/:id/all-tests" element={<BlockTestAllTestsPage />} />
               <Route path="/teacher/block-tests/:id/print/:type" element={<TestPrintPage />} />
               <Route path="/teacher/*" element={<TeacherLayout />} />
             </>

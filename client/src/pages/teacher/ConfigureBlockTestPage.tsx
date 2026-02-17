@@ -489,10 +489,7 @@ export default function ConfigureBlockTestPage() {
           setShowActionsModal(false);
           navigate(`/teacher/block-tests/${id}/answer-keys`);
         }}
-        onViewAllTests={() => {
-          setShowActionsModal(false);
-          navigate(`/teacher/block-tests/${id}/all-tests`);
-        }}
+        onViewAllTests={() => {}}
         onViewAnswerSheets={() => {
           setShowActionsModal(false);
           navigate(`/teacher/block-tests/${id}/print/sheets`);

@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import Student from './models/Student';
+import { PandocDocxService } from './services/pandocDocxService';
 
 /**
  * Автоматический планировщик для повышения класса учеников
@@ -55,6 +56,20 @@ async function promoteStudentsAuto() {
 }
 
 /**
+ * Очистка временных файлов Pandoc
+ * Удаляет файлы старше 1 часа
+ */
+async function cleanupTempFiles() {
+  try {
+    console.log('🗑️ [SCHEDULER] Очистка временных файлов Pandoc...');
+    await PandocDocxService.cleanupTempFiles();
+    console.log('✅ [SCHEDULER] Очистка завершена');
+  } catch (error) {
+    console.error('❌ [SCHEDULER] Ошибка при очистке временных файлов:', error);
+  }
+}
+
+/**
  * Настройка планировщика
  * Формат cron: секунда минута час день месяц день_недели
  * '0 0 1 9 *' = каждое 1 сентября в 00:00
@@ -65,8 +80,14 @@ export function initScheduler() {
     timezone: 'Asia/Tashkent'
   });
 
+  // Очистка временных файлов каждый час
+  cron.schedule('0 * * * *', cleanupTempFiles, {
+    timezone: 'Asia/Tashkent'
+  });
+
   console.log('📅 [SCHEDULER] Планировщик запущен');
   console.log('   → Автоматическое повышение класса: каждое 1 сентября в 00:00 (Asia/Tashkent)');
+  console.log('   → Очистка временных файлов: каждый час');
   
   // Для тестирования: раскомментируйте строку ниже, чтобы запускать каждую минуту
   // cron.schedule('* * * * *', promoteStudentsAuto, { timezone: 'Asia/Tashkent' });

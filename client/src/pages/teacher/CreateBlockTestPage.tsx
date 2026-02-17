@@ -59,6 +59,13 @@ export default function CreateBlockTestPage() {
       error('Kamida bitta savol qo\'shing');
       return;
     }
+    
+    // Validatsiya: to'g'ri javob tanlanganligini tekshirish
+    const questionsWithoutAnswer = formData.questions.filter(q => !q.correctAnswer || q.correctAnswer.trim() === '');
+    if (questionsWithoutAnswer.length > 0) {
+      error(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+      return;
+    }
 
     setLoading(true);
     try {

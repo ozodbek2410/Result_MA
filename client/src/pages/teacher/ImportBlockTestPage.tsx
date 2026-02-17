@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { useImportBlockTest, useGenerateVariants } from '@/hooks/useBlockTests';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import { convertLatexToTiptapJson } from '@/lib/latexUtils';
+import { useToast } from '@/hooks/useToast';
 
 interface ParsedQuestion {
   text: string;
@@ -17,6 +18,7 @@ interface ParsedQuestion {
 
 export default function ImportBlockTestPage() {
   const navigate = useNavigate();
+  const { error: showErrorToast } = useToast();
   
   // React Query mutations
   const importBlockTestMutation = useImportBlockTest();
@@ -92,7 +94,8 @@ export default function ImportBlockTestPage() {
         return {
           ...q,
           text: questionJson || q.text, // Оставляем объект, не конвертируем в строку
-          variants: processedVariants
+          variants: processedVariants,
+          correctAnswer: '' // Bo'sh qoldirish - foydalanuvchi o'zi tanlaydi
         };
       });
 
@@ -110,16 +113,27 @@ export default function ImportBlockTestPage() {
   const handleConfirm = async () => {
     if (!classNumber) {
       setError('Iltimos, sinfni tanlang');
+      showErrorToast('Iltimos, sinfni tanlang');
       return;
     }
     
     if (!selectedSubjectId) {
       setError('Iltimos, fanni tanlang');
+      showErrorToast('Iltimos, fanni tanlang');
       return;
     }
     
     if (!periodMonth || !periodYear) {
       setError('Iltimos, davrni tanlang');
+      showErrorToast('Iltimos, davrni tanlang');
+      return;
+    }
+    
+    // Validatsiya: to'g'ri javob tanlanganligini tekshirish
+    const questionsWithoutAnswer = parsedQuestions.filter(q => !q.correctAnswer || q.correctAnswer.trim() === '');
+    if (questionsWithoutAnswer.length > 0) {
+      setError(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+      showErrorToast(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
       return;
     }
     

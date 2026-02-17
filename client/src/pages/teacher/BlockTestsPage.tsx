@@ -657,10 +657,7 @@ export default function BlockTestsPage() {
             setShowActionsModal(false);
             navigate(`/teacher/block-tests/${configBlockTest._id}/answer-keys`);
           }}
-          onViewAllTests={() => {
-            setShowActionsModal(false);
-            navigate(`/teacher/block-tests/${configBlockTest._id}/all-tests`);
-          }}
+          onViewAllTests={() => {}}
           onViewAnswerSheets={() => {
             setShowActionsModal(false);
             navigate(`/teacher/block-tests/${configBlockTest._id}/print/sheets`);

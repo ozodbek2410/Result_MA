@@ -3,13 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, FileText } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
+import { useToast } from '@/hooks/useToast';
 
 export default function TestPrintPage() {
   const { id, type } = useParams<{ id: string; type: string }>();
   const navigate = useNavigate();
+  const { success, error: showError } = useToast();
   const [test, setTest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedStudents, setSelectedStudents] = useState<any[]>([]);
@@ -18,9 +20,9 @@ export default function TestPrintPage() {
   const [testsPerPage] = useState(1);
   const [sheetsPerPage, setSheetsPerPage] = useState(1);
   const [fontSize, setFontSize] = useState(11);
-  const [fontFamily, setFontFamily] = useState('Calibri');
+  const [fontFamily, setFontFamily] = useState('Cambria');
   const [spacing] = useState('normal');
-  const [lineHeight, setLineHeight] = useState(1.5);
+  const [lineHeight, setLineHeight] = useState(1);
   const [backgroundImage, setBackgroundImage] = useState<string>('/logo.png');
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.05);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -84,6 +86,94 @@ export default function TestPrintPage() {
     window.print();
   };
 
+  const handleDownloadPDF = async () => {
+    try {
+      success('PDF yuklanmoqda...');
+      
+      const endpoint = isBlockTest 
+        ? `/block-tests/${id}/export-pdf`
+        : `/tests/${id}/export-pdf`;
+      
+      // Добавляем студентов если они выбраны
+      const params = selectedStudents.length > 0 
+        ? `?students=${selectedStudents.map(s => s._id).join(',')}`
+        : '';
+      
+      const response = await api.get(`${endpoint}${params}`, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = isBlockTest 
+        ? `block-test-${id}-${Date.now()}.pdf`
+        : `test-${id}-${Date.now()}.pdf`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      success('PDF yuklandi');
+    } catch (error: any) {
+      console.error('Error downloading PDF:', error);
+      showError('PDF yuklashda xatolik');
+    }
+  };
+
+  const handleDownloadWord = async () => {
+    try {
+      success('Word yuklanmoqda...');
+      
+      const endpoint = isBlockTest 
+        ? `/block-tests/${id}/export-docx`
+        : `/tests/${id}/export-docx`;
+      
+      // Sozlamalarni query parametrlar orqali yuboramiz
+      const params = new URLSearchParams();
+      
+      if (selectedStudents.length > 0) {
+        params.append('students', selectedStudents.map(s => s._id).join(','));
+      }
+      
+      // Print sozlamalari
+      params.append('fontSize', fontSize.toString());
+      params.append('fontFamily', fontFamily);
+      params.append('lineHeight', lineHeight.toString());
+      params.append('columnsCount', columnsCount.toString());
+      params.append('backgroundOpacity', backgroundOpacity.toString());
+      
+      // Background image ni base64 formatda yuboramiz (agar mavjud bo'lsa)
+      if (backgroundImage && backgroundImage !== '/logo.png') {
+        params.append('customBackground', backgroundImage);
+      } else if (backgroundImage === '/logo.png') {
+        params.append('useDefaultLogo', 'true');
+      }
+      
+      const response = await api.get(`${endpoint}?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = isBlockTest 
+        ? `block-test-${id}-${Date.now()}.docx`
+        : `test-${id}-${Date.now()}.docx`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      success('Word yuklandi');
+    } catch (error: any) {
+      console.error('Error downloading Word:', error);
+      showError('Word yuklashda xatolik');
+    }
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -138,6 +228,27 @@ export default function TestPrintPage() {
       return <div className="text-center text-gray-500 py-12">O'quvchilar tanlanmagan</div>;
     }
 
+    // Проверяем есть ли варианты
+    const hasVariants = variants.length > 0;
+    const hasShuffledVariants = variants.some(v => v.shuffledQuestions && v.shuffledQuestions.length > 0);
+
+    if (!hasVariants) {
+      return (
+        <div className="text-center py-12">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-2xl mx-auto">
+            <p className="text-yellow-800 font-medium mb-2">⚠️ Variantlar yaratilmagan</p>
+            <p className="text-yellow-700 text-sm">
+              Testni chop etishdan oldin "Variantlarni aralash" tugmasini bosing
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!hasShuffledVariants) {
+      console.warn('⚠️ Variants exist but have no shuffled questions');
+    }
+
     const pages = [];
     for (let i = 0; i < selectedStudents.length; i += testsPerPage) {
       pages.push(selectedStudents.slice(i, i + testsPerPage));
@@ -149,14 +260,23 @@ export default function TestPrintPage() {
           <div key={pageIndex} className="page-break print-page mb-8 print:mb-0">
             <div className={`grid gap-6 print:gap-0 ${testsPerPage === 2 ? 'grid-cols-2' : testsPerPage === 4 ? 'grid-cols-2' : ''}`}>
               {studentsOnPage.map((student) => {
-                const variant = variants.find(v => v.studentId?._id === student._id);
+                // Более надежный поиск варианта
+                const variant = variants.find(v => {
+                  const variantStudentId = typeof v.studentId === 'string' 
+                    ? v.studentId 
+                    : v.studentId?._id;
+                  return variantStudentId === student._id;
+                });
+                
                 const variantCode = variant?.variantCode || '';
                 const questionsToRender = variant?.shuffledQuestions && variant.shuffledQuestions.length > 0
                   ? variant.shuffledQuestions
                   : test.questions;
 
                 console.log(`🎨 RENDER: Student ${student.fullName}:`, {
+                  studentId: student._id,
                   hasVariant: !!variant,
+                  variantStudentId: variant ? (typeof variant.studentId === 'string' ? variant.studentId : variant.studentId?._id) : 'none',
                   variantCode,
                   hasShuffledQuestions: !!variant?.shuffledQuestions,
                   questionsCount: questionsToRender?.length,
@@ -308,6 +428,16 @@ export default function TestPrintPage() {
       pages.push(selectedStudents.slice(i, i + sheetsPerPage));
     }
 
+    // Определяем количество вопросов для выбора layout
+    const firstVariant = variants.find(v => v.studentId?._id === selectedStudents[0]?._id);
+    const questionsToRender = firstVariant?.shuffledQuestions && firstVariant.shuffledQuestions.length > 0
+      ? firstVariant.shuffledQuestions
+      : test.questions;
+    const totalQuestions = questionsToRender?.length || 0;
+    
+    // Для 6 и 2 листов на странице: если вопросов <= 44, используем вертикальный layout, иначе горизонтальный
+    const useVerticalLayout = (sheetsPerPage === 6 || sheetsPerPage === 2) && totalQuestions <= 44;
+
     return (
       <div>
         {pages.map((studentsOnPage, pageIndex) => (
@@ -317,13 +447,14 @@ export default function TestPrintPage() {
             display: sheetsPerPage === 1 ? 'flex' : 'grid',
             justifyContent: sheetsPerPage === 1 ? 'center' : undefined,
             gridTemplateColumns: 
-              sheetsPerPage === 6 ? '1fr 1fr 1fr' : 
+              sheetsPerPage === 6 ? (useVerticalLayout ? '1fr 1fr' : '1fr 1fr 1fr') : 
               sheetsPerPage === 4 ? '1fr 1fr' : 
-              sheetsPerPage === 2 ? '1fr 1fr' : 
+              sheetsPerPage === 2 ? (useVerticalLayout ? '1fr' : '1fr 1fr') : 
               '1fr',
             gridTemplateRows: 
-              sheetsPerPage === 6 ? '1fr 1fr' : 
+              sheetsPerPage === 6 ? (useVerticalLayout ? '1fr 1fr 1fr' : '1fr 1fr') : 
               sheetsPerPage === 4 ? '1fr 1fr' : 
+              sheetsPerPage === 2 ? (useVerticalLayout ? '1fr 1fr' : '1fr') : 
               '1fr',
             gap: 
               sheetsPerPage === 6 ? '3mm' :
@@ -333,8 +464,9 @@ export default function TestPrintPage() {
             minHeight: '277mm',
             padding: sheetsPerPage === 6 ? '5mm' : '10mm',
             boxSizing: 'border-box',
-            pageBreakAfter: 'always',
-            breakAfter: 'page',
+            // Убираем разрыв страницы для последней группы
+            pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto',
+            breakAfter: pageIndex < pages.length - 1 ? 'page' : 'auto',
             pageBreakInside: 'avoid',
             breakInside: 'avoid'
           }}>
@@ -347,11 +479,14 @@ export default function TestPrintPage() {
 
               return (
                 <div key={student._id} style={{
-                  width: sheetsPerPage === 1 ? '50%' : '100%',
+                  width: sheetsPerPage === 1 ? '50%' : 
+                         (sheetsPerPage === 2 && useVerticalLayout) ? '50%' : 
+                         '100%',
                   height: '100%',
                   overflow: 'visible',
                   pageBreakInside: 'avoid',
-                  breakInside: 'avoid'
+                  breakInside: 'avoid',
+                  margin: (sheetsPerPage === 2 && useVerticalLayout) ? '0 auto' : '0'
                 }}>
                   <AnswerSheet
                     student={{
@@ -394,6 +529,18 @@ export default function TestPrintPage() {
               <Printer className="w-4 h-4 mr-1" />
               Chop etish
             </Button>
+            {type === 'questions' && (
+              <>
+                <Button size="sm" variant="outline" onClick={handleDownloadPDF}>
+                  <FileText className="w-4 h-4 mr-1" />
+                  PDF yuklash
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleDownloadWord}>
+                  <FileText className="w-4 h-4 mr-1" />
+                  Word yuklash
+                </Button>
+              </>
+            )}
             {(type === 'questions' || type === 'sheets') && (
               <Button size="sm" variant="outline" onClick={() => setShowSettingsPanel(!showSettingsPanel)}>
                 Sozlamalar
@@ -421,6 +568,7 @@ export default function TestPrintPage() {
                   <option value="Arial">Arial</option>
                   <option value="Times New Roman">Times New Roman</option>
                   <option value="Calibri">Calibri</option>
+                  <option value="Cambria">Cambria</option>
                   <option value="Georgia">Georgia</option>
                   <option value="Verdana">Verdana</option>
                 </select>
@@ -578,9 +726,32 @@ export default function TestPrintPage() {
             break-inside: avoid;
           }
           
+          .print-page::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 400px;
+            background-image: url('/logo.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0.1;
+            z-index: -1;
+            pointer-events: none;
+          }
+          
           .print-page:last-child {
             page-break-after: auto;
             break-after: auto;
+          }
+          
+          /* Для answer sheets */
+          .page-break:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
           
           .no-print { display: none !important; }

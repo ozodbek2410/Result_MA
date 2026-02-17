@@ -11,6 +11,7 @@ interface ParsedQuestion {
   correctAnswer: string;
   points: number;
   needsReview?: boolean;
+  imageUrl?: string; // URL изображения вопроса
 }
 
 export class TestImportService {

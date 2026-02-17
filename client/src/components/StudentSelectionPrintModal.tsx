@@ -24,7 +24,6 @@ export default function StudentSelectionPrintModal({
     students.map(s => s._id)
   );
   const [searchQuery, setSearchQuery] = useState('');
-  const [fontSize, setFontSize] = useState(12); // Default 12px
 
   const filteredStudents = students.filter(student =>
     student.fullName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -47,7 +46,7 @@ export default function StudentSelectionPrintModal({
   };
 
   const handlePrint = () => {
-    onPrint(selectedStudents, fontSize);
+    onPrint(selectedStudents);
   };
 
   const getTitle = () => {
@@ -100,31 +99,6 @@ export default function StudentSelectionPrintModal({
             </span>
           </label>
         </div>
-
-        {/* Font Size Setting - Only show for questions mode */}
-        {mode === 'questions' && (
-          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <label className="block text-sm font-medium mb-2 text-gray-900">
-              Shrift o'lchami: {fontSize}px
-            </label>
-            <input
-              type="range"
-              min="8"
-              max="18"
-              value={fontSize}
-              onChange={(e) => setFontSize(Number(e.target.value))}
-              className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
-            />
-            <div className="flex justify-between text-xs text-gray-600 mt-1">
-              <span>Kichik (8px)</span>
-              <span>O'rtacha (12px)</span>
-              <span>Katta (18px)</span>
-            </div>
-            <p className="text-xs text-gray-600 mt-2">
-              💡 Kichikroq shrift - ko'proq savol bir sahifada
-            </p>
-          </div>
-        )}
 
         {/* Students List */}
         <div className="max-h-96 overflow-y-auto space-y-2 mb-6">

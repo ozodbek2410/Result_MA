@@ -26,13 +26,15 @@ import {
   BlockTestImportForm,
   type BlockTestFormData,
 } from './components/BlockTestImportForm';
+import { useToast } from '@/hooks/useToast';
 
 interface ParsedQuestion {
   text: string;
   variants: { letter: string; text: string }[];
   correctAnswer: string;
   points: number;
-  image?: string;
+  image?: string; // Локальный путь (загруженный вручную)
+  imageUrl?: string; // URL из Word документа
 }
 
 /**
@@ -42,6 +44,7 @@ interface ParsedQuestion {
 export default function TestImportPage() {
   const navigate = useNavigate();
   const { testType, setTestType, isRegular, isBlock } = useTestType('regular');
+  const { error: showErrorToast } = useToast();
 
   // React Query mutations
   const importTestMutation = useImportTest();
@@ -139,6 +142,8 @@ export default function TestImportPage() {
           ...q,
           text: questionJson || q.text,
           variants: convertedVariants,
+          correctAnswer: '', // Bo'sh qoldirish - foydalanuvchi o'zi tanlaydi
+          imageUrl: q.imageUrl, // Сохраняем imageUrl из Word документа
         };
       });
 
@@ -189,6 +194,14 @@ export default function TestImportPage() {
 
   // Regular test confirmation
   const handleRegularTestConfirm = async (formData: RegularTestFormData) => {
+    // Validatsiya: to'g'ri javob tanlanganligini tekshirish
+    const questionsWithoutAnswer = parsedQuestions.filter(q => !q.correctAnswer || q.correctAnswer.trim() === '');
+    if (questionsWithoutAnswer.length > 0) {
+      setError(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+      showErrorToast(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+      return;
+    }
+    
     setIsProcessing(true);
     setError('');
 
@@ -217,7 +230,7 @@ export default function TestImportPage() {
           ...q,
           text: textToSave,
           variants: variantsFormatted,
-          imageUrl: q.image,
+          imageUrl: q.imageUrl || q.image, // Используем imageUrl из Word или загруженный image
           image: undefined,
         };
       });
@@ -247,6 +260,14 @@ export default function TestImportPage() {
 
   // Block test confirmation
   const handleBlockTestConfirm = async (formData: BlockTestFormData) => {
+    // Validatsiya: to'g'ri javob tanlanganligini tekshirish
+    const questionsWithoutAnswer = parsedQuestions.filter(q => !q.correctAnswer || q.correctAnswer.trim() === '');
+    if (questionsWithoutAnswer.length > 0) {
+      setError(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+      showErrorToast(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+      return;
+    }
+    
     setIsProcessing(true);
     setError('');
 
@@ -357,7 +378,7 @@ export default function TestImportPage() {
         { letter: 'C', text: '' },
         { letter: 'D', text: '' },
       ],
-      correctAnswer: 'A',
+      correctAnswer: '', // Bo'sh qoldirish
       points: 1,
     };
     setParsedQuestions([...parsedQuestions, newQuestion]);
@@ -391,6 +412,7 @@ export default function TestImportPage() {
   const handleRemoveImage = (questionIndex: number) => {
     const updated = [...parsedQuestions];
     delete updated[questionIndex].image;
+    delete updated[questionIndex].imageUrl;
     setParsedQuestions(updated);
   };
 
@@ -500,12 +522,14 @@ export default function TestImportPage() {
                 <RegularTestImportForm
                   parsedQuestions={parsedQuestions}
                   onConfirm={handleRegularTestConfirm}
+                  onCancel={handleBack}
                   isProcessing={isProcessing}
                 />
               ) : (
                 <BlockTestImportForm
                   parsedQuestions={parsedQuestions}
                   onConfirm={handleBlockTestConfirm}
+                  onCancel={handleBack}
                   isProcessing={isProcessing}
                 />
               )}
@@ -535,10 +559,10 @@ export default function TestImportPage() {
                       </div>
 
                       {/* Image Upload */}
-                      {q.image ? (
+                      {(q.image || q.imageUrl) ? (
                         <div className="relative inline-block">
                           <img
-                            src={q.image}
+                            src={q.imageUrl || q.image}
                             alt="Question"
                             className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
                           />
@@ -648,15 +672,6 @@ export default function TestImportPage() {
                 </div>
               </div>
             )}
-
-            {/* Fixed Bottom Bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg xl:left-72 z-40 pb-20 xl:pb-0">
-              <div className="max-w-7xl mx-auto px-4 py-4 flex gap-3">
-                <Button variant="outline" onClick={handleBack} disabled={isProcessing} size="lg">
-                  Bekor qilish
-                </Button>
-              </div>
-            </div>
           </div>
         )}
 

@@ -10,6 +10,10 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { TestImportService } from '../services/testImportService';
+import { PDFExportService } from '../services/pdfExportService';
+import { PDFGeneratorService } from '../services/pdfGeneratorService';
+import { PandocDocxService } from '../services/pandocDocxService';
+import { convertTiptapJsonToText } from '../utils/textUtils';
 
 const router = express.Router();
 
@@ -263,7 +267,15 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
     }
 
     console.log('🔄 Generating variants for test:', test._id);
-    console.log('📋 Test has', test.questions.length, 'questions');
+    console.log('📋 Test has', test.questions?.length || 0, 'questions');
+
+    if (!test.questions || test.questions.length === 0) {
+      return res.status(400).json({ message: 'Test savollar mavjud emas' });
+    }
+
+    if (!test.groupId) {
+      return res.status(400).json({ message: 'Test guruhga biriktirilmagan' });
+    }
 
     const studentGroups = await StudentGroup.find({ groupId: test.groupId })
       .populate('studentId', 'fullName classNumber')
@@ -271,6 +283,10 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
       .exec();
     
     console.log('👥 Found', studentGroups.length, 'students in group');
+
+    if (studentGroups.length === 0) {
+      return res.status(400).json({ message: 'Guruhda talabalar topilmadi' });
+    }
     
     // Удаляем старые варианты
     const deleteResult = await StudentVariant.deleteMany({ testId: test._id });
@@ -279,13 +295,20 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
     const variants = [];
     
     for (const sg of studentGroups) {
+      // Проверяем что studentId существует
+      if (!sg.studentId || !(sg.studentId as any)._id) {
+        console.log('⚠️ Skipping student group without valid studentId:', sg);
+        continue;
+      }
+
+      const student = sg.studentId as any;
       const variantCode = uuidv4().substring(0, 8).toUpperCase();
       
       // 1. Перемешиваем порядок вопросов
       const questionIndices = [...Array(test.questions.length).keys()];
       const shuffledQuestionIndices = shuffleArray(questionIndices);
       
-      console.log(`\n👤 Student: ${(sg.studentId as any).fullName}`);
+      console.log(`\n👤 Student: ${student.fullName || 'Unknown'}`);
       console.log('🔢 Question order:', shuffledQuestionIndices);
       
       // 2. Для каждого вопроса перемешиваем варианты ответов
@@ -307,7 +330,7 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
       
       const variant = new StudentVariant({
         testId: test._id,
-        studentId: sg.studentId._id,
+        studentId: student._id,
         variantCode,
         qrPayload,
         questionOrder: shuffledQuestionIndices,
@@ -321,7 +344,7 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
       
       // Проверяем что сохранилось
       const savedVariant = await StudentVariant.findById(variant._id).lean();
-      console.log(`\n💾 SAVED variant for ${(sg.studentId as any).fullName}:`, {
+      console.log(`\n💾 SAVED variant for ${student.fullName || 'Unknown'}:`, {
         variantCode: savedVariant?.variantCode,
         hasShuffledQuestions: !!savedVariant?.shuffledQuestions,
         questionsCount: savedVariant?.shuffledQuestions?.length || 0,
@@ -343,9 +366,14 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
       message: 'Variantlar yaratildi', 
       count: variants.length
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Error generating variants:', error);
-    res.status(500).json({ message: 'Server xatosi' });
+    console.error('❌ Stack:', error.stack);
+    res.status(500).json({ 
+      message: 'Server xatosi', 
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -787,6 +815,375 @@ function shuffleArray(array: any[]) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
+}
+
+// Экспорт теста в PDF (с правильным рендером формул)
+router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const testId = req.params.id;
+    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+    
+    console.log('📄 Exporting test to PDF with formulas:', testId, 'Students:', studentIds.length);
+    
+    // Загружаем тест
+    const test = await Test.findById(testId)
+      .populate('subjectId', 'nameUzb')
+      .populate('groupId', 'name classNumber letter')
+      .lean();
+    
+    if (!test) {
+      return res.status(404).json({ message: 'Test topilmadi' });
+    }
+    
+    // Проверка доступа
+    if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+
+    let testData: any;
+
+    // Если выбраны студенты - генерируем для каждого с его вариантом
+    if (studentIds.length > 0) {
+      const variants = await StudentVariant.find({
+        testId,
+        studentId: { $in: studentIds }
+      }).populate('studentId', 'fullName').lean();
+
+      console.log('📦 Loaded', variants.length, 'variants for PDF export');
+
+      const students = variants
+        .filter(variant => variant.studentId) // Фильтруем варианты без студента
+        .map(variant => {
+        const questionsToRender = variant.shuffledQuestions && variant.shuffledQuestions.length > 0
+          ? variant.shuffledQuestions
+          : test.questions;
+
+        const questions = (questionsToRender || []).map((q: any, index: number) => {
+          let questionText = '';
+          if (typeof q.text === 'string') {
+            try {
+              const parsed = JSON.parse(q.text);
+              questionText = convertTiptapToLatex(parsed);
+            } catch {
+              questionText = q.text;
+            }
+          } else {
+            questionText = convertTiptapToLatex(q.text);
+          }
+          
+          const options = (q.variants || q.options || []).map((v: any) => {
+            if (typeof v === 'string') return v;
+            if (v.text) {
+              if (typeof v.text === 'string') {
+                try {
+                  const parsed = JSON.parse(v.text);
+                  return convertTiptapToLatex(parsed);
+                } catch {
+                  return v.text;
+                }
+              }
+              return convertTiptapToLatex(v.text);
+            }
+            return '';
+          });
+          
+          return {
+            number: index + 1,
+            text: questionText,
+            options,
+            correctAnswer: q.correctAnswer || '',
+          };
+        });
+
+        return {
+          studentName: (variant.studentId as any)?.fullName || 'Student',
+          variantCode: variant.variantCode,
+          questions
+        };
+      });
+
+      testData = {
+        title: test.name || 'Test',
+        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        subjectName: (test.subjectId as any)?.nameUzb || '',
+        students
+      };
+    } else {
+      // Старый формат - без студентов
+      const questions = (test.questions || []).map((q: any, index: number) => {
+        let questionText = '';
+        if (typeof q.text === 'string') {
+          try {
+            const parsed = JSON.parse(q.text);
+            questionText = convertTiptapToLatex(parsed);
+          } catch {
+            questionText = q.text;
+          }
+        } else {
+          questionText = convertTiptapToLatex(q.text);
+        }
+        
+        const options = (q.variants || q.options || []).map((v: any) => {
+          if (typeof v === 'string') return v;
+          if (v.text) {
+            if (typeof v.text === 'string') {
+              try {
+                const parsed = JSON.parse(v.text);
+                return convertTiptapToLatex(parsed);
+              } catch {
+                return v.text;
+              }
+            }
+            return convertTiptapToLatex(v.text);
+          }
+          return '';
+        });
+        
+        return {
+          number: index + 1,
+          text: questionText,
+          options,
+          correctAnswer: q.correctAnswer || '',
+        };
+      });
+      
+      testData = {
+        title: test.name || 'Test',
+        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        subjectName: (test.subjectId as any)?.nameUzb || '',
+        questions
+      };
+    }
+    
+    // Генерируем PDF через Playwright + KaTeX
+    const pdfBuffer = await PDFGeneratorService.generatePDF(testData);
+    
+    // Отправляем файл
+    const filename = `test-${test.name?.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+    
+    console.log('✅ PDF exported successfully with formulas');
+  } catch (error: any) {
+    console.error('❌ Error exporting PDF:', error);
+    res.status(500).json({ message: 'PDF yaratishda xatolik', error: error.message });
+  }
+});
+
+// Экспорт теста в Word (с формулами)
+router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const testId = req.params.id;
+    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+    
+    // Получаем настройки форматирования из query параметров
+    const settings = {
+      fontSize: req.query.fontSize ? parseInt(req.query.fontSize as string) : undefined,
+      fontFamily: req.query.fontFamily as string | undefined,
+      lineHeight: req.query.lineHeight ? parseFloat(req.query.lineHeight as string) : undefined,
+      columnsCount: req.query.columnsCount ? parseInt(req.query.columnsCount as string) : undefined,
+      backgroundOpacity: req.query.backgroundOpacity ? parseFloat(req.query.backgroundOpacity as string) : undefined,
+      backgroundImage: req.query.customBackground as string | undefined || 
+                      (req.query.useDefaultLogo === 'true' ? undefined : undefined)
+    };
+    
+    console.log('📄 Exporting test to Word with formulas:', testId, 'Students:', studentIds.length);
+    console.log('🎨 Settings:', settings);
+    
+    // Загружаем тест
+    const test = await Test.findById(testId)
+      .populate('subjectId', 'nameUzb')
+      .populate('groupId', 'name classNumber letter')
+      .lean();
+    
+    if (!test) {
+      return res.status(404).json({ message: 'Test topilmadi' });
+    }
+    
+    // Проверка доступа
+    if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+
+    let testData: any;
+
+    // Если выбраны студенты - генерируем для каждого с его вариантом
+    if (studentIds.length > 0) {
+      const variants = await StudentVariant.find({
+        testId,
+        studentId: { $in: studentIds }
+      }).populate('studentId', 'fullName').lean();
+
+      console.log('📦 Loaded', variants.length, 'variants for export');
+
+      const students = variants
+        .filter(variant => variant.studentId) // Фильтруем варианты без студента
+        .map(variant => {
+        const questionsToRender = variant.shuffledQuestions && variant.shuffledQuestions.length > 0
+          ? variant.shuffledQuestions
+          : test.questions;
+
+        const questions = (questionsToRender || []).map((q: any, index: number) => {
+          let questionText = '';
+          if (typeof q.text === 'string') {
+            try {
+              const parsed = JSON.parse(q.text);
+              questionText = convertTiptapToLatex(parsed);
+            } catch {
+              questionText = q.text;
+            }
+          } else {
+            questionText = convertTiptapToLatex(q.text);
+          }
+          
+          const options = (q.variants || q.options || []).map((v: any) => {
+            if (typeof v === 'string') return v;
+            if (v.text) {
+              if (typeof v.text === 'string') {
+                try {
+                  const parsed = JSON.parse(v.text);
+                  return convertTiptapToLatex(parsed);
+                } catch {
+                  return v.text;
+                }
+              }
+              return convertTiptapToLatex(v.text);
+            }
+            return '';
+          });
+          
+          return {
+            number: index + 1,
+            text: questionText,
+            options,
+            correctAnswer: q.correctAnswer || '',
+          };
+        });
+
+        return {
+          studentName: (variant.studentId as any)?.fullName || 'Student',
+          variantCode: variant.variantCode,
+          questions
+        };
+      });
+
+      testData = {
+        title: test.name || 'Test',
+        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        subjectName: (test.subjectId as any)?.nameUzb || '',
+        students,
+        settings // Добавляем настройки
+      };
+    } else {
+      // Старый формат - без студентов
+      const questions = (test.questions || []).map((q: any, index: number) => {
+        let questionText = '';
+        if (typeof q.text === 'string') {
+          try {
+            const parsed = JSON.parse(q.text);
+            questionText = convertTiptapToLatex(parsed);
+          } catch {
+            questionText = q.text;
+          }
+        } else {
+          questionText = convertTiptapToLatex(q.text);
+        }
+        
+        const options = (q.variants || q.options || []).map((v: any) => {
+          if (typeof v === 'string') return v;
+          if (v.text) {
+            if (typeof v.text === 'string') {
+              try {
+                const parsed = JSON.parse(v.text);
+                return convertTiptapToLatex(parsed);
+              } catch {
+                return v.text;
+              }
+            }
+            return convertTiptapToLatex(v.text);
+          }
+          return '';
+        });
+        
+        return {
+          number: index + 1,
+          text: questionText,
+          options,
+          correctAnswer: q.correctAnswer || '',
+        };
+      });
+      
+      testData = {
+        title: test.name || 'Test',
+        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        subjectName: (test.subjectId as any)?.nameUzb || '',
+        questions,
+        settings // Добавляем настройки
+      };
+    }
+    
+    // Генерируем Word через Pandoc (с нативными формулами)
+    const docxBuffer = await PandocDocxService.generateDocx(testData);
+    
+    // Отправляем файл
+    const filename = `test-${test.name?.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}.docx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(docxBuffer);
+    
+    console.log('✅ Word exported successfully with formulas');
+  } catch (error: any) {
+    console.error('❌ Error exporting Word:', error);
+    res.status(500).json({ message: 'Word yaratishda xatolik', error: error.message });
+  }
+});
+
+/**
+ * Конвертирует TipTap JSON в текст с LaTeX формулами
+ */
+function convertTiptapToLatex(json: any): string {
+  if (!json) return '';
+  
+  if (typeof json === 'string') {
+    return json;
+  }
+  
+  if (!json.type) return '';
+  
+  let text = '';
+  
+  if (json.type === 'text') {
+    text = json.text || '';
+    
+    // Обработка marks (формулы)
+    if (json.marks) {
+      for (const mark of json.marks) {
+        if (mark.type === 'formula' && mark.attrs?.latex) {
+          text = `$${mark.attrs.latex}$`;
+        }
+      }
+    }
+    
+    return text;
+  }
+  
+  if (json.type === 'formula' && json.attrs?.latex) {
+    return `$${json.attrs.latex}$`;
+  }
+  
+  if (json.type === 'paragraph' || json.type === 'doc') {
+    if (json.content && Array.isArray(json.content)) {
+      text = json.content.map((node: any) => convertTiptapToLatex(node)).join('');
+    }
+    return text + (json.type === 'paragraph' ? ' ' : '');
+  }
+  
+  if (json.content && Array.isArray(json.content)) {
+    text = json.content.map((node: any) => convertTiptapToLatex(node)).join('');
+  }
+  
+  return text;
 }
 
 export default router;

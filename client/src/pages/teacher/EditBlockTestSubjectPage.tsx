@@ -6,10 +6,12 @@ import { ArrowLeft, Save, Trash2, Plus, ImagePlus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
+import { useToast } from '@/hooks/useToast';
 
 export default function EditBlockTestSubjectPage() {
   const { id, subjectIndex } = useParams();
   const navigate = useNavigate();
+  const { success, error } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [blockTest, setBlockTest] = useState<any>(null);
@@ -104,9 +106,9 @@ export default function EditBlockTestSubjectPage() {
         
         setQuestions(processedQuestions);
       }
-    } catch (error) {
-      console.error('Error loading block test:', error);
-      alert('Testni yuklashda xatolik yuz berdi');
+    } catch (err) {
+      console.error('Error loading block test:', err);
+      error('Testni yuklashda xatolik yuz berdi');
       navigate(`/teacher/block-tests/${id}/edit`);
     } finally {
       setLoading(false);
@@ -114,6 +116,13 @@ export default function EditBlockTestSubjectPage() {
   };
 
   const handleSave = async () => {
+    // Validatsiya: to'g'ri javob tanlanganligini tekshirish
+    const questionsWithoutAnswer = questions.filter(q => !q.correctAnswer || q.correctAnswer.trim() === '');
+    if (questionsWithoutAnswer.length > 0) {
+      error(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+      return;
+    }
+    
     try {
       setSaving(true);
       
@@ -130,7 +139,7 @@ export default function EditBlockTestSubjectPage() {
       );
       
       if (originalSubjectIndex === -1) {
-        alert('Предмет не найден в оригинальном тесте');
+        error('Предмет не найден в оригинальном тесте');
         return;
       }
       
@@ -172,11 +181,11 @@ export default function EditBlockTestSubjectPage() {
         subjectTests: updatedSubjectTests
       });
       
-      alert('Savollar muvaffaqiyatli saqlandi');
+      success('Savollar muvaffaqiyatli saqlandi');
       navigate(`/teacher/block-tests/${id}/edit`);
-    } catch (error) {
-      console.error('Error saving questions:', error);
-      alert('Saqlashda xatolik yuz berdi');
+    } catch (err) {
+      console.error('Error saving questions:', err);
+      error('Saqlashda xatolik yuz berdi');
     } finally {
       setSaving(false);
     }
@@ -257,9 +266,9 @@ export default function EditBlockTestSubjectPage() {
       const updated = [...questions];
       updated[questionIndex].image = data.path; // Сохраняем путь к файлу
       setQuestions(updated);
-    } catch (error) {
-      console.error('❌ Error uploading image:', error);
-      alert('Rasmni yuklashda xatolik');
+    } catch (err) {
+      console.error('❌ Error uploading image:', err);
+      error('Rasmni yuklashda xatolik');
     }
   };
 

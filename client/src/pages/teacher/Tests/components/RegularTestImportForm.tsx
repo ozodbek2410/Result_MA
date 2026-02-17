@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Loader2, AlertCircle } from 'lucide-react';
 import api from '@/lib/api';
+import { useToast } from '@/hooks/useToast';
 
 interface RegularTestImportFormProps {
   parsedQuestions: any[];
   onConfirm: (data: RegularTestFormData) => Promise<void>;
+  onCancel: () => void;
   isProcessing: boolean;
 }
 
@@ -19,8 +21,10 @@ export interface RegularTestFormData {
 export function RegularTestImportForm({
   parsedQuestions,
   onConfirm,
+  onCancel,
   isProcessing,
 }: RegularTestImportFormProps) {
+  const { error: showErrorToast } = useToast();
   const [testName, setTestName] = useState('Yuklangan test');
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [groups, setGroups] = useState<any[]>([]);
@@ -48,11 +52,13 @@ export function RegularTestImportForm({
     // Validation
     if (!selectedGroupId) {
       setError('Iltimos, guruhni tanlang');
+      showErrorToast('Iltimos, guruhni tanlang');
       return;
     }
 
     if (!testName.trim()) {
       setError('Iltimos, test nomini kiriting');
+      showErrorToast('Iltimos, test nomini kiriting');
       return;
     }
 
@@ -139,8 +145,16 @@ export function RegularTestImportForm({
         </div>
       )}
 
-      {/* Submit Button */}
+      {/* Submit Buttons */}
       <div className="flex gap-3 pt-4">
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={isProcessing}
+          size="lg"
+        >
+          Bekor qilish
+        </Button>
         <Button
           onClick={handleSubmit}
           disabled={isProcessing || parsedQuestions.length === 0}

@@ -286,6 +286,24 @@ export default function BlockTestAnswerKeysPage() {
             page-break-inside: avoid;
             break-after: page;
             break-inside: avoid;
+            position: relative;
+          }
+          
+          .page-break::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 400px;
+            background-image: url('/logo.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0.1;
+            z-index: -1;
+            pointer-events: none;
           }
           
           .page-break:last-child {

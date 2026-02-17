@@ -6,6 +6,10 @@ import StudentVariant from '../models/StudentVariant';
 import StudentTestConfig from '../models/StudentTestConfig';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
+import { PDFExportService } from '../services/pdfExportService';
+import { PDFGeneratorService } from '../services/pdfGeneratorService';
+import { PandocDocxService } from '../services/pandocDocxService';
+import { convertTiptapJsonToText } from '../utils/textUtils';
 
 const router = express.Router();
 
@@ -562,7 +566,10 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
     // Создаем Map: studentId -> group
     const studentGroupMap = new Map();
     studentGroups.forEach((sg: any) => {
-      studentGroupMap.set(sg.studentId.toString(), sg.groupId);
+      // Проверяем что groupId существует
+      if (sg.groupId) {
+        studentGroupMap.set(sg.studentId.toString(), sg.groupId);
+      }
     });
     
     const studentMap = new Map();
@@ -725,4 +732,582 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
   }
 });
 
+// Экспорт блок-теста в PDF (с правильным рендером формул)
+router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const blockTestId = req.params.id;
+    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+    
+    console.log('📄 Exporting block test to PDF with formulas:', blockTestId, 'Students:', studentIds.length);
+    
+    // Загружаем блок-тест
+    const blockTest = await BlockTest.findById(blockTestId)
+      .populate('subjectTests.subjectId', 'nameUzb')
+      .lean();
+    
+    if (!blockTest) {
+      return res.status(404).json({ message: 'Block test topilmadi' });
+    }
+    
+    // Проверка доступа
+    if (req.user?.branchId && blockTest.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+    
+    // Загружаем все блок-тесты с таким же классом и датой
+    const allTests = await BlockTest.find({
+      branchId: blockTest.branchId,
+      classNumber: blockTest.classNumber,
+      periodMonth: blockTest.periodMonth,
+      periodYear: blockTest.periodYear
+    }).populate('subjectTests.subjectId', 'nameUzb').lean();
+    
+    // Объединяем все предметы
+    const allSubjects: any[] = [];
+    allTests.forEach((test: any) => {
+      test.subjectTests?.forEach((st: any) => {
+        if (st.subjectId) {
+          allSubjects.push({ ...st, testId: test._id });
+        }
+      });
+    });
+    
+    // Загружаем студентов
+    const allStudents = await Student.find({ 
+      classNumber: blockTest.classNumber,
+      branchId: blockTest.branchId
+    }).populate('directionId', 'nameUzb').lean();
+    
+    const selectedStudents = studentIds.length > 0
+      ? allStudents.filter((s: any) => studentIds.includes(s._id.toString()))
+      : [];
+    
+    if (selectedStudents.length === 0) {
+      return res.status(400).json({ message: 'O\'quvchilar topilmadi' });
+    }
+    
+    // Загружаем конфигурации
+    const studentIdsArray = selectedStudents.map((s: any) => s._id.toString());
+    const allConfigs = await StudentTestConfig.find({
+      studentId: { $in: studentIdsArray }
+    }).populate('subjects.subjectId', 'nameUzb').lean();
+    
+    const configsMap = new Map(allConfigs.map((c: any) => [c.studentId.toString(), c]));
+    
+    // Загружаем варианты
+    const allVariantsMap = new Map<string, any[]>();
+    for (const test of allTests) {
+      const variants = await StudentVariant.find({
+        testId: test._id,
+        studentId: { $in: studentIdsArray }
+      }).lean();
+      
+      variants.forEach((v: any) => {
+        const key = v.studentId.toString();
+        if (!allVariantsMap.has(key)) {
+          allVariantsMap.set(key, []);
+        }
+        allVariantsMap.get(key)!.push(v);
+      });
+    }
+    
+    // Генерируем данные для каждого студента
+    const students = selectedStudents.map((student: any) => {
+      const config = configsMap.get(student._id.toString());
+      
+      if (!config) {
+        console.warn(`⚠️ No config for student ${student.fullName}`);
+        return null;
+      }
+      
+      const studentVariants = allVariantsMap.get(student._id.toString()) || [];
+      const allShuffledQuestions: any[] = [];
+      
+      studentVariants.forEach(v => {
+        if (v.shuffledQuestions?.length > 0) {
+          allShuffledQuestions.push(...v.shuffledQuestions);
+        }
+      });
+      
+      console.log(`📊 Found ${allShuffledQuestions.length} shuffled questions for student ${student.fullName}`);
+      
+      const questions: any[] = [];
+      let questionNumber = 1;
+      
+      if (allShuffledQuestions.length > 0) {
+        const questionsBySubject = new Map<string, any>();
+        
+        if (config.subjects && Array.isArray(config.subjects)) {
+          for (const subjectConfig of config.subjects) {
+            const subjectId = subjectConfig.subjectId._id?.toString() || subjectConfig.subjectId.toString();
+            questionsBySubject.set(subjectId, {
+              name: subjectConfig.subjectId.nameUzb,
+              count: subjectConfig.questionCount
+            });
+          }
+        }
+        
+        let currentSubjectIndex = 0;
+        const subjectIds = Array.from(questionsBySubject.keys());
+        let questionsAdded = 0;
+        
+        allShuffledQuestions.forEach((q: any) => {
+          const currentSubjectId = subjectIds[currentSubjectIndex];
+          const subjectData = questionsBySubject.get(currentSubjectId);
+          
+          if (subjectData && questionsAdded < subjectData.count) {
+            let questionText = '';
+            if (typeof q.text === 'string') {
+              try {
+                const parsed = JSON.parse(q.text);
+                questionText = convertTiptapToLatex(parsed);
+              } catch {
+                questionText = q.text;
+              }
+            } else {
+              questionText = convertTiptapToLatex(q.text);
+            }
+            
+            const options = (q.variants || []).map((v: any) => {
+              if (typeof v.text === 'string') {
+                try {
+                  const parsed = JSON.parse(v.text);
+                  return convertTiptapToLatex(parsed);
+                } catch {
+                  return v.text;
+                }
+              }
+              return convertTiptapToLatex(v.text);
+            });
+            
+            questions.push({
+              number: questionNumber++,
+              subjectName: subjectData.name,
+              text: questionText,
+              options,
+              correctAnswer: q.correctAnswer || ''
+            });
+            
+            questionsAdded++;
+            if (questionsAdded >= subjectData.count) {
+              currentSubjectIndex++;
+              questionsAdded = 0;
+            }
+          }
+        });
+      } else {
+        console.warn('⚠️ No shuffled questions found, using original questions from subjectTests');
+        
+        if (config.subjects && Array.isArray(config.subjects)) {
+          for (const subjectConfig of config.subjects) {
+            const subjectId = subjectConfig.subjectId._id?.toString() || subjectConfig.subjectId.toString();
+            const subjectName = (subjectConfig.subjectId as any).nameUzb || '';
+            
+            const subjectTest = allSubjects.find((st: any) => 
+              st.subjectId._id.toString() === subjectId
+            );
+            
+            if (subjectTest && subjectTest.questions) {
+              const questionsToAdd = subjectTest.questions.slice(0, subjectConfig.questionCount);
+              
+              questionsToAdd.forEach((q: any) => {
+                let questionText = '';
+                if (typeof q.text === 'string') {
+                  try {
+                    const parsed = JSON.parse(q.text);
+                    questionText = convertTiptapToLatex(parsed);
+                  } catch {
+                    questionText = q.text;
+                  }
+                } else {
+                  questionText = convertTiptapToLatex(q.text);
+                }
+                
+                const options = (q.variants || q.options || []).map((v: any) => {
+                  if (typeof v === 'string') return v;
+                  if (v.text) {
+                    if (typeof v.text === 'string') {
+                      try {
+                        const parsed = JSON.parse(v.text);
+                        return convertTiptapToLatex(parsed);
+                      } catch {
+                        return v.text;
+                      }
+                    }
+                    return convertTiptapToLatex(v.text);
+                  }
+                  return '';
+                });
+                
+                questions.push({
+                  number: questionNumber++,
+                  subjectName,
+                  text: questionText,
+                  options,
+                  correctAnswer: q.correctAnswer || ''
+                });
+              });
+            }
+          }
+        }
+      }
+      
+      if (questions.length === 0) {
+        console.warn(`⚠️ No questions for student ${student.fullName}`);
+        return null;
+      }
+      
+      return {
+        studentName: student.fullName,
+        variantCode: studentVariants[0]?.variantCode || student._id.toString().slice(-8).toUpperCase(),
+        questions
+      };
+    }).filter(Boolean);
+    
+    if (students.length === 0) {
+      return res.status(400).json({ 
+        message: 'Savollar topilmadi. Iltimos avval "Aralashtirib berish" tugmasini bosing.' 
+      });
+    }
+    
+    const testData = {
+      title: `Block Test - ${blockTest.classNumber}-sinf`,
+      className: `${blockTest.classNumber}-sinf`,
+      students
+    };
+    
+    // Генерируем PDF через Playwright + KaTeX
+    const pdfBuffer = await PDFGeneratorService.generatePDF(testData);
+    
+    const filename = `block-test-${blockTest.classNumber}-${Date.now()}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+    
+    console.log('✅ PDF exported with formulas');
+  } catch (error: any) {
+    console.error('❌ Error exporting PDF:', error);
+    res.status(500).json({ message: 'PDF yaratishda xatolik', error: error.message });
+  }
+});
+
+/**
+ * Конвертирует TipTap JSON в текст с LaTeX формулами
+ */
+function convertTiptapToLatex(json: any): string {
+  if (!json) return '';
+  
+  if (typeof json === 'string') {
+    return json;
+  }
+  
+  if (!json.type) return '';
+  
+  let text = '';
+  
+  if (json.type === 'text') {
+    text = json.text || '';
+    
+    // Обработка marks (формулы)
+    if (json.marks) {
+      for (const mark of json.marks) {
+        if (mark.type === 'formula' && mark.attrs?.latex) {
+          text = `$${mark.attrs.latex}$`;
+        }
+      }
+    }
+    
+    return text;
+  }
+  
+  if (json.type === 'formula' && json.attrs?.latex) {
+    return `$${json.attrs.latex}$`;
+  }
+  
+  if (json.type === 'paragraph' || json.type === 'doc') {
+    if (json.content && Array.isArray(json.content)) {
+      text = json.content.map((node: any) => convertTiptapToLatex(node)).join('');
+    }
+    return text + (json.type === 'paragraph' ? ' ' : '');
+  }
+  
+  if (json.content && Array.isArray(json.content)) {
+    text = json.content.map((node: any) => convertTiptapToLatex(node)).join('');
+  }
+  
+  return text;
+}
+
 export default router;
+
+// Экспорт блок-теста в Word (с формулами)
+router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const blockTestId = req.params.id;
+    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+    
+    // Получаем настройки форматирования из query параметров
+    const settings = {
+      fontSize: req.query.fontSize ? parseInt(req.query.fontSize as string) : undefined,
+      fontFamily: req.query.fontFamily as string | undefined,
+      lineHeight: req.query.lineHeight ? parseFloat(req.query.lineHeight as string) : undefined,
+      columnsCount: req.query.columnsCount ? parseInt(req.query.columnsCount as string) : undefined,
+      backgroundOpacity: req.query.backgroundOpacity ? parseFloat(req.query.backgroundOpacity as string) : undefined,
+      backgroundImage: req.query.customBackground as string | undefined || 
+                      (req.query.useDefaultLogo === 'true' ? undefined : undefined)
+    };
+    
+    console.log('📄 Exporting block test to Word with formulas:', blockTestId, 'Students:', studentIds.length);
+    console.log('🎨 Settings:', settings);
+    
+    // Загружаем блок-тест
+    const blockTest = await BlockTest.findById(blockTestId)
+      .populate('subjectTests.subjectId', 'nameUzb')
+      .lean();
+    
+    if (!blockTest) {
+      return res.status(404).json({ message: 'Block test topilmadi' });
+    }
+    
+    // Проверка доступа
+    if (req.user?.branchId && blockTest.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+    
+    // Загружаем все блок-тесты с таким же классом и датой
+    const allTests = await BlockTest.find({
+      branchId: blockTest.branchId,
+      classNumber: blockTest.classNumber,
+      periodMonth: blockTest.periodMonth,
+      periodYear: blockTest.periodYear
+    }).populate('subjectTests.subjectId', 'nameUzb').lean();
+    
+    // Объединяем все предметы
+    const allSubjects: any[] = [];
+    allTests.forEach((test: any) => {
+      test.subjectTests?.forEach((st: any) => {
+        if (st.subjectId) {
+          allSubjects.push({ ...st, testId: test._id });
+        }
+      });
+    });
+    
+    // Загружаем студентов
+    const allStudents = await Student.find({ 
+      classNumber: blockTest.classNumber,
+      branchId: blockTest.branchId
+    }).populate('directionId', 'nameUzb').lean();
+    
+    const selectedStudents = studentIds.length > 0
+      ? allStudents.filter((s: any) => studentIds.includes(s._id.toString()))
+      : [];
+    
+    if (selectedStudents.length === 0) {
+      return res.status(400).json({ message: 'O\'quvchilar topilmadi' });
+    }
+    
+    // Загружаем конфигурации
+    const studentIdsArray = selectedStudents.map((s: any) => s._id.toString());
+    const allConfigs = await StudentTestConfig.find({
+      studentId: { $in: studentIdsArray }
+    }).populate('subjects.subjectId', 'nameUzb').lean();
+    
+    const configsMap = new Map(allConfigs.map((c: any) => [c.studentId.toString(), c]));
+    
+    // Загружаем варианты
+    const allVariantsMap = new Map<string, any[]>();
+    for (const test of allTests) {
+      const variants = await StudentVariant.find({
+        testId: test._id,
+        studentId: { $in: studentIdsArray }
+      }).lean();
+      
+      variants.forEach((v: any) => {
+        const key = v.studentId.toString();
+        if (!allVariantsMap.has(key)) {
+          allVariantsMap.set(key, []);
+        }
+        allVariantsMap.get(key)!.push(v);
+      });
+    }
+    
+    // Генерируем данные для каждого студента
+    const students = selectedStudents.map((student: any) => {
+      const config = configsMap.get(student._id.toString());
+      
+      if (!config) {
+        console.warn(`⚠️ No config for student ${student.fullName}`);
+        return null;
+      }
+      
+      const studentVariants = allVariantsMap.get(student._id.toString()) || [];
+      const allShuffledQuestions: any[] = [];
+      
+      studentVariants.forEach(v => {
+        if (v.shuffledQuestions?.length > 0) {
+          allShuffledQuestions.push(...v.shuffledQuestions);
+        }
+      });
+      
+      console.log(`📊 Found ${allShuffledQuestions.length} shuffled questions for student ${student.fullName}`);
+      
+      const questions: any[] = [];
+      let questionNumber = 1;
+      
+      if (allShuffledQuestions.length > 0) {
+        const questionsBySubject = new Map<string, any>();
+        
+        if (config.subjects && Array.isArray(config.subjects)) {
+          for (const subjectConfig of config.subjects) {
+            const subjectId = subjectConfig.subjectId._id?.toString() || subjectConfig.subjectId.toString();
+            questionsBySubject.set(subjectId, {
+              name: subjectConfig.subjectId.nameUzb,
+              count: subjectConfig.questionCount
+            });
+          }
+        }
+        
+        let currentSubjectIndex = 0;
+        const subjectIds = Array.from(questionsBySubject.keys());
+        let questionsAdded = 0;
+        
+        allShuffledQuestions.forEach((q: any) => {
+          const currentSubjectId = subjectIds[currentSubjectIndex];
+          const subjectData = questionsBySubject.get(currentSubjectId);
+          
+          if (subjectData && questionsAdded < subjectData.count) {
+            let questionText = '';
+            if (typeof q.text === 'string') {
+              try {
+                const parsed = JSON.parse(q.text);
+                questionText = convertTiptapToLatex(parsed);
+              } catch {
+                questionText = q.text;
+              }
+            } else {
+              questionText = convertTiptapToLatex(q.text);
+            }
+            
+            const options = (q.variants || []).map((v: any) => {
+              if (typeof v.text === 'string') {
+                try {
+                  const parsed = JSON.parse(v.text);
+                  return convertTiptapToLatex(parsed);
+                } catch {
+                  return v.text;
+                }
+              }
+              return convertTiptapToLatex(v.text);
+            });
+            
+            questions.push({
+              number: questionNumber++,
+              subjectName: subjectData.name,
+              text: questionText,
+              options,
+              correctAnswer: q.correctAnswer || ''
+            });
+            
+            questionsAdded++;
+            if (questionsAdded >= subjectData.count) {
+              currentSubjectIndex++;
+              questionsAdded = 0;
+            }
+          }
+        });
+      } else {
+        console.warn('⚠️ No shuffled questions found, using original questions from subjectTests');
+        
+        if (config.subjects && Array.isArray(config.subjects)) {
+          for (const subjectConfig of config.subjects) {
+            const subjectId = subjectConfig.subjectId._id?.toString() || subjectConfig.subjectId.toString();
+            const subjectName = (subjectConfig.subjectId as any).nameUzb || '';
+            
+            const subjectTest = allSubjects.find((st: any) => 
+              st.subjectId._id.toString() === subjectId
+            );
+            
+            if (subjectTest && subjectTest.questions) {
+              const questionsToAdd = subjectTest.questions.slice(0, subjectConfig.questionCount);
+              
+              questionsToAdd.forEach((q: any) => {
+                let questionText = '';
+                if (typeof q.text === 'string') {
+                  try {
+                    const parsed = JSON.parse(q.text);
+                    questionText = convertTiptapToLatex(parsed);
+                  } catch {
+                    questionText = q.text;
+                  }
+                } else {
+                  questionText = convertTiptapToLatex(q.text);
+                }
+                
+                const options = (q.variants || q.options || []).map((v: any) => {
+                  if (typeof v === 'string') return v;
+                  if (v.text) {
+                    if (typeof v.text === 'string') {
+                      try {
+                        const parsed = JSON.parse(v.text);
+                        return convertTiptapToLatex(parsed);
+                      } catch {
+                        return v.text;
+                      }
+                    }
+                    return convertTiptapToLatex(v.text);
+                  }
+                  return '';
+                });
+                
+                questions.push({
+                  number: questionNumber++,
+                  subjectName,
+                  text: questionText,
+                  options,
+                  correctAnswer: q.correctAnswer || ''
+                });
+              });
+            }
+          }
+        }
+      }
+      
+      if (questions.length === 0) {
+        console.warn(`⚠️ No questions for student ${student.fullName}`);
+        return null;
+      }
+      
+      return {
+        studentName: student.fullName,
+        variantCode: studentVariants[0]?.variantCode || student._id.toString().slice(-8).toUpperCase(),
+        questions
+      };
+    }).filter(Boolean);
+    
+    if (students.length === 0) {
+      return res.status(400).json({ 
+        message: 'Savollar topilmadi. Iltimos avval "Aralashtirib berish" tugmasini bosing.' 
+      });
+    }
+    
+    const testData = {
+      title: `Block Test - ${blockTest.classNumber}-sinf`,
+      className: `${blockTest.classNumber}-sinf`,
+      students,
+      settings // Добавляем настройки
+    };
+    
+    // Генерируем Word через Pandoc (с нативными формулами)
+    const docxBuffer = await PandocDocxService.generateDocx(testData);
+    
+    const filename = `block-test-${blockTest.classNumber}-${Date.now()}.docx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(docxBuffer);
+    
+    console.log('✅ Word exported with formulas');
+  } catch (error: any) {
+    console.error('❌ Error exporting Word:', error);
+    res.status(500).json({ message: 'Word yaratishda xatolik', error: error.message });
+  }
+});

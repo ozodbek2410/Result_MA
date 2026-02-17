@@ -59,12 +59,21 @@ export default function StudentConfigModal({
       if (config && config.subjects && config.subjects.length > 0) {
         console.log('🔍 Using existing config subjects:', config.subjects.length);
         
-        // Если в конфигурации нет букв, подставляем букву группы студента
+        // ВСЕГДА синхронизируем groupLetter с текущей группой студента
         const subjectsWithLetters = config.subjects.map((s: any) => {
-          if (!s.groupLetter && studentGroupLetter) {
-            console.log(`🔍 Setting default letter ${studentGroupLetter} for subject ${s.subjectId?.nameUzb || s.subjectId}`);
+          // Если у предмета была буква, обновляем её на текущую букву группы
+          // Если буквы не было, оставляем undefined
+          const shouldHaveLetter = s.groupLetter !== undefined;
+          
+          if (shouldHaveLetter && studentGroupLetter) {
+            console.log(`🔄 Syncing letter for subject ${s.subjectId?.nameUzb || s.subjectId}: ${s.groupLetter} → ${studentGroupLetter}`);
+            return { ...s, groupLetter: studentGroupLetter };
+          } else if (!shouldHaveLetter && studentGroupLetter) {
+            // Если буквы не было, но у студента есть группа с буквой, добавляем
+            console.log(`➕ Adding letter ${studentGroupLetter} for subject ${s.subjectId?.nameUzb || s.subjectId}`);
             return { ...s, groupLetter: studentGroupLetter };
           }
+          
           return s;
         });
         
