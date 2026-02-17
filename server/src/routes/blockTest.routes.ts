@@ -973,6 +973,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
     const testData = {
       title: `Block Test - ${blockTest.classNumber}-sinf`,
       className: `${blockTest.classNumber}-sinf`,
+      questions: [], // Empty questions for multi-student format
       students
     };
     
@@ -1293,6 +1294,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
     const testData = {
       title: `Block Test - ${blockTest.classNumber}-sinf`,
       className: `${blockTest.classNumber}-sinf`,
+      questions: [], // Empty questions for multi-student format
       students,
       settings // Добавляем настройки
     };

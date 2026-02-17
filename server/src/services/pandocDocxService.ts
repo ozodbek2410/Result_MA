@@ -75,7 +75,7 @@ export class PandocDocxService {
 
       // Применяем пользовательские настройки если есть
       if (testData.settings) {
-        buffer = await this.applyCustomSettings(buffer, testData.settings);
+        buffer = await this.applyCustomSettings(buffer as Buffer, testData.settings);
       }
 
       // Удаляем временные файлы

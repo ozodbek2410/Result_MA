@@ -47,7 +47,7 @@ export class DocxWatermarkService {
             new Paragraph({
               children: [
                 new ImageRun({
-                  data: imageBuffer,
+                  data: imageBuffer as Buffer,
                   transformation: {
                     width: 400,
                     height: 400,
@@ -62,7 +62,7 @@ export class DocxWatermarkService {
                     behindDocument: true, // Размещаем за текстом
                     allowOverlap: true,
                   },
-                }),
+                } as any),
               ],
             }),
           ],

@@ -249,7 +249,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       const StudentTestConfig = require('../models/StudentTestConfig').default;
       
       const studentGroups = await StudentGroup.find({ groupId: req.params.id }).lean();
-      const studentIds = studentGroups.map(sg => sg.studentId);
+      const studentIds = studentGroups.map((sg: any) => sg.studentId);
       
       console.log(`📝 Updating configs for ${studentIds.length} students`);
       
