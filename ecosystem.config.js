@@ -5,9 +5,9 @@ require('dotenv').config({ path: path.join(__dirname, 'server', '.env') });
 
 module.exports = {
   apps: [{
-    name: 'mathacademy-server',
+    name: 'resultma-server',
     script: './server/dist/index.js',
-    cwd: '/var/www/resultMA',  // Absolute path for production
+    cwd: '/var/www/Result_MA',  // Absolute path for production
     instances: 2, // Use 2-4 instances for better CPU utilization
     exec_mode: 'cluster',
     env: {
@@ -22,8 +22,8 @@ module.exports = {
       REDIS_PORT: process.env.REDIS_PORT || '6379',
       REDIS_PASSWORD: process.env.REDIS_PASSWORD
     },
-    error_file: './logs/server-error.log',
-    out_file: './logs/server-out.log',
+    error_file: '/var/www/Result_MA/logs/server-error.log',
+    out_file: '/var/www/Result_MA/logs/server-out.log',
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     merge_logs: true,
     autorestart: true,
