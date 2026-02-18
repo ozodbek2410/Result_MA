@@ -10,6 +10,7 @@ import { logger } from './config/logger';
 import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import { registerOMRHandler } from './services/omrQueueHandler';
 import { initScheduler } from './scheduler';
+import { LocalFileService } from './services/localFileService';
 
 // Import models to register them with Mongoose
 import './models/User';
@@ -96,6 +97,9 @@ const SERVER_ROOT = path.join(__dirname, '..');
 
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(SERVER_ROOT, 'uploads')));
+
+// Serve exported files (Word documents)
+app.use('/exports', express.static(path.join(SERVER_ROOT, 'exports')));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -198,11 +202,14 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 // Start server
-connectDB().then(() => {
+connectDB().then(async () => {
   // Подключаем Redis (опционально)
   connectRedis().catch(err => {
     logger.warn('Redis недоступен, работаем без кеша', 'REDIS');
   });
+  
+  // Инициализируем локальное хранилище файлов
+  await LocalFileService.init();
   
   // Регистрируем обработчики очередей
   registerOMRHandler();

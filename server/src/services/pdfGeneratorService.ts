@@ -25,72 +25,78 @@ interface TestData {
 }
 
 export class PDFGeneratorService {
-  private static browser: Browser | null = null;
-
-  /**
-   * Инициализация браузера (переиспользуем для производительности)
-   */
-  private static async getBrowser(): Promise<Browser> {
-    if (!this.browser) {
-      this.browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-    }
-    return this.browser;
-  }
-
   /**
    * Генерирует PDF из HTML с формулами
+   * ВАЖНО: Каждый раз создаем новый browser instance для избежания memory leak
    */
   static async generatePDF(testData: TestData): Promise<Buffer> {
-    const browser = await this.getBrowser();
-    const page = await browser.newPage();
+    let browser: Browser | null = null;
     
-    // Увеличиваем timeout для страницы
-    page.setDefaultTimeout(60000);
-
     try {
-      // Генерируем HTML
-      const html = this.generateHTML(testData);
-
-      // Загружаем HTML
-      await page.setContent(html, { 
-        waitUntil: 'networkidle',
-        timeout: 60000  // Увеличено до 60 секунд
+      // Создаем новый browser для каждого PDF
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage', // Уменьшает использование shared memory
+          '--disable-gpu' // Отключаем GPU для headless
+        ]
       });
+      
+      const page = await browser.newPage();
+      
+      // Увеличиваем timeout для страницы
+      page.setDefaultTimeout(60000);
 
-      // Ждем рендера KaTeX формул (увеличен timeout)
-      await page.waitForFunction(`
-        () => {
-          const elements = document.querySelectorAll('.math-formula');
-          if (elements.length === 0) return true; // Нет формул
-          return Array.from(elements).every(el => 
-            el.querySelector('.katex') !== null
-          );
-        }
-      `, { timeout: 30000 }).catch(() => {  // Увеличено до 30 секунд
-        console.warn('⚠️ KaTeX render timeout, continuing anyway');
-      });
+      try {
+        // Генерируем HTML
+        const html = this.generateHTML(testData);
 
-      // Небольшая задержка для стабильности
-      await page.waitForTimeout(1000);  // Увеличено до 1 секунды
+        // Загружаем HTML
+        await page.setContent(html, { 
+          waitUntil: 'networkidle',
+          timeout: 60000
+        });
 
-      // Генерируем PDF
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: {
-          top: '10mm',
-          right: '10mm',
-          bottom: '10mm',
-          left: '10mm'
-        }
-      });
+        // Ждем рендера KaTeX формул
+        await page.waitForFunction(`
+          () => {
+            const elements = document.querySelectorAll('.math-formula');
+            if (elements.length === 0) return true;
+            return Array.from(elements).every(el => 
+              el.querySelector('.katex') !== null
+            );
+          }
+        `, { timeout: 30000 }).catch(() => {
+          console.warn('⚠️ KaTeX render timeout, continuing anyway');
+        });
 
-      return pdfBuffer;
+        // Небольшая задержка для стабильности
+        await page.waitForTimeout(1000);
+
+        // Генерируем PDF
+        const pdfBuffer = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          margin: {
+            top: '10mm',
+            right: '10mm',
+            bottom: '10mm',
+            left: '10mm'
+          }
+        });
+
+        return pdfBuffer;
+      } finally {
+        await page.close();
+      }
     } finally {
-      await page.close();
+      // КРИТИЧНО: Закрываем browser после каждого PDF
+      if (browser) {
+        await browser.close();
+        console.log('✅ Browser closed, memory freed');
+      }
     }
   }
 

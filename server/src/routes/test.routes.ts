@@ -14,6 +14,10 @@ import { PDFExportService } from '../services/pdfExportService';
 import { PDFGeneratorService } from '../services/pdfGeneratorService';
 import { PandocDocxService } from '../services/pandocDocxService';
 import { convertTiptapJsonToText } from '../utils/textUtils';
+import { convertVariantText } from '../utils/tiptapConverter';
+import wordExportQueue from '../services/queue/wordExportQueue';
+import pdfExportQueue from '../services/queue/pdfExportQueue';
+import { S3Service } from '../services/s3Service';
 
 const router = express.Router();
 
@@ -817,6 +821,121 @@ function shuffleArray(array: any[]) {
   return arr;
 }
 
+// ============================================================================
+// PDF EXPORT - ASYNC VERSION (Production-ready with Queue)
+// ============================================================================
+
+/**
+ * Start PDF export job (async)
+ * POST /tests/:id/export-pdf-async
+ */
+router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { students } = req.body;
+    
+    // Validation
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ 
+        message: 'O\'quvchilar tanlanmagan',
+        error: 'students array is required'
+      });
+    }
+    
+    // Check access
+    const test = await Test.findById(id).select('branchId name').lean();
+    if (!test) {
+      return res.status(404).json({ message: 'Test topilmadi' });
+    }
+    
+    if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+    
+    // Add job to queue
+    const job = await pdfExportQueue.add('export', {
+      testId: id,
+      studentIds: students,
+      userId: req.user.id || req.user._id?.toString() || 'unknown',
+      isBlockTest: false
+    }, {
+      priority: students.length > 50 ? 2 : 1,
+      jobId: `pdf-test-${id}-${Date.now()}`
+    });
+    
+    console.log(`✅ [API] PDF Job ${job.id} queued for test ${id} (${students.length} students)`);
+    
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'PDF yaratilmoqda. Biroz kuting...',
+      estimatedTime: Math.ceil(students.length * 1.5) // 1.5s per student
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [API] Error queueing PDF export:', error);
+    res.status(500).json({ 
+      message: 'Xatolik yuz berdi',
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * Check PDF export job status
+ * GET /tests/pdf-export-status/:jobId
+ */
+router.get('/pdf-export-status/:jobId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    const job = await pdfExportQueue.getJob(jobId);
+    
+    if (!job) {
+      return res.status(404).json({ 
+        status: 'not_found',
+        message: 'Job topilmadi' 
+      });
+    }
+    
+    const state = await job.getState();
+    const progress = job.progress;
+    
+    if (state === 'completed') {
+      const result = job.returnvalue;
+      return res.json({
+        status: 'completed',
+        progress: 100,
+        result
+      });
+    }
+    
+    if (state === 'failed') {
+      const error = job.failedReason;
+      return res.json({
+        status: 'failed',
+        error: error || 'Unknown error'
+      });
+    }
+    
+    res.json({
+      status: state,
+      progress: progress || 0
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [API] Error checking PDF job status:', error);
+    res.status(500).json({ 
+      message: 'Status tekshirishda xatolik',
+      error: error.message 
+    });
+  }
+});
+
+// ============================================================================
+// PDF EXPORT - SYNC VERSION (Legacy, for backward compatibility)
+// ============================================================================
+
 // Экспорт теста в PDF (с правильным рендером формул)
 router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
   try {
@@ -859,30 +978,12 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
           : test.questions;
 
         const questions = (questionsToRender || []).map((q: any, index: number) => {
-          let questionText = '';
-          if (typeof q.text === 'string') {
-            try {
-              const parsed = JSON.parse(q.text);
-              questionText = convertTiptapToLatex(parsed);
-            } catch {
-              questionText = q.text;
-            }
-          } else {
-            questionText = convertTiptapToLatex(q.text);
-          }
+          const questionText = convertVariantText(q.text);
           
           const options = (q.variants || q.options || []).map((v: any) => {
             if (typeof v === 'string') return v;
             if (v.text) {
-              if (typeof v.text === 'string') {
-                try {
-                  const parsed = JSON.parse(v.text);
-                  return convertTiptapToLatex(parsed);
-                } catch {
-                  return v.text;
-                }
-              }
-              return convertTiptapToLatex(v.text);
+              return convertVariantText(v.text);
             }
             return '';
           });
@@ -911,30 +1012,12 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
     } else {
       // Старый формат - без студентов
       const questions = (test.questions || []).map((q: any, index: number) => {
-        let questionText = '';
-        if (typeof q.text === 'string') {
-          try {
-            const parsed = JSON.parse(q.text);
-            questionText = convertTiptapToLatex(parsed);
-          } catch {
-            questionText = q.text;
-          }
-        } else {
-          questionText = convertTiptapToLatex(q.text);
-        }
+        const questionText = convertVariantText(q.text);
         
         const options = (q.variants || q.options || []).map((v: any) => {
           if (typeof v === 'string') return v;
           if (v.text) {
-            if (typeof v.text === 'string') {
-              try {
-                const parsed = JSON.parse(v.text);
-                return convertTiptapToLatex(parsed);
-              } catch {
-                return v.text;
-              }
-            }
-            return convertTiptapToLatex(v.text);
+            return convertVariantText(v.text);
           }
           return '';
         });
@@ -970,6 +1053,132 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
     res.status(500).json({ message: 'PDF yaratishda xatolik', error: error.message });
   }
 });
+
+// ============================================================================
+// WORD EXPORT - ASYNC VERSION (Production-ready with Queue)
+// ============================================================================
+
+/**
+ * Start Word export job (async)
+ * POST /tests/:id/export-docx-async
+ */
+router.post('/:id/export-docx-async', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { students, settings } = req.body;
+    
+    // Validation
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ 
+        message: 'O\'quvchilar tanlanmagan',
+        error: 'students array is required'
+      });
+    }
+    
+    // Check access
+    const test = await Test.findById(id).select('branchId name').lean();
+    if (!test) {
+      return res.status(404).json({ message: 'Test topilmadi' });
+    }
+    
+    if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+    
+    // Add job to queue
+    const job = await wordExportQueue.add('export', {
+      testId: id,
+      studentIds: students,
+      settings: settings || {},
+      userId: req.user.id || req.user._id?.toString() || 'unknown',
+      isBlockTest: false
+    }, {
+      priority: students.length > 50 ? 2 : 1, // Lower priority for large exports
+      jobId: `test-${id}-${Date.now()}` // Unique job ID
+    });
+    
+    console.log(`✅ [API] Job ${job.id} queued for test ${id} (${students.length} students)`);
+    
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'Export jarayoni boshlandi. Biroz kuting...',
+      estimatedTime: Math.ceil(students.length * 0.5) // Rough estimate: 0.5s per student
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [API] Error queueing export:', error);
+    res.status(500).json({ 
+      message: 'Xatolik yuz berdi',
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * Check export job status
+ * GET /tests/export-status/:jobId
+ */
+router.get('/export-status/:jobId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    const job = await wordExportQueue.getJob(jobId);
+    
+    if (!job) {
+      return res.status(404).json({ 
+        message: 'Job topilmadi',
+        status: 'not_found'
+      });
+    }
+    
+    const state = await job.getState();
+    const progress = job.progress || 0;
+    
+    // Completed
+    if (state === 'completed') {
+      return res.json({
+        status: 'completed',
+        progress: 100,
+        result: {
+          fileUrl: job.returnvalue.fileUrl,
+          fileName: job.returnvalue.fileName,
+          size: job.returnvalue.size,
+          studentsCount: job.returnvalue.studentsCount
+        }
+      });
+    }
+    
+    // Failed
+    if (state === 'failed') {
+      return res.json({
+        status: 'failed',
+        progress: progress,
+        error: job.failedReason || 'Unknown error',
+        attemptsMade: job.attemptsMade,
+        attemptsTotal: job.opts.attempts
+      });
+    }
+    
+    // In progress or waiting
+    res.json({
+      status: state, // 'waiting', 'active', 'delayed'
+      progress: progress,
+      message: state === 'active' ? 'Ishlanmoqda...' : 'Navbatda...'
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [API] Error checking status:', error);
+    res.status(500).json({ 
+      message: 'Xatolik',
+      error: error.message 
+    });
+  }
+});
+
+// ============================================================================
+// WORD EXPORT - SYNC VERSION (Legacy, fallback)
+// ============================================================================
 
 // Экспорт теста в Word (с формулами)
 router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
@@ -1142,48 +1351,13 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
 /**
  * Конвертирует TipTap JSON в текст с LaTeX формулами
  */
+/**
+ * Конвертирует TipTap JSON в текст с LaTeX формулами
+ * @deprecated Use convertVariantText from utils/tiptapConverter instead
+ */
 function convertTiptapToLatex(json: any): string {
-  if (!json) return '';
-  
-  if (typeof json === 'string') {
-    return json;
-  }
-  
-  if (!json.type) return '';
-  
-  let text = '';
-  
-  if (json.type === 'text') {
-    text = json.text || '';
-    
-    // Обработка marks (формулы)
-    if (json.marks) {
-      for (const mark of json.marks) {
-        if (mark.type === 'formula' && mark.attrs?.latex) {
-          text = `$${mark.attrs.latex}$`;
-        }
-      }
-    }
-    
-    return text;
-  }
-  
-  if (json.type === 'formula' && json.attrs?.latex) {
-    return `$${json.attrs.latex}$`;
-  }
-  
-  if (json.type === 'paragraph' || json.type === 'doc') {
-    if (json.content && Array.isArray(json.content)) {
-      text = json.content.map((node: any) => convertTiptapToLatex(node)).join('');
-    }
-    return text + (json.type === 'paragraph' ? ' ' : '');
-  }
-  
-  if (json.content && Array.isArray(json.content)) {
-    text = json.content.map((node: any) => convertTiptapToLatex(node)).join('');
-  }
-  
-  return text;
+  return convertVariantText(json);
 }
+
 
 export default router;

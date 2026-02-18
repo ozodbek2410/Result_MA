@@ -26,6 +26,11 @@ export default function TestPrintPage() {
   const [backgroundImage, setBackgroundImage] = useState<string>('/logo.png');
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.05);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  
+  // Word export state
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportJobId, setExportJobId] = useState<string | null>(null);
 
   // Определяем тип теста по URL
   const isBlockTest = window.location.pathname.includes('/block-tests/');
@@ -88,13 +93,101 @@ export default function TestPrintPage() {
 
   const handleDownloadPDF = async () => {
     try {
+      setExporting(true);
+      setExportProgress(0);
+      success('PDF yaratilmoqda...');
+      
+      const endpoint = isBlockTest 
+        ? `/block-tests/${id}/export-pdf-async`
+        : `/tests/${id}/export-pdf-async`;
+      
+      // Step 1: Start export job
+      const { data } = await api.post(endpoint, {
+        students: selectedStudents.map(s => s._id)
+      });
+      
+      const { jobId, estimatedTime } = data;
+      setExportJobId(jobId);
+      
+      console.log(`✅ PDF export job started: ${jobId}, estimated: ${estimatedTime}s`);
+      
+      // Step 2: Poll status
+      const pollStatus = async () => {
+        try {
+          const statusEndpoint = isBlockTest
+            ? `/block-tests/pdf-export-status/${jobId}`
+            : `/tests/pdf-export-status/${jobId}`;
+          
+          const { data: status } = await api.get(statusEndpoint);
+          
+          // Update progress
+          setExportProgress(status.progress || 0);
+          
+          // Completed
+          if (status.status === 'completed') {
+            success('PDF tayyor!');
+            
+            // Download file
+            const link = document.createElement('a');
+            link.href = status.result.fileUrl;
+            link.download = status.result.fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          
+          // Failed
+          if (status.status === 'failed') {
+            showError(`Xatolik: ${status.error}`);
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          
+          // Continue polling
+          setTimeout(pollStatus, 2000); // Check every 2 seconds
+          
+        } catch (error: any) {
+          console.error('Status check error:', error);
+          showError('Status tekshirishda xatolik');
+          setExporting(false);
+          setExportJobId(null);
+        }
+      };
+      
+      // Start polling
+      setTimeout(pollStatus, 1000); // First check after 1 second
+      
+    } catch (error: any) {
+      console.error('Error starting PDF export:', error);
+      
+      // Fallback to sync version if async fails
+      if (error.response?.status === 503 || error.response?.status === 404) {
+        console.log('⚠️ Falling back to sync PDF export...');
+        await handleDownloadPDFSync();
+      } else {
+        showError(error.response?.data?.message || 'PDF yuklashda xatolik');
+        setExporting(false);
+        setExportJobId(null);
+      }
+    }
+  };
+  
+  // Fallback: Sync PDF version (old method)
+  const handleDownloadPDFSync = async () => {
+    try {
       success('PDF yuklanmoqda...');
       
       const endpoint = isBlockTest 
         ? `/block-tests/${id}/export-pdf`
         : `/tests/${id}/export-pdf`;
       
-      // Добавляем студентов если они выбраны
       const params = selectedStudents.length > 0 
         ? `?students=${selectedStudents.map(s => s._id).join(',')}`
         : '';
@@ -116,13 +209,112 @@ export default function TestPrintPage() {
       window.URL.revokeObjectURL(url);
       
       success('PDF yuklandi');
+      setExporting(false);
     } catch (error: any) {
       console.error('Error downloading PDF:', error);
       showError('PDF yuklashda xatolik');
+      setExporting(false);
     }
   };
 
   const handleDownloadWord = async () => {
+    try {
+      setExporting(true);
+      setExportProgress(0);
+      success('Word yaratilmoqda...');
+      
+      const endpoint = isBlockTest 
+        ? `/block-tests/${id}/export-docx-async`
+        : `/tests/${id}/export-docx-async`;
+      
+      // Step 1: Start export job
+      const { data } = await api.post(endpoint, {
+        students: selectedStudents.map(s => s._id),
+        settings: {
+          fontSize,
+          fontFamily,
+          lineHeight,
+          columnsCount,
+          backgroundOpacity,
+          backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined
+        }
+      });
+      
+      const { jobId, estimatedTime } = data;
+      setExportJobId(jobId);
+      
+      console.log(`✅ Export job started: ${jobId}, estimated: ${estimatedTime}s`);
+      
+      // Step 2: Poll status
+      const pollStatus = async () => {
+        try {
+          const statusEndpoint = isBlockTest
+            ? `/block-tests/export-status/${jobId}`
+            : `/tests/export-status/${jobId}`;
+          
+          const { data: status } = await api.get(statusEndpoint);
+          
+          // Update progress
+          setExportProgress(status.progress || 0);
+          
+          // Completed
+          if (status.status === 'completed') {
+            success('Word tayyor!');
+            
+            // Download file
+            const link = document.createElement('a');
+            link.href = status.result.fileUrl;
+            link.download = status.result.fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          
+          // Failed
+          if (status.status === 'failed') {
+            showError(`Xatolik: ${status.error}`);
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          
+          // Continue polling
+          setTimeout(pollStatus, 2000); // Check every 2 seconds
+          
+        } catch (error: any) {
+          console.error('Status check error:', error);
+          showError('Status tekshirishda xatolik');
+          setExporting(false);
+          setExportJobId(null);
+        }
+      };
+      
+      // Start polling
+      setTimeout(pollStatus, 1000); // First check after 1 second
+      
+    } catch (error: any) {
+      console.error('Error starting export:', error);
+      
+      // Fallback to sync version if async fails
+      if (error.response?.status === 503 || error.response?.status === 404) {
+        console.log('⚠️ Falling back to sync export...');
+        await handleDownloadWordSync();
+      } else {
+        showError(error.response?.data?.message || 'Word yuklashda xatolik');
+        setExporting(false);
+        setExportJobId(null);
+      }
+    }
+  };
+  
+  // Fallback: Sync version (old method)
+  const handleDownloadWordSync = async () => {
     try {
       success('Word yuklanmoqda...');
       
@@ -535,9 +727,9 @@ export default function TestPrintPage() {
                   <FileText className="w-4 h-4 mr-1" />
                   PDF yuklash
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleDownloadWord}>
+                <Button size="sm" variant="outline" onClick={handleDownloadWord} disabled={exporting}>
                   <FileText className="w-4 h-4 mr-1" />
-                  Word yuklash
+                  {exporting ? `Yuklanmoqda... ${exportProgress}%` : 'Word yuklash'}
                 </Button>
               </>
             )}

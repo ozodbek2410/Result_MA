@@ -4,8 +4,12 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "worker": "tsx watch src/worker.ts",
+    "dev:all": "tsx watch src/index.ts & tsx watch src/worker.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:worker": "node dist/worker.js",
+    "start:all": "node dist/index.js & node dist/worker.js",
     "setup-test": "tsx src/scripts/setupTestData.ts",
     "create-admin": "tsx src/scripts/createAdmin.ts",
     "create-test-user": "tsx src/scripts/createTestUser.ts",
@@ -29,12 +33,15 @@
     "add-watermark": "tsx scripts/addWatermarkToReference.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.500.0",
+    "@aws-sdk/s3-request-presigner": "^3.500.0",
     "@types/compression": "^1.8.1",
     "@types/ioredis": "^4.28.10",
     "@types/pdfkit": "^0.17.5",
     "@xmldom/xmldom": "^0.8.10",
     "adm-zip": "^0.5.16",
     "bcryptjs": "^2.4.3",
+    "bullmq": "^5.0.0",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "docx": "^9.5.3",

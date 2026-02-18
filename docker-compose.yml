@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  # MongoDB
+  mongodb:
+    image: mongo:6
+    container_name: resultma-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=resultma
+    networks:
+      - resultma-network
+    restart: unless-stopped
+
+  # Redis (for BullMQ queue)
+  redis:
+    image: redis:alpine
+    container_name: resultma-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - resultma-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio
+    container_name: resultma-minio
+    ports:
+      - "9000:9000"      # API
+      - "9001:9001"      # Console
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    networks:
+      - resultma-network
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Create MinIO bucket on startup
+  minio-init:
+    image: minio/mc
+    container_name: resultma-minio-init
+    depends_on:
+      - minio
+    networks:
+      - resultma-network
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin123;
+      /usr/bin/mc mb myminio/resultma-exports --ignore-existing;
+      /usr/bin/mc anonymous set download myminio/resultma-exports;
+      echo 'MinIO bucket created successfully';
+      "
+
+  # API Server (Node.js + Express)
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: resultma-api
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/resultma
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY=minioadmin
+      - AWS_SECRET_KEY=minioadmin123
+      - S3_BUCKET=resultma-exports
+      - S3_ENDPOINT=http://minio:9000
+      - USE_MINIO=true
+      - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_key_here}
+    depends_on:
+      - mongodb
+      - redis
+      - minio
+    networks:
+      - resultma-network
+    restart: unless-stopped
+    volumes:
+      - ./server/uploads:/app/uploads
+      - ./server/temp:/app/temp
+      - ./server/templates:/app/templates
+
+  # BullMQ Workers (multiple instances for parallel processing)
+  worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    command: npm run start:worker
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/resultma
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY=minioadmin
+      - AWS_SECRET_KEY=minioadmin123
+      - S3_BUCKET=resultma-exports
+      - S3_ENDPOINT=http://minio:9000
+      - USE_MINIO=true
+      - WORKER_CONCURRENCY=10
+      - WORKER_MAX_JOBS_PER_MINUTE=100
+    depends_on:
+      - mongodb
+      - redis
+      - minio
+    networks:
+      - resultma-network
+    restart: unless-stopped
+    volumes:
+      - ./server/temp:/app/temp
+      - ./server/templates:/app/templates
+    deploy:
+      replicas: 3  # 3 worker instances = 30 parallel jobs
+
+  # Frontend (React + Vite)
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: resultma-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - resultma-network
+    restart: unless-stopped
+
+networks:
+  resultma-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  redis_data:
+  minio_data:
