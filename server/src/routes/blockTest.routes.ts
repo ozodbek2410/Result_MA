@@ -10,6 +10,8 @@ import { PDFExportService } from '../services/pdfExportService';
 import { PDFGeneratorService } from '../services/pdfGeneratorService';
 import { PandocDocxService } from '../services/pandocDocxService';
 import { convertTiptapJsonToText } from '../utils/textUtils';
+import wordExportQueue from '../services/queue/wordExportQueue';
+import { S3Service } from '../services/s3Service';
 
 const router = express.Router();
 
@@ -1039,7 +1041,130 @@ function convertTiptapToLatex(json: any): string {
   return text;
 }
 
+// ============================================================================
+// WORD EXPORT - ASYNC VERSION (Production-ready with Queue)
+// ============================================================================
+
+/**
+ * Start Word export job for block test (async)
+ * POST /block-tests/:id/export-docx-async
+ */
+router.post('/:id/export-docx-async', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { students, settings } = req.body;
+    
+    // Validation
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ 
+        message: 'O\'quvchilar tanlanmagan',
+        error: 'students array is required'
+      });
+    }
+    
+    // Check access
+    const blockTest = await BlockTest.findById(id).select('branchId classNumber').lean();
+    if (!blockTest) {
+      return res.status(404).json({ message: 'Block test topilmadi' });
+    }
+    
+    if (req.user?.branchId && blockTest.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+    
+    // Add job to queue
+    const job = await wordExportQueue.add('export', {
+      testId: id,
+      studentIds: students,
+      settings: settings || {},
+      userId: req.user.id || req.user._id?.toString() || 'unknown',
+      isBlockTest: true
+    }, {
+      priority: students.length > 50 ? 2 : 1,
+      jobId: `block-test-${id}-${Date.now()}`
+    });
+    
+    console.log(`✅ [API] Job ${job.id} queued for block test ${id} (${students.length} students)`);
+    
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'Export jarayoni boshlandi. Biroz kuting...',
+      estimatedTime: Math.ceil(students.length * 0.5)
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [API] Error queueing block test export:', error);
+    res.status(500).json({ 
+      message: 'Xatolik yuz berdi',
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * Check export job status for block test
+ * GET /block-tests/export-status/:jobId
+ */
+router.get('/export-status/:jobId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    const job = await wordExportQueue.getJob(jobId);
+    
+    if (!job) {
+      return res.status(404).json({ 
+        message: 'Job topilmadi',
+        status: 'not_found'
+      });
+    }
+    
+    const state = await job.getState();
+    const progress = job.progress || 0;
+    
+    if (state === 'completed') {
+      return res.json({
+        status: 'completed',
+        progress: 100,
+        result: {
+          fileUrl: job.returnvalue.fileUrl,
+          fileName: job.returnvalue.fileName,
+          size: job.returnvalue.size,
+          studentsCount: job.returnvalue.studentsCount
+        }
+      });
+    }
+    
+    if (state === 'failed') {
+      return res.json({
+        status: 'failed',
+        progress: progress,
+        error: job.failedReason || 'Unknown error',
+        attemptsMade: job.attemptsMade,
+        attemptsTotal: job.opts.attempts
+      });
+    }
+    
+    res.json({
+      status: state,
+      progress: progress,
+      message: state === 'active' ? 'Ishlanmoqda...' : 'Navbatda...'
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [API] Error checking block test status:', error);
+    res.status(500).json({ 
+      message: 'Xatolik',
+      error: error.message 
+    });
+  }
+});
+
 export default router;
+
+// ============================================================================
+// WORD EXPORT - SYNC VERSION (Legacy, fallback)
+// ============================================================================
 
 // Экспорт блок-теста в Word (с формулами)
 router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
