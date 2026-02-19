@@ -4,21 +4,24 @@ import { hasMathML, convertMathMLToLatex } from '@/lib/mathmlUtils';
 import { renderOmmlInText } from '@/lib/ommlUtils';
 import 'katex/dist/katex.min.css';
 
-interface MathTextProps {
+interface PhysicsTextProps {
   text: string;
   className?: string;
 }
 
 /**
- * 📐 MATH TEXT RENDERER
+ * PhysicsText - Fizika matnlarini ko'rsatish uchun
  * 
- * Matematik formulalarni to'g'ri render qiladi:
- * - LaTeX: $x^2 + y^2 = z^2$
- * - Inline: $\frac{a}{b}$
- * - Block: $$\int_0^\infty e^{-x^2} dx$$
+ * Qo'llab-quvvatlaydi:
+ * - LaTeX formulalar (\(...\), \[...\])
+ * - Inline LaTeX (v_0, E^2, F = ma)
+ * - Fizik birliklar (m/s, kg, N, J)
+ * - Maxsus belgilar (\times, \div, \approx, \to)
  */
-export default function MathText({ text, className = '' }: MathTextProps) {
+export default function PhysicsText({ text, className = '' }: PhysicsTextProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
+
+  console.log('⚡ [PHYSICSTEXT] Component rendered with text:', text?.substring(0, 100));
 
   useEffect(() => {
     if (!containerRef.current || !text) return;
@@ -26,15 +29,20 @@ export default function MathText({ text, className = '' }: MathTextProps) {
     try {
       containerRef.current.innerHTML = '';
 
+      console.log('🔍 [PHYSICSTEXT] ===== START RENDERING =====');
+      console.log('🔍 [PHYSICSTEXT] Original text:', text.substring(0, 200));
+
       let cleanedText = text;
       
       // Step 1: Convert OMML to MathML
       if (cleanedText.includes('<omml>')) {
+        console.log('🔄 [OMML] Converting OMML to MathML...');
         cleanedText = renderOmmlInText(cleanedText);
       }
       
       // Step 2: Convert MathML to LaTeX
       if (hasMathML(cleanedText)) {
+        console.log('🔄 [MathML] Converting MathML to LaTeX...');
         cleanedText = convertMathMLToLatex(cleanedText);
       }
       
@@ -49,23 +57,30 @@ export default function MathText({ text, className = '' }: MathTextProps) {
       cleanedText = cleanedText.replace(/\\\\+\[/g, '\\[');
       cleanedText = cleanedText.replace(/\\\\+\]/g, '\\]');
       
+      console.log('🔍 [PHYSICSTEXT] After HTML cleanup:', cleanedText.substring(0, 200));
+      
       // Remove empty formulas
       cleanedText = cleanedText.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
       cleanedText = cleanedText.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
 
       // Extract formulas from HTML tags
-      cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$1$$');
+      cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$$1$$$$');
       cleanedText = cleanedText.replace(/<[^>]+>/g, '');
       cleanedText = cleanedText.trim();
 
-      // Normalize format
+      // Normalize format: convert \(...\) to $...$
       let normalizedText = cleanedText;
-      normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$1$$');
-      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$$$1$$$$');
+      normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$$1$$$$');
+      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$1$$$$');
 
+      console.log('🔍 [PHYSICSTEXT] After normalization:', normalizedText.substring(0, 200));
+      console.log('🔍 [PHYSICSTEXT] Has $ signs:', normalizedText.includes('$'));
+      console.log('🔍 [PHYSICSTEXT] Count of $ signs:', (normalizedText.match(/\$/g) || []).length);
+
+      // Render with KaTeX
       const container = containerRef.current;
       
-      // Split by formulas
+      // Split by formulas: $$...$$ (block) or $...$ (inline)
       const parts: string[] = [];
       let currentPos = 0;
       let inFormula = false;
@@ -116,12 +131,27 @@ export default function MathText({ text, className = '' }: MathTextProps) {
         parts.push(normalizedText.substring(currentPos));
       }
       
+      console.log('🔍 [PHYSICSTEXT] Split into', parts.length, 'parts:');
+      parts.forEach((part, idx) => {
+        if (part) {
+          const isFormula = part.startsWith('$');
+          const preview = part.substring(0, 50) + (part.length > 50 ? '...' : '');
+          console.log(`   Part ${idx}: ${preview} ${isFormula ? '(FORMULA)' : '(TEXT)'}`);
+        }
+      });
+      
       parts.forEach((part) => {
         if (!part) return;
 
         if (part.startsWith('$$') && part.endsWith('$$')) {
           // Block formula
-          const math = part.slice(2, -2).trim();
+          let math = part.slice(2, -2).trim();
+          
+          // Auto-wrap subscripts and superscripts
+          math = math.replace(/([a-zA-Z0-9])_(?!{)([a-zA-Z0-9])/g, '$1_{$2}');
+          math = math.replace(/([a-zA-Z0-9])\^(?!{)([a-zA-Z0-9])/g, '$1^{$2}');
+          
+          console.log('🔄 [PHYSICSTEXT] Rendering block formula:', math);
           
           const span = document.createElement('span');
           span.className = 'katex-block';
@@ -132,15 +162,22 @@ export default function MathText({ text, className = '' }: MathTextProps) {
               errorColor: '#cc0000',
               strict: false
             });
+            console.log('✅ [PHYSICSTEXT] Block formula rendered successfully');
           } catch (e) {
-            console.error('❌ [MATH] Error rendering block formula:', e);
+            console.error('❌ [PHYSICSTEXT] Error rendering block formula:', e);
             span.textContent = part;
             span.className = 'text-red-500';
           }
           container.appendChild(span);
         } else if (part.startsWith('$') && part.endsWith('$')) {
           // Inline formula
-          const math = part.slice(1, -1).trim();
+          let math = part.slice(1, -1).trim();
+          
+          // Auto-wrap subscripts and superscripts
+          math = math.replace(/([a-zA-Z0-9])_(?!{)([a-zA-Z0-9])/g, '$1_{$2}');
+          math = math.replace(/([a-zA-Z0-9])\^(?!{)([a-zA-Z0-9])/g, '$1^{$2}');
+          
+          console.log('🔄 [PHYSICSTEXT] Rendering inline formula:', math);
           
           const span = document.createElement('span');
           span.className = 'katex-inline';
@@ -151,8 +188,9 @@ export default function MathText({ text, className = '' }: MathTextProps) {
               errorColor: '#cc0000',
               strict: false
             });
+            console.log('✅ [PHYSICSTEXT] Inline formula rendered successfully');
           } catch (e) {
-            console.error('❌ [MATH] Error rendering inline formula:', e);
+            console.error('❌ [PHYSICSTEXT] Error rendering inline formula:', e);
             span.textContent = part;
             span.className = 'text-red-500';
           }
@@ -163,8 +201,10 @@ export default function MathText({ text, className = '' }: MathTextProps) {
           container.appendChild(textNode);
         }
       });
+      
+      console.log('✅ [PHYSICSTEXT] ===== RENDERING COMPLETE =====');
     } catch (error) {
-      console.error('❌ [MATH] Fatal error:', error);
+      console.error('❌ [PHYSICSTEXT] Fatal error:', error);
       if (containerRef.current) {
         containerRef.current.textContent = text;
       }

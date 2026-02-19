@@ -594,10 +594,11 @@ beads/
 Нет активных задач. Жду новых поручений.
 
 **Последние выполненные:**
+- ✅ Chemistry Parser Enhancement - 2026-02-18 (Kimyo parserni to'liq senior darajada yozish)
+- ✅ Fix Q6 Missing - 2026-02-18 ("aniqlang" so'zini qo'shish)
+- ✅ Subject-Specific Parsers - 2026-02-18 (Har bir fan uchun alohida parser)
 - ✅ Remove Landing Page - 2026-02-13
 - ✅ Remove Admin Panels - 2026-02-13
-- ✅ Unified Test Pages Refactor - 2026-02-13
-- ✅ DOCX import - OMML → LaTeX Direct Conversion - 2026-02-12
 
 
 ---
