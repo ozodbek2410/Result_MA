@@ -57,7 +57,7 @@ async function debugVariants(testId: string) {
 
       // Variants
       console.log('\n📋 Variants:');
-      const variants = q.variants || q.options || [];
+      const variants = q.variants || [];
       
       if (variants.length === 0) {
         console.log('  ❌ NO VARIANTS FOUND!');
@@ -74,15 +74,15 @@ async function debugVariants(testId: string) {
         if (typeof v === 'string') {
           console.log(`    Format: Plain string`);
           console.log(`    Value: "${v}"`);
-          console.log(`    Length: ${v.length}`);
-          console.log(`    Empty: ${v.trim().length === 0 ? 'YES ❌' : 'NO ✅'}`);
+          console.log(`    Length: ${(v as string).length}`);
+          console.log(`    Empty: ${(v as string).trim().length === 0 ? 'YES ❌' : 'NO ✅'}`);
         } else if (v && typeof v === 'object') {
           console.log(`    Format: Object`);
-          console.log(`    Has 'text' property: ${!!v.text}`);
-          console.log(`    Has 'letter' property: ${!!v.letter}`);
+          console.log(`    Has 'text' property: ${!!(v as any).text}`);
+          console.log(`    Has 'letter' property: ${!!(v as any).letter}`);
           
-          if (v.text) {
-            console.log(`    Text type: ${typeof v.text}`);
+          if ((v as any).text) {
+            console.log(`    Text type: ${typeof (v as any).text}`);
             
             if (typeof v.text === 'string') {
               try {

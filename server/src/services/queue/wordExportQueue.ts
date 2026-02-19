@@ -75,7 +75,7 @@ async function processWordExport(job: Job<WordExportJobData>): Promise<WordExpor
     await job.updateProgress(10);
     
     const Model = isBlockTest ? (await import('../../models/BlockTest')).default : Test;
-    const test = await Model.findById(testId)
+    const test: any = await (Model as any).findById(testId)
       .populate('subjectId', 'nameUzb')
       .populate('groupId', 'name classNumber letter')
       .lean();
@@ -160,6 +160,7 @@ async function processWordExport(job: Job<WordExportJobData>): Promise<WordExpor
         ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` 
         : '',
       subjectName: (test.subjectId as any)?.nameUzb || '',
+      questions: [], // Empty array for compatibility
       students,
       settings
     };

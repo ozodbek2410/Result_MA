@@ -4,20 +4,20 @@ import { hasMathML, convertMathMLToLatex } from '@/lib/mathmlUtils';
 import { renderOmmlInText } from '@/lib/ommlUtils';
 import 'katex/dist/katex.min.css';
 
-interface MathTextProps {
+interface BiologyTextProps {
   text: string;
   className?: string;
 }
 
 /**
- * 📐 MATH TEXT RENDERER
+ * 🧬 BIOLOGY TEXT RENDERER
  * 
- * Matematik formulalarni to'g'ri render qiladi:
- * - LaTeX: $x^2 + y^2 = z^2$
- * - Inline: $\frac{a}{b}$
- * - Block: $$\int_0^\infty e^{-x^2} dx$$
+ * Biologiya matnlarini to'g'ri render qiladi:
+ * - Latin nomlar (Homo sapiens)
+ * - Anatomiya terminlari
+ * - Minimal matematik formulalar
  */
-export default function MathText({ text, className = '' }: MathTextProps) {
+export default function BiologyText({ text, className = '' }: BiologyTextProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -26,19 +26,24 @@ export default function MathText({ text, className = '' }: MathTextProps) {
     try {
       containerRef.current.innerHTML = '';
 
+      console.log('🧬 [BIOLOGY] ===== START RENDERING =====');
+      console.log('🧬 [BIOLOGY] Original text:', text.substring(0, 200));
+
       let cleanedText = text;
       
-      // Step 1: Convert OMML to MathML
+      // Шаг 1: Конвертируем OMML в MathML (если есть)
       if (cleanedText.includes('<omml>')) {
+        console.log('🔄 [OMML] Converting OMML to MathML...');
         cleanedText = renderOmmlInText(cleanedText);
       }
       
-      // Step 2: Convert MathML to LaTeX
+      // Шаг 2: Конвертируем MathML в LaTeX (если есть)
       if (hasMathML(cleanedText)) {
+        console.log('🔄 [MathML] Converting MathML to LaTeX...');
         cleanedText = convertMathMLToLatex(cleanedText);
       }
       
-      // Step 3: Clean HTML
+      // Шаг 3: Очистка HTML
       cleanedText = cleanedText.replace(/<p>/gi, '');
       cleanedText = cleanedText.replace(/<\/p>/gi, '\n');
       cleanedText = cleanedText.replace(/<br\s*\/?>/gi, '\n');
@@ -49,20 +54,26 @@ export default function MathText({ text, className = '' }: MathTextProps) {
       cleanedText = cleanedText.replace(/\\\\+\[/g, '\\[');
       cleanedText = cleanedText.replace(/\\\\+\]/g, '\\]');
       
-      // Remove empty formulas
+      console.log('🧬 [BIOLOGY] After HTML cleanup:', cleanedText.substring(0, 200));
+      
+      // Удаляем пустые формулы
       cleanedText = cleanedText.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
       cleanedText = cleanedText.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
 
-      // Extract formulas from HTML tags
+      // Извлекаем формулы из HTML-тегов
       cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$1$$');
       cleanedText = cleanedText.replace(/<[^>]+>/g, '');
       cleanedText = cleanedText.trim();
 
-      // Normalize format
+      // Нормализуем формат
       let normalizedText = cleanedText;
       normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$1$$');
-      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$$$1$$$$');
+      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$1$$');
 
+      console.log('🧬 [BIOLOGY] After normalization:', normalizedText.substring(0, 200));
+      console.log('🧬 [BIOLOGY] Has $ signs:', normalizedText.includes('$'));
+
+      // Рендерим с помощью KaTeX
       const container = containerRef.current;
       
       // Split by formulas
@@ -75,12 +86,10 @@ export default function MathText({ text, className = '' }: MathTextProps) {
       for (let i = 0; i < normalizedText.length; i++) {
         if (normalizedText[i] === '$') {
           if (!inFormula) {
-            // Start of formula
             if (i > currentPos) {
               parts.push(normalizedText.substring(currentPos, i));
             }
             
-            // Check if block formula ($$)
             if (i + 1 < normalizedText.length && normalizedText[i + 1] === '$') {
               isBlockFormula = true;
               formulaStart = i + 2;
@@ -92,7 +101,6 @@ export default function MathText({ text, className = '' }: MathTextProps) {
             
             inFormula = true;
           } else {
-            // End of formula
             if (isBlockFormula) {
               if (i + 1 < normalizedText.length && normalizedText[i + 1] === '$') {
                 const formula = normalizedText.substring(formulaStart, i);
@@ -111,17 +119,17 @@ export default function MathText({ text, className = '' }: MathTextProps) {
         }
       }
       
-      // Add remaining text
       if (currentPos < normalizedText.length) {
         parts.push(normalizedText.substring(currentPos));
       }
+      
+      console.log('🧬 [BIOLOGY] Split into', parts.length, 'parts');
       
       parts.forEach((part) => {
         if (!part) return;
 
         if (part.startsWith('$$') && part.endsWith('$$')) {
-          // Block formula
-          const math = part.slice(2, -2).trim();
+          let math = part.slice(2, -2).trim();
           
           const span = document.createElement('span');
           span.className = 'katex-block';
@@ -133,14 +141,13 @@ export default function MathText({ text, className = '' }: MathTextProps) {
               strict: false
             });
           } catch (e) {
-            console.error('❌ [MATH] Error rendering block formula:', e);
+            console.error('❌ [BIOLOGY] Error rendering block formula:', e);
             span.textContent = part;
             span.className = 'text-red-500';
           }
           container.appendChild(span);
         } else if (part.startsWith('$') && part.endsWith('$')) {
-          // Inline formula
-          const math = part.slice(1, -1).trim();
+          let math = part.slice(1, -1).trim();
           
           const span = document.createElement('span');
           span.className = 'katex-inline';
@@ -152,19 +159,20 @@ export default function MathText({ text, className = '' }: MathTextProps) {
               strict: false
             });
           } catch (e) {
-            console.error('❌ [MATH] Error rendering inline formula:', e);
+            console.error('❌ [BIOLOGY] Error rendering inline formula:', e);
             span.textContent = part;
             span.className = 'text-red-500';
           }
           container.appendChild(span);
         } else {
-          // Plain text
           const textNode = document.createTextNode(part);
           container.appendChild(textNode);
         }
       });
+      
+      console.log('✅ [BIOLOGY] ===== RENDERING COMPLETE =====');
     } catch (error) {
-      console.error('❌ [MATH] Fatal error:', error);
+      console.error('❌ [BIOLOGY] Fatal error:', error);
       if (containerRef.current) {
         containerRef.current.textContent = text;
       }

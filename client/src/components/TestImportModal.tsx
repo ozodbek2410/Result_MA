@@ -1,9 +1,10 @@
+
 import { useState } from 'react';
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from './ui/Dialog';
 import { Button } from './ui/Button';
 import { Upload, FileText, Image, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
-import MathText from './MathText';
+import SubjectText from './SubjectText';
 
 interface TestImportModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ interface ParsedQuestion {
 
 export default function TestImportModal({ open, onClose, onSuccess }: TestImportModalProps) {
   const [selectedFormat, setSelectedFormat] = useState<ImportFormat>(null);
+  const [selectedSubject, setSelectedSubject] = useState<string>('math'); // NEW: Subject selection
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
@@ -71,6 +73,14 @@ export default function TestImportModal({ open, onClose, onSuccess }: TestImport
       const formData = new FormData();
       formData.append('file', file);
       formData.append('format', selectedFormat);
+      formData.append('subjectId', selectedSubject); // NEW: Send subject ID
+
+      // DEBUG: Log what we're sending
+      console.log('📤 Sending to server:', {
+        file: file.name,
+        format: selectedFormat,
+        subjectId: selectedSubject
+      });
 
       console.log('%c🤖 AI Parsing Started', 'color: #3b82f6; font-weight: bold; font-size: 14px');
       console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #3b82f6');
@@ -316,6 +326,27 @@ export default function TestImportModal({ open, onClose, onSuccess }: TestImport
               </Button>
             </div>
 
+            {/* NEW: Subject Selection */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <label className="block text-sm font-medium text-blue-900 mb-2">
+                📚 Fan tanlang (parsing uchun):
+              </label>
+              <select
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+                className="w-full p-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                <option value="math">📐 Matematika (LaTeX formulalar)</option>
+                <option value="biology">🧬 Biologiya (rasmlar, lotin nomlari)</option>
+                <option value="physics">⚡ Fizika (formulalar, birliklar)</option>
+                <option value="chemistry">🧪 Kimyo (molekulalar, reaksiyalar)</option>
+                <option value="literature">📚 Ona tili va Adabiyot (matn tahlili)</option>
+              </select>
+              <p className="text-xs text-blue-700 mt-2">
+                💡 Har bir fan uchun maxsus parsing algoritmi ishlatiladi
+              </p>
+            </div>
+
             {/* File Drop Zone */}
             <label className="block">
               <div className="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer">
@@ -404,13 +435,10 @@ export default function TestImportModal({ open, onClose, onSuccess }: TestImport
                     <div className="flex items-start gap-2">
                       <span className="font-bold text-gray-700 mt-2">{idx + 1}.</span>
                       <div className="flex-1">
-                        <textarea
-                          value={q.text}
-                          onChange={(e) => handleQuestionChange(idx, 'text', e.target.value)}
-                          className="w-full p-2 border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          rows={2}
-                          placeholder="Savol matni..."
-                        />
+                        {/* Preview with SubjectText - MAIN DISPLAY */}
+                        <div className="p-3 bg-white rounded border border-gray-300">
+                          <SubjectText text={q.text} subject={selectedSubject} className="text-gray-900 text-base" />
+                        </div>
                       </div>
                       <button
                         onClick={() => handleRemoveQuestion(idx)}
@@ -423,17 +451,14 @@ export default function TestImportModal({ open, onClose, onSuccess }: TestImport
 
                     {/* Variants */}
                     {q.variants.length > 0 ? (
-                      <div className="space-y-3 ml-6">
+                      <div className="space-y-2 ml-6">
                         {q.variants.map((v, vIdx) => (
                           <div key={vIdx} className="flex items-center gap-3">
                             <span className="font-bold text-gray-700 text-lg min-w-[40px]">{v.letter})</span>
-                            <input
-                              type="text"
-                              value={v.text}
-                              onChange={(e) => handleVariantChange(idx, vIdx, e.target.value)}
-                              className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              placeholder="Variant matni..."
-                            />
+                            {/* Preview with SubjectText */}
+                            <div className="flex-1 p-2 bg-white rounded border border-gray-300">
+                              <SubjectText text={v.text} subject={selectedSubject} className="text-gray-900" />
+                            </div>
                             <button
                               onClick={() => handleRemoveVariant(idx, vIdx)}
                               className="text-red-500 hover:text-red-700 p-1"

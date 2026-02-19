@@ -49,15 +49,31 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /doc|docx|pdf|jpg|jpeg|png/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    console.log('📎 File upload attempt:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
     
-    if (extname && mimetype) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    // Word files
+    if (ext === '.doc' || ext === '.docx') {
       return cb(null, true);
-    } else {
-      cb(new Error('Faqat Word, PDF va rasm fayllari qabul qilinadi!'));
     }
+    
+    // PDF files
+    if (ext === '.pdf' && file.mimetype === 'application/pdf') {
+      return cb(null, true);
+    }
+    
+    // Image files
+    if (['.jpg', '.jpeg', '.png'].includes(ext) && file.mimetype.startsWith('image/')) {
+      return cb(null, true);
+    }
+    
+    console.log('❌ File rejected:', file.originalname, file.mimetype);
+    cb(new Error('Faqat Word (.doc, .docx), PDF va rasm fayllari qabul qilinadi!'));
   }
 });
 
@@ -439,17 +455,24 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     console.log('=== Import Request ===');
     console.log('File:', req.file);
     console.log('Body:', req.body);
+    console.log('Body keys:', Object.keys(req.body));
+    console.log('Body.format:', req.body.format);
+    console.log('Body.subjectId:', req.body.subjectId);
 
     if (!req.file) {
       return res.status(400).json({ message: 'Fayl yuklanmadi' });
     }
 
     const format = req.body.format as 'word' | 'image';
+    const subjectId = req.body.subjectId || 'math'; // NEW: Get subject ID from request, default to math
+    
     if (!format) {
       return res.status(400).json({ message: 'Format ko\'rsatilmagan' });
     }
 
-    console.log('Importing test from file:', req.file.path, 'format:', format);
+    console.log('📚 Importing test from file:', req.file.path);
+    console.log('📋 Format:', format);
+    console.log('🎯 Subject:', subjectId);
     console.log('File size:', req.file.size, 'bytes');
     console.log('File mimetype:', req.file.mimetype);
 
@@ -464,7 +487,7 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     let logs: any[] = [];
     
     try {
-      questions = await TestImportService.importTest(absolutePath, format);
+      questions = await TestImportService.importTest(absolutePath, format, subjectId);
       logs = TestImportService.getParsingLogs();
     } catch (parseError: any) {
       console.error('Parse error:', parseError);
@@ -856,7 +879,7 @@ router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res)
     const job = await pdfExportQueue.add('export', {
       testId: id,
       studentIds: students,
-      userId: req.user.id || req.user._id?.toString() || 'unknown',
+      userId: req.user?.id || 'unknown',
       isBlockTest: false
     }, {
       priority: students.length > 50 ? 2 : 1,
@@ -1090,7 +1113,7 @@ router.post('/:id/export-docx-async', authenticate, async (req: AuthRequest, res
       testId: id,
       studentIds: students,
       settings: settings || {},
-      userId: req.user.id || req.user._id?.toString() || 'unknown',
+      userId: req.user?.id || 'unknown',
       isBlockTest: false
     }, {
       priority: students.length > 50 ? 2 : 1, // Lower priority for large exports

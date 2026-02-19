@@ -1077,7 +1077,7 @@ router.post('/:id/export-docx-async', authenticate, async (req: AuthRequest, res
       testId: id,
       studentIds: students,
       settings: settings || {},
-      userId: req.user.id || req.user._id?.toString() || 'unknown',
+      userId: req.user?.id || 'unknown',
       isBlockTest: true
     }, {
       priority: students.length > 50 ? 2 : 1,

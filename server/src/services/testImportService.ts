@@ -4,6 +4,7 @@ import Tesseract from 'tesseract.js';
 import fs from 'fs/promises';
 import { GroqService } from './groqService';
 import { wordParser } from './wordParser';
+import { ParserFactory } from './parsers/ParserFactory';
 
 interface ParsedQuestion {
   text: string;
@@ -63,22 +64,25 @@ export class TestImportService {
   }
 
   /**
-   * Parse Word document using direct XML parser (no AI)
+   * Parse Word document using subject-specific parser
+   * @param filePath - Path to DOCX file
+   * @param subjectId - Subject ID (optional, defaults to 'math' for backward compatibility)
    */
-  static async parseWord(filePath: string): Promise<ParsedQuestion[]> {
+  static async parseWord(filePath: string, subjectId: string = 'math'): Promise<ParsedQuestion[]> {
     try {
-      console.log('📄 [IMPORT] Using WordParser (no AI) for DOCX file');
+      console.log(`📄 [IMPORT] Parsing DOCX file for subject: ${subjectId}`);
       
-      // Use direct XML parser for DOCX files
-      const questions = await wordParser.parseDocx(filePath);
+      // Get subject-specific parser
+      const parser = ParserFactory.getParser(subjectId);
+      const questions = await parser.parse(filePath);
       
       if (questions.length > 0) {
-        console.log(`✅ [IMPORT] WordParser extracted ${questions.length} questions`);
+        console.log(`✅ [IMPORT] Parser extracted ${questions.length} questions`);
         return questions;
       }
       
-      // Fallback: try mammoth + regex if WordParser fails
-      console.log('⚠️ [IMPORT] WordParser returned 0 questions, trying fallback...');
+      // Fallback: try mammoth + regex if parser fails
+      console.log('⚠️ [IMPORT] Parser returned 0 questions, trying fallback...');
       const buffer = await fs.readFile(filePath);
       const result = await mammoth.extractRawText({ buffer });
       const text = result.value;
@@ -188,14 +192,21 @@ export class TestImportService {
 
   /**
    * Main import function
+   * @param filePath - Path to file
+   * @param format - File format ('word' or 'image')
+   * @param subjectId - Subject ID (optional, for subject-specific parsing)
    */
-  static async importTest(filePath: string, format: 'word' | 'image'): Promise<ParsedQuestion[]> {
+  static async importTest(
+    filePath: string, 
+    format: 'word' | 'image',
+    subjectId?: string
+  ): Promise<ParsedQuestion[]> {
     const ext = filePath.split('.').pop()?.toLowerCase();
 
     switch (format) {
       case 'word':
         if (ext === 'docx' || ext === 'doc') {
-          return this.parseWord(filePath);
+          return this.parseWord(filePath, subjectId);
         }
         throw new Error('Noto\'g\'ri Word format. Faqat .docx va .doc fayllari qo\'llab-quvvatlanadi');
 

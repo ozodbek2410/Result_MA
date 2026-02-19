@@ -1,0 +1,188 @@
+**KIMYO**
+
+1\. 120 gr magniy necha mol.
+
+A)2 B)3 C)4 D)5
+
+2\. 2 mol litiy 3 mol kalsiydan qancha(gr) yengil.
+
+A)102 B)104 C)106 D)108
+
+3\. II valentli metal bromidining molyar massasi
+
+200 gr/mol bo\`lsa metalni aniqlang.
+
+A)magniy B)kalsiy C)temir D)mis
+
+4.Berilganlardan qaysilari kimyoviy hodisalar.
+
+1)zanglash , 2)kondensatlash ,3)distillash,
+
+4)yonish ,5)sublimatlanish, 6) cherish
+
+A)1.2.3 B)1.3.5 C)1.4.6 D)4.5.6
+
+5.Quyidagilardan fizikaviy hodisani aniqlang.
+
+A)Shamning yonishi
+
+B)temirning zanglashi
+
+C)havoning suyuqlanishi
+
+D)qizdirilgan shakarning qorayishi
+
+6\. 3.4 gr NH~3~ da nechta atom bor.
+
+A)3.01 \*10^23^ C)1.204\*10^23^
+
+B)3.01\*10^24^ D)4.816\*10^24^
+
+7\. Soni 3∙10^23^ dona bolgan CH~4~ molekulalarining massasini
+hisoblang?
+
+A)8 B)16 C)1.6 D)3.2
+
+8\. CH~4~ va C~3~H~8~ dan iborat 0.5 mol aralashmada 2.24l n.sh da metan
+bolsa , aralashma massasini(gr) da aniqlang.
+
+A)9.6 B)19.2 C)98 D)32
+
+9\. Qaysi moddalarda allotropiya hodisasi kuzatiladi?
+
+1\) brom 2) kislorod 3) uglerod 4) xlor 5) ftor 6) fosfor
+
+A)1.2.3 B)2.6 C)2.3.6 1.3.5
+
+10\. H~2~SO~3~ tarkibidagi protonlar sonini toping.
+
+A)42 B)32 C)83 D)35
+
+11\. Elementlar valentligiga asoslanib modda formulasini aniqlang.
+
+![](media/image2.emf)
+
+A\) MnO~2~ B) Mn~2~O~3~ C) Mn~2~O~7~ D) Mn~3~O~4~
+
+12\. III valentli element oksidining molyar massasi 76 g/mol bolsa,
+nomolum elementni aniqlang.
+
+A)P B)N C)Fe D)Cr
+
+13.XO ning molyar massasi 28g/mol bo\`lsa , X elementni aniqlang.
+
+A)Be B)C C)Mg D)N
+
+14.Suv 272 gradusda qanday agregat holatda bo\`ladi.
+
+A)gaz B)qattiq C)suyuq D)plazma
+
+15\. 0.1 mol H~2~SO~4~ nechi gr keladi
+
+A)19.6 B)23.4 C)49 D)9.8
+
+16\. Quyidagi ma'lumotlar asosida XY birikmaning molyar massasini
+(g/mol) aniqlang.
+
+-- X~2~Y ning molyar massasi 160 g/mol.
+
+-- X~2~Y~3~ ning molyar massasi 224 g/mol.
+
+A\) 80 B) 96 C) 128 D)56
+
+17\. X~3~(PO~4~)~2~ ning molyar massasi 454 g/mol bo\'lsa, \'\'X\'\'
+nomalum elementni toping.
+
+A\) Mg B) Sr C) Ba D) Ca
+
+18\. Moddaning qaynash temperaturasi 100^0^C bo'lsa, uning 453^0^K dagi
+agregat holatini toping (*P=1 atm*.)
+
+A\) suyuq B) gaz
+
+C\) qattiq D) plazma
+
+19\. Qaysi elementlar allotropik shakllarga ega emas?
+
+A\) B, O, N B) O, C, P C) S, P, O D) F, Cl, Br
+
+20\. Quyidagi jarayonlarning qaysilari kimyoviy jarayon?\
+1) metanning yonishi
+
+2\) aluminiy simining cho\`zilishi
+
+3\) muzning erib suyuq holga o\`tishi
+
+4\) temirning zanglashi
+
+5\) suvning bug\`lanishi\
+A) 1, 2 B) 3, 4 C) 3, 5 D) 1, 4
+
+21\. Quyidagilardan qaysilari fizikaviy jarayon?
+
+1\) etilenning polimerlanishi;
+
+2\) yodning sublimatlanishi;
+
+3\) pentanning izomerlanishi;
+
+4\) tropinning depozitsiyalanishi.
+
+A\) 1, 4 B) 2, 3 C) 2, 4 D) 1, 3
+
+22\. Uglerodning absolyut massasini toping (g)
+
+(1 u.b = 1,66\*10^-24^ g )
+
+A\) 19,92\*10^-23^ B) 19,92\*10^-24^
+
+C\) 18,26\*10^-23^ D) 18,26\*10^-24^
+
+23\. Olmos qaysi elementning allotropik shakli hisoblanadi?
+
+A\) kislorod B) fosfor
+
+C\) uglerod D) oltingugurt
+
+24\. 0,2 mol miqdorining massasi 8,8 gr bo'lgan moddaning molyar
+massasini toping
+
+A\) 8,6 gr/mol B) 1,76 gr/mol
+
+C\) 44 gr/mol D) 66 gr/mol
+
+25\. X~2~O~3~ ning molyar massasi 110 g/mol bo\'lsa, \'\'X\'\' nomalum
+elementni toping.
+
+A\) As B) H C) P D) Cr
+
+26.Quyidagilardan qaysi oddiy modda
+
+A)O~2~ B)PH~3~ C)HCl D)NH~3~
+
+27\. 8 gr geliyning mo\`lini hisoblang
+
+A)1.5 B)2 C)3 D)5
+
+28\. Rombik oddiy moddamiz qaysi elementni allotropic shakli
+hisoblanadi.
+
+A\) P B)C C)K D)S
+
+29\. Kimyoviy elementga tegishli bo'lgan xossalarni toping.
+
+1\) zichlik 2) rang 3) izotoplar
+
+4\) qaynash va suyuqlanish temperaturasi
+
+5\) elektron qobiq 6) yadro zaryadi
+
+A\) 2,3,6 B) 1,2,4
+
+C\) 1,5,6 D) 3,5,6
+
+30\. Quyidagilardan qaysi biri oddiy moddaga tegishli emas?
+
+A\) yadro zaryadi B) hid
+
+C\) zichlik D) ta'm

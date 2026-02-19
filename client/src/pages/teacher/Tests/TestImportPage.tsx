@@ -15,7 +15,8 @@ import api from '@/lib/api';
 import { useImportTest } from '@/hooks/useTests';
 import { useImportBlockTest } from '@/hooks/useBlockTests';
 import RichTextEditor from '@/components/editor/RichTextEditor';
-import { convertLatexToTiptapJson } from '@/lib/latexUtils';
+import MathText from '@/components/MathText';
+import { convertLatexToTiptapJson, convertChemistryToTiptapJson, convertPhysicsToTiptapJson } from '@/lib/latexUtils';
 import { useTestType } from '@/hooks/useTestType';
 import { TestTypeSwitch } from './components/TestTypeSwitch';
 import {
@@ -52,6 +53,7 @@ export default function TestImportPage() {
 
   // Common state
   const [file, setFile] = useState<File | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<string>('math'); // NEW: Subject selection
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
   const [error, setError] = useState<string>('');
@@ -80,6 +82,14 @@ export default function TestImportPage() {
       const ext = file.name.split('.').pop()?.toLowerCase();
       const format = ['jpg', 'jpeg', 'png'].includes(ext || '') ? 'image' : 'word';
       formData.append('format', format);
+      formData.append('subjectId', selectedSubject); // NEW: Send subject ID
+
+      // DEBUG: Log what we're sending
+      console.log('📤 Sending to server:', {
+        file: file.name,
+        format,
+        subjectId: selectedSubject
+      });
 
       console.log('%c🤖 AI Parsing Started', 'color: #3b82f6; font-weight: bold; font-size: 14px');
       console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #3b82f6');
@@ -122,14 +132,39 @@ export default function TestImportPage() {
 
       // Convert LaTeX formulas to TipTap JSON
       const questionsWithFormulas = (data.questions || []).map((q: ParsedQuestion) => {
-        const hasFormulas = q.text.includes('\\(') || q.text.includes('\\[');
-        const questionJson = hasFormulas ? convertLatexToTiptapJson(q.text) : null;
+        // Fan uchun maxsus konvertatsiya
+        const isChemistry = selectedSubject === 'chemistry';
+        const isPhysics = selectedSubject === 'physics';
+        
+        const hasFormulas = q.text.includes('\\(') || q.text.includes('\\[') || 
+                           (isChemistry && (q.text.includes('_') || q.text.includes('^') || q.text.includes('\\cdot'))) ||
+                           (isPhysics && (q.text.includes('_') || q.text.includes('^') || q.text.includes('\\times') || q.text.includes('\\div')));
+        
+        let questionJson = null;
+        if (hasFormulas) {
+          if (isChemistry) {
+            questionJson = convertChemistryToTiptapJson(q.text);
+          } else if (isPhysics) {
+            questionJson = convertPhysicsToTiptapJson(q.text);
+          } else {
+            questionJson = convertLatexToTiptapJson(q.text);
+          }
+        }
 
         // Convert variants with formulas
         const convertedVariants = q.variants.map((v) => {
-          const variantHasFormulas = v.text.includes('\\(') || v.text.includes('\\[');
+          const variantHasFormulas = v.text.includes('\\(') || v.text.includes('\\[') ||
+                                     (isChemistry && (v.text.includes('_') || v.text.includes('^') || v.text.includes('\\cdot'))) ||
+                                     (isPhysics && (v.text.includes('_') || v.text.includes('^') || v.text.includes('\\times') || v.text.includes('\\div')));
           if (variantHasFormulas) {
-            const variantJson = convertLatexToTiptapJson(v.text);
+            let variantJson;
+            if (isChemistry) {
+              variantJson = convertChemistryToTiptapJson(v.text);
+            } else if (isPhysics) {
+              variantJson = convertPhysicsToTiptapJson(v.text);
+            } else {
+              variantJson = convertLatexToTiptapJson(v.text);
+            }
             return {
               ...v,
               text: variantJson || v.text,
@@ -460,7 +495,26 @@ export default function TestImportPage() {
               <p className="text-gray-600">Word, PDF yoki rasm formatida test yuklang</p>
             </div>
 
-
+            {/* NEW: Subject Selection */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <label className="block text-sm font-medium text-blue-900 mb-2">
+                📚 Fan tanlang (parsing uchun):
+              </label>
+              <select
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+                className="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-base"
+              >
+                <option value="math">📐 Matematika (LaTeX formulalar)</option>
+                <option value="biology">🧬 Biologiya (rasmlar, lotin nomlari)</option>
+                <option value="physics">⚡ Fizika (formulalar, birliklar)</option>
+                <option value="chemistry">🧪 Kimyo (molekulalar, reaksiyalar)</option>
+                <option value="literature">📚 Ona tili va Adabiyot (matn tahlili)</option>
+              </select>
+              <p className="text-xs text-blue-700 mt-2">
+                💡 Har bir fan uchun maxsus parsing algoritmi ishlatiladi
+              </p>
+            </div>
 
             <label className="block">
               <div className="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer">

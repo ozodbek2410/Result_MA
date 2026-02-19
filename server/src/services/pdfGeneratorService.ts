@@ -25,6 +25,8 @@ interface TestData {
 }
 
 export class PDFGeneratorService {
+  private static browserInstance: Browser | null = null;
+
   /**
    * Генерирует PDF из HTML с формулами
    * ВАЖНО: Каждый раз создаем новый browser instance для избежания memory leak
@@ -582,9 +584,9 @@ export class PDFGeneratorService {
    * Закрывает браузер (вызывать при остановке сервера)
    */
   static async closeBrowser(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
+    if (this.browserInstance) {
+      await this.browserInstance.close();
+      this.browserInstance = null;
     }
   }
 }

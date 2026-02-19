@@ -67,7 +67,7 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     await job.updateProgress(10);
     
     const Model = isBlockTest ? (await import('../../models/BlockTest')).default : Test;
-    const test = await Model.findById(testId)
+    const test: any = await (Model as any).findById(testId)
       .populate('subjectId', 'nameUzb')
       .populate('groupId', 'name classNumber letter')
       .lean();
@@ -136,6 +136,7 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
         ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` 
         : '',
       subjectName: (test.subjectId as any)?.nameUzb || '',
+      questions: [], // Empty array for compatibility
       students
     };
     
