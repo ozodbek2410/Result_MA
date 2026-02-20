@@ -270,7 +270,8 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
                 studentName: studentName,
                 testName: testName,
                 correctAnswers: correctAnswers,
-                questionOrder: variantInfo.questionOrder
+                questionOrder: variantInfo.questionOrder,
+                totalQuestions: Object.keys(correctAnswers).length
               };
               
               console.log('✅ To\'liq ma\'lumotlar olindi:', {
@@ -335,12 +336,24 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     
     // Передаём правильные ответы в Python, если они есть
     let command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
+    
+    // Prepare QR data JSON (with totalQuestions)
+    let qrDataJson = '{}';
+    if (qrFound && qrData && qrData.totalQuestions) {
+      qrDataJson = JSON.stringify({ totalQuestions: qrData.totalQuestions }).replace(/"/g, '\\"');
+    }
+    
     if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
       const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
-      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}"`;
+      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
       console.log('✅ Передаём правильные ответы в Python:', Object.keys(qrData.correctAnswers).length, 'вопросов');
+      console.log('✅ Передаём QR data в Python: totalQuestions =', qrData.totalQuestions);
     } else {
+      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "{}" "${qrDataJson}"`;
       console.log('⚠️ Правильные ответы не найдены, Python будет только определять отмеченные ответы');
+      if (qrData && qrData.totalQuestions) {
+        console.log('✅ Передаём QR data в Python: totalQuestions =', qrData.totalQuestions);
+      }
     }
     
     console.log('🐍 Python command:', command);

@@ -47,6 +47,7 @@ export class BiologyParser extends BaseParser {
 
   /**
    * Xatolarni tekshirish va chiroyli ko'rsatish
+   * Variantsiz savollarni ham import qiladi lekin ogohlantirish bilan
    */
   private validateAndReportIssues(questions: ParsedQuestion[]): void {
     const issues: Array<{
@@ -73,13 +74,14 @@ export class BiologyParser extends BaseParser {
       const accuracy = ((fullCount / questions.length) * 100).toFixed(1);
 
       console.log('\n' + '='.repeat(70));
-      console.log('⚠️  XATOLAR TOPILDI - Qo\'lda tuzatish kerak');
+      console.log('⚠️  OGOHLANTIRISHLAR - Faylda muammolar topildi');
       console.log('='.repeat(70));
       console.log(`📊 Natija: ${fullCount}/${questions.length} to'liq (${accuracy}%)`);
+      console.log(`⚠️  ${issues.length} ta savol muammoli (lekin import qilindi)`);
       console.log('='.repeat(70));
 
       issues.forEach((issue, idx) => {
-        console.log(`\n📌 XATO #${idx + 1}: Savol ${issue.number}`);
+        console.log(`\n📌 OGOHLANTIRISH #${idx + 1}: Savol ${issue.number}`);
         console.log('─'.repeat(70));
         console.log(`📝 Savol: ${issue.text.substring(0, 100)}...`);
         console.log(`⚠️  Muammo: ${issue.variantCount}/4 javob topildi`);
@@ -95,8 +97,9 @@ export class BiologyParser extends BaseParser {
 
         console.log(`\n💡 Tavsiya:`);
         if (issue.variantCount === 0) {
-          console.log(`   - Javoblar qatori formatini tekshiring`);
+          console.log(`   - Word faylida javoblar formatini tekshiring`);
           console.log(`   - A) B) C) D) formatda yozilganligini tasdiqlang`);
+          console.log(`   - Har bir javob alohida qatorda bo'lishi kerak`);
         } else if (issue.variantCount < 4) {
           console.log(`   - ${4 - issue.variantCount} ta javob yo'qolgan`);
           console.log(`   - Javoblar orasida probel yoki format xatosi bo'lishi mumkin`);
@@ -106,13 +109,7 @@ export class BiologyParser extends BaseParser {
       });
 
       console.log('\n' + '='.repeat(70));
-      console.log('📝 QO\'LDA TUZATISH:');
-      console.log('='.repeat(70));
-      console.log(`1. DOCX faylini oching`);
-      console.log(`2. Savol raqamlarini toping: ${issues.map((i) => `Q${i.number}`).join(', ')}`);
-      console.log(`3. Javoblar qatorini to'g'rilang`);
-      console.log(`4. Format: A)javob1 B)javob2 C)javob3 D)javob4`);
-      console.log(`5. Qayta import qiling`);
+      console.log('ℹ️  Muammoli savollar import qilindi, lekin qo\'lda tuzatish tavsiya etiladi');
       console.log('='.repeat(70) + '\n');
     } else {
       console.log('\n✅ [BIOLOGY] 100% to\'liq! Barcha savollar 4ta javobga ega.\n');
@@ -170,7 +167,8 @@ export class BiologyParser extends BaseParser {
       }
 
       // PRIORITY 2: QUESTION or VARIANT
-      const match = line.match(/^(\d+)[\\.]\s*(.+)/);
+      // Support both "1." and "1)" formats
+      const match = line.match(/^(\d+)[.)]\s*(.+)/);
       if (match) {
         const [, number, text] = match;
         const num = parseInt(number);

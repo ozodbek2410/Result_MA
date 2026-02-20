@@ -64,8 +64,8 @@ export class PandocDocxService {
       
       // Конвертируем через Pandoc с reference.docx (watermark уже внутри)
       const pandocCmd = hasReference
-        ? `pandoc "${markdownPath}" -o "${docxPath}" --from markdown --to docx --reference-doc="${this.REFERENCE_DOCX}"`
-        : `pandoc "${markdownPath}" -o "${docxPath}" --from markdown --to docx`;
+        ? `pandoc "${markdownPath}" -o "${docxPath}" --from markdown+raw_html --to docx --reference-doc="${this.REFERENCE_DOCX}"`
+        : `pandoc "${markdownPath}" -o "${docxPath}" --from markdown+raw_html --to docx`;
       
       console.log('🔄 Running Pandoc:', pandocCmd);
       await execAsync(pandocCmd);
@@ -192,7 +192,8 @@ export class PandocDocxService {
     if (testData.students && testData.students.length > 0) {
       testData.students.forEach((student, index) => {
         if (index > 0) {
-          md += '\n\\newpage\n\n'; // Разрыв страницы между студентами
+          // Pandoc page break - raw HTML
+          md += '\n<div style="page-break-before: always;"></div>\n\n';
         }
 
         // Заголовок для студента

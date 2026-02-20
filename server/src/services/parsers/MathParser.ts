@@ -10,9 +10,17 @@ export class MathParser extends BaseParser {
       console.log('📐 [MATH] Parsing DOCX with math support...');
       
       await this.extractImagesFromDocx(filePath);
-      const rawMarkdown = await this.extractTextWithPandoc(filePath);
+      let rawMarkdown = await this.extractTextWithPandoc(filePath);
       
       console.log('📝 [MATH] Raw Markdown length:', rawMarkdown.length);
+      
+      // Check for multiple variants (e.g., "1-Variant", "2-Variant")
+      rawMarkdown = this.handleMultipleVariants(rawMarkdown);
+      
+      // DEBUG: Save markdown after handleMultipleVariants
+      const fs = require('fs');
+      fs.writeFileSync('after_handle_variants.txt', rawMarkdown);
+      console.log('💾 [DEBUG] Saved markdown after handleMultipleVariants');
       
       const { cleanText, mathBlocks } = this.preCleanText(rawMarkdown);
       
@@ -32,6 +40,38 @@ export class MathParser extends BaseParser {
         `Failed to parse math DOCX: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  /**
+   * Handle multiple variants in one file
+   * Converts "1-Variant: 1-30" + "2-Variant: 1-30" → "1-60"
+   */
+  private handleMultipleVariants(markdown: string): string {
+    const variantPattern = /(\d+)-Variant/gi;
+    const variantMatches = Array.from(markdown.matchAll(variantPattern));
+    
+    if (variantMatches.length === 2) {
+      console.log('📋 [MATH] Found 2 variants, merging...');
+      
+      const variant1Start = variantMatches[0].index!;
+      const variant2Start = variantMatches[1].index!;
+      
+      const variant1Text = markdown.substring(variant1Start, variant2Start);
+      let variant2Text = markdown.substring(variant2Start);
+      
+      // Renumber variant 2 questions: 1. → 31., 2. → 32., etc.
+      // Pattern matches: start of line OR after space/punctuation
+      for (let i = 30; i >= 1; i--) {
+        const oldPattern = new RegExp(`(^|\\n|\\s)${i}([.)])`, 'g');
+        const newNum = i + 30;
+        variant2Text = variant2Text.replace(oldPattern, `$1${newNum}$2`);
+      }
+      
+      console.log('✅ [MATH] Variants merged: 1-30 + 31-60');
+      return variant1Text + '\n\n' + variant2Text;
+    }
+    
+    return markdown;
   }
 
   /**
@@ -62,10 +102,10 @@ export class MathParser extends BaseParser {
       const accuracy = ((fullCount / questions.length) * 100).toFixed(1);
 
       console.log('\n' + '='.repeat(70));
-      console.log('⚠️  XATOLAR TOPILDI - Qo\'lda tuzatish kerak');
+      console.log('⚠️  OGOHLANTIRISHLAR - Faylda muammolar topildi');
       console.log('='.repeat(70));
       console.log(`📊 Natija: ${fullCount}/${questions.length} to'liq (${accuracy}%)`);
-      console.log('='.repeat(70));
+      console.log(`⚠️  ${issues.length} ta savol muammoli (lekin import qilindi)`);      console.log('='.repeat(70));
 
       issues.forEach((issue, idx) => {
         console.log(`\n📌 XATO #${idx + 1}: Savol ${issue.number}`);
@@ -113,6 +153,12 @@ export class MathParser extends BaseParser {
    */
   protected preCleanText(text: string): { cleanText: string; mathBlocks: string[] } {
     let cleaned = text;
+    
+    // DEBUG: Check if Q5 exists before cleaning
+    const q5Before = cleaned.match(/5\. ikki sonning[^\n]*/);
+    if (q5Before) {
+      console.log('🔍 [DEBUG] Q5 BEFORE preCleanText:', q5Before[0].substring(0, 100));
+    }
 
     // 1. Basic cleaning
     cleaned = cleaned.replace(/\\`/g, '`');
@@ -167,6 +213,14 @@ export class MathParser extends BaseParser {
     cleaned = cleaned.replace(/(^|\s|\n)(\*\*|__)?(\d+)(\*\*|__)?\.\s*/g, '$1$2$3$4) ');
     cleaned = cleaned.replace(/([^\s\n])(\*\*|__)?([A-D])(\*\*|__)?\)/gi, '$1 $2$3$4)');
     cleaned = cleaned.replace(/(\d+|[A-D])(\*\*|__)?\)([^\s\n])/gi, '$1$2) $3');
+    
+    // DEBUG: Check if Q5 exists after cleaning
+    const q5After = cleaned.match(/5\) ikki sonning[^\n]*/);
+    if (q5After) {
+      console.log('🔍 [DEBUG] Q5 AFTER preCleanText:', q5After[0].substring(0, 100));
+    } else {
+      console.log('❌ [DEBUG] Q5 LOST in preCleanText!');
+    }
 
     return { cleanText: cleaned, mathBlocks };
   }

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import { Printer, ArrowLeft, FileText } from 'lucide-react';
+import { Printer, ArrowLeft, FileText, Download, FileDown } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
 import { useToast } from '@/hooks/useToast';
@@ -91,19 +91,106 @@ export default function TestPrintPage() {
     window.print();
   };
 
+  // Handle Answer Key PDF Export
+  const handleDownloadAnswerKeyPDF = async () => {
+    try {
+      setExporting(true);
+      setExportProgress(0);
+      success('Titul varoq PDF yaratilmoqda...');
+      
+      const endpoint = isBlockTest 
+        ? `/block-tests/${id}/export-answer-key-pdf`
+        : `/tests/${id}/export-answer-key-pdf`;
+      
+      const response = await api.get(endpoint, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = isBlockTest 
+        ? `titul-varoq-block-test-${id}-${Date.now()}.pdf`
+        : `titul-varoq-test-${id}-${Date.now()}.pdf`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      success('Titul varoq PDF yuklandi');
+      setExporting(false);
+    } catch (error: any) {
+      console.error('Error downloading answer key PDF:', error);
+      showError('Titul varoq PDF yuklashda xatolik');
+      setExporting(false);
+    }
+  };
+
+  // Handle Answer Key Word Export
+  const handleDownloadAnswerKeyWord = async () => {
+    try {
+      setExporting(true);
+      setExportProgress(0);
+      success('Titul varoq Word yaratilmoqda...');
+      
+      const endpoint = isBlockTest 
+        ? `/block-tests/${id}/export-answer-key-docx`
+        : `/tests/${id}/export-answer-key-docx`;
+      
+      const response = await api.get(endpoint, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = isBlockTest 
+        ? `titul-varoq-block-test-${id}-${Date.now()}.docx`
+        : `titul-varoq-test-${id}-${Date.now()}.docx`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      success('Titul varoq Word yuklandi');
+      setExporting(false);
+    } catch (error: any) {
+      console.error('Error downloading answer key Word:', error);
+      showError('Titul varoq Word yuklashda xatolik');
+      setExporting(false);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     try {
       setExporting(true);
       setExportProgress(0);
       success('PDF yaratilmoqda...');
       
-      const endpoint = isBlockTest 
-        ? `/block-tests/${id}/export-pdf-async`
-        : `/tests/${id}/export-pdf-async`;
+      // Determine endpoint based on type
+      let endpoint = '';
+      if (type === 'sheets') {
+        endpoint = isBlockTest 
+          ? `/block-tests/${id}/export-answer-sheets-pdf-async`
+          : `/tests/${id}/export-answer-sheets-pdf-async`;
+      } else {
+        endpoint = isBlockTest 
+          ? `/block-tests/${id}/export-pdf-async`
+          : `/tests/${id}/export-pdf-async`;
+      }
       
       // Step 1: Start export job
       const { data } = await api.post(endpoint, {
-        students: selectedStudents.map(s => s._id)
+        students: selectedStudents.map(s => s._id),
+        settings: type === 'sheets' ? {
+          sheetsPerPage,
+          fontSize,
+          fontFamily,
+          backgroundOpacity,
+          backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined
+        } : undefined
       });
       
       const { jobId, estimatedTime } = data;
@@ -223,9 +310,17 @@ export default function TestPrintPage() {
       setExportProgress(0);
       success('Word yaratilmoqda...');
       
-      const endpoint = isBlockTest 
-        ? `/block-tests/${id}/export-docx-async`
-        : `/tests/${id}/export-docx-async`;
+      // Determine endpoint based on type
+      let endpoint = '';
+      if (type === 'sheets') {
+        endpoint = isBlockTest 
+          ? `/block-tests/${id}/export-answer-sheets-docx-async`
+          : `/tests/${id}/export-answer-sheets-docx-async`;
+      } else {
+        endpoint = isBlockTest 
+          ? `/block-tests/${id}/export-docx-async`
+          : `/tests/${id}/export-docx-async`;
+      }
       
       // Step 1: Start export job
       const { data } = await api.post(endpoint, {
@@ -234,7 +329,8 @@ export default function TestPrintPage() {
           fontSize,
           fontFamily,
           lineHeight,
-          columnsCount,
+          columnsCount: type === 'sheets' ? 1 : columnsCount,
+          sheetsPerPage: type === 'sheets' ? sheetsPerPage : undefined,
           backgroundOpacity,
           backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined
         }
@@ -360,9 +456,13 @@ export default function TestPrintPage() {
       window.URL.revokeObjectURL(url);
       
       success('Word yuklandi');
+      setExporting(false);
+      setExportProgress(0);
     } catch (error: any) {
       console.error('Error downloading Word:', error);
       showError('Word yuklashda xatolik');
+      setExporting(false);
+      setExportProgress(0);
     }
   };
 
@@ -465,17 +565,17 @@ export default function TestPrintPage() {
                   ? variant.shuffledQuestions
                   : test.questions;
 
-                console.log(`🎨 RENDER: Student ${student.fullName}:`, {
-                  studentId: student._id,
-                  hasVariant: !!variant,
-                  variantStudentId: variant ? (typeof variant.studentId === 'string' ? variant.studentId : variant.studentId?._id) : 'none',
-                  variantCode,
-                  hasShuffledQuestions: !!variant?.shuffledQuestions,
-                  questionsCount: questionsToRender?.length,
-                  firstQuestionVariants: questionsToRender?.[0]?.variants?.map((v: any) => 
-                    `${v.letter}: ${v.text?.substring(0, 20)}`
-                  )
-                });
+                // console.log(`🎨 RENDER: Student ${student.fullName}:`, {
+                //   studentId: student._id,
+                //   hasVariant: !!variant,
+                //   variantStudentId: variant ? (typeof variant.studentId === 'string' ? variant.studentId : variant.studentId?._id) : 'none',
+                //   variantCode,
+                //   hasShuffledQuestions: !!variant?.shuffledQuestions,
+                //   questionsCount: questionsToRender?.length,
+                //   firstQuestionVariants: questionsToRender?.[0]?.variants?.map((v: any) => 
+                //     `${v.letter}: ${v.text?.substring(0, 20)}`
+                //   )
+                // });
 
                 return (
                   <div 
@@ -709,40 +809,83 @@ export default function TestPrintPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 print:bg-white print-view-mode print:min-h-0 print:m-0 print:p-0">
-      {/* Top Bar - Only Print Button */}
-      <div className="no-print mb-4 p-3 bg-white border-b shadow-sm">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      {/* Top Bar - Print and Export Buttons */}
+      <div className="no-print mb-4 p-4 bg-white border-b shadow-sm">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-between">
+            {/* Left: Back Button */}
             <Button size="sm" variant="outline" onClick={() => navigate(-1)}>
-              <ArrowLeft className="w-4 h-4 mr-1" />
+              <ArrowLeft className="w-4 h-4 mr-2" />
               Orqaga
             </Button>
-            <Button size="sm" onClick={handlePrint}>
-              <Printer className="w-4 h-4 mr-1" />
-              Chop etish
-            </Button>
-            {type === 'questions' && (
-              <>
-                <Button size="sm" variant="outline" onClick={handleDownloadPDF}>
-                  <FileText className="w-4 h-4 mr-1" />
-                  PDF yuklash
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleDownloadWord} disabled={exporting}>
-                  <FileText className="w-4 h-4 mr-1" />
-                  {exporting ? `Yuklanmoqda... ${exportProgress}%` : 'Word yuklash'}
-                </Button>
-              </>
-            )}
-            {(type === 'questions' || type === 'sheets') && (
-              <Button size="sm" variant="outline" onClick={() => setShowSettingsPanel(!showSettingsPanel)}>
-                Sozlamalar
+
+            {/* Right: Action Buttons */}
+            <div className="flex items-center gap-3">
+              {/* Print Button */}
+              <Button size="lg" onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700">
+                <Printer className="w-5 h-5 mr-2" />
+                Chop etish
               </Button>
-            )}
+
+              {/* Export Buttons */}
+              <div className="flex items-center gap-2 border-l pl-3">
+                <Button 
+                  size="lg" 
+                  variant="outline" 
+                  onClick={type === 'sheets' ? handleDownloadAnswerKeyPDF : handleDownloadPDF}
+                  disabled={exporting}
+                  className="border-red-300 text-red-600 hover:bg-red-50"
+                >
+                  <FileDown className="w-5 h-5 mr-2" />
+                  {type === 'sheets' ? 'Titul PDF' : 'PDF'}
+                </Button>
+                <Button 
+                  size="lg" 
+                  variant="outline" 
+                  onClick={type === 'sheets' ? handleDownloadAnswerKeyWord : handleDownloadWord} 
+                  disabled={exporting}
+                  className="border-blue-300 text-blue-600 hover:bg-blue-50"
+                >
+                  <FileText className="w-5 h-5 mr-2" />
+                  {exporting ? `${exportProgress}%` : (type === 'sheets' ? 'Titul Word' : 'Word')}
+                </Button>
+              </div>
+
+              {/* Settings Button */}
+              {(type === 'questions' || type === 'sheets') && (
+                <Button 
+                  size="lg" 
+                  variant="outline" 
+                  onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+                  className="border-gray-300"
+                >
+                  Sozlamalar
+                </Button>
+              )}
+            </div>
           </div>
+
+          {/* Export Progress Bar */}
+          {exporting && exportProgress > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">
+                  {type === 'sheets' ? 'Javob varaqalari' : 'Test'} yuklanmoqda...
+                </span>
+                <span className="text-sm font-medium text-blue-600">{exportProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${exportProgress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Fixed Side Panel */}
+      {/* Fixed Side Panel - Questions Settings */}
       {showSettingsPanel && type === 'questions' && (
         <div className="no-print fixed right-4 top-20 w-80 bg-white border shadow-lg rounded-lg p-4 max-h-[calc(100vh-100px)] overflow-y-auto z-50">
           <h3 className="font-semibold text-gray-900 mb-4">Sozlamalar</h3>
@@ -777,6 +920,75 @@ export default function TestPrintPage() {
                   className="w-full"
                 />
               </div>
+
+      {/* Fixed Side Panel - Answer Sheets Settings */}
+      {showSettingsPanel && type === 'sheets' && (
+        <div className="no-print fixed right-4 top-20 w-80 bg-white border shadow-lg rounded-lg p-4 max-h-[calc(100vh-100px)] overflow-y-auto z-50">
+          <h3 className="font-semibold text-gray-900 mb-4">Javob varaqasi sozlamalari</h3>
+
+          <div className="space-y-4">
+              {/* Sheets Per Page */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Bir sahifada: {sheetsPerPage} ta
+                </label>
+                <select 
+                  value={sheetsPerPage} 
+                  onChange={(e) => setSheetsPerPage(Number(e.target.value))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value={1}>1 ta varoq</option>
+                  <option value={2}>2 ta varoq</option>
+                  <option value={4}>4 ta varoq</option>
+                </select>
+              </div>
+
+              {/* Font Settings */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Shrift turi</label>
+                <select 
+                  value={fontFamily} 
+                  onChange={(e) => setFontFamily(e.target.value)}
+                  className="w-full p-2 border rounded text-sm"
+                  style={{ fontFamily }}
+                >
+                  <option value="Arial">Arial</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Calibri">Calibri</option>
+                  <option value="Cambria">Cambria</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">O'lchami: {fontSize}px</label>
+                <input 
+                  type="range" 
+                  min="6" 
+                  max="14" 
+                  value={fontSize} 
+                  onChange={(e) => setFontSize(Number(e.target.value))} 
+                  className="w-full"
+                />
+              </div>
+
+              {/* Background Settings */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Fon shaffoflik: {(backgroundOpacity * 100).toFixed(0)}%
+                </label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="0.3" 
+                  step="0.01"
+                  value={backgroundOpacity} 
+                  onChange={(e) => setBackgroundOpacity(Number(e.target.value))} 
+                  className="w-full"
+                />
+              </div>
+          </div>
+        </div>
+      )}
 
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Qatorlar oralig'i</label>

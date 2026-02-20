@@ -121,7 +121,8 @@ export class LiteratureParser extends BaseParser {
       }
 
       // Check if line is a question (starts with number)
-      const questionMatch = line.match(/^(\d+)\\?\.\s*(.+)/);
+      // Support both "1." and "1)" formats
+      const questionMatch = line.match(/^(\d+)[.)]\s*(.+)/);
       if (questionMatch) {
         const [, number, text] = questionMatch;
         const num = parseInt(number);
@@ -347,10 +348,10 @@ export class LiteratureParser extends BaseParser {
       const accuracy = ((fullCount / questions.length) * 100).toFixed(1);
 
       console.log('\n' + '='.repeat(70));
-      console.log('⚠️  XATOLAR TOPILDI - Qo\'lda tuzatish kerak');
+      console.log('⚠️  OGOHLANTIRISHLAR - Faylda muammolar topildi');
       console.log('='.repeat(70));
       console.log(`📊 Natija: ${fullCount}/${questions.length} to'liq (${accuracy}%)`);
-      console.log('='.repeat(70));
+      console.log(`⚠️  ${issues.length} ta savol muammoli (lekin import qilindi)`);      console.log('='.repeat(70));
 
       issues.forEach((issue, idx) => {
         console.log(`\n📌 XATO #${idx + 1}: Savol ${issue.number}`);

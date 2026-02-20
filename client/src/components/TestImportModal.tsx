@@ -123,6 +123,16 @@ export default function TestImportModal({ open, onClose, onSuccess }: TestImport
 
       setParsedQuestions(data.questions || []);
       setStep('preview');
+      
+      // Check for problematic questions (empty text or missing variants)
+      const problematicQuestions = (data.questions || []).filter((q: ParsedQuestion, idx: number) => 
+        !q.text || q.text.includes('(parse qilinmadi)') || q.variants.some(v => !v.text)
+      );
+      
+      if (problematicQuestions.length > 0) {
+        // Show warning toast
+        console.warn(`⚠️ ${problematicQuestions.length} ta savol muammoli`);
+      }
     } catch (err: any) {
       console.error('Import error:', err);
       
@@ -419,15 +429,41 @@ export default function TestImportModal({ open, onClose, onSuccess }: TestImport
               </Button>
             </div>
 
+            {/* Warning Alert for Problematic Questions */}
+            {(() => {
+              const problematicQuestions = parsedQuestions.filter((q, idx) => 
+                !q.text || q.text.includes('(parse qilinmadi)') || q.variants.some(v => !v.text)
+              );
+              
+              if (problematicQuestions.length > 0) {
+                return (
+                  <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-3 shadow-sm">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-amber-900 text-sm">
+                        ⚠️ {problematicQuestions.length} ta savol to'liq parse qilinmadi
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Iltimos, quyidagi savollarni qo'lda to'ldiring yoki tuzating
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <div className="max-h-[500px] overflow-y-auto space-y-4 border rounded-lg p-4">
               {parsedQuestions.map((q, idx) => {
                 const hasVariants = q.variants.length > 0;
                 const needsAnswer = hasVariants && !q.correctAnswer;
+                const isProblematic = !q.text || q.text.includes('(parse qilinmadi)') || q.variants.some(v => !v.text);
                 
                 return (
                   <div 
                     key={idx} 
                     className={`bg-white border-2 p-4 rounded-lg space-y-3 ${
+                      isProblematic ? 'border-amber-400 bg-amber-50' : 
                       needsAnswer ? 'border-red-300 bg-red-50' : 'border-gray-200'
                     }`}
                   >

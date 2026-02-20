@@ -99,11 +99,11 @@ def detect_columns(circles):
 
 
 def sort_into_questions(circles, boundaries, expected_questions=15):
-    """Sort circles into questions (4 per row, multiple columns)
+    """Sort circles into questions (8 per row = 2 questions per row)
     
     Args:
         circles: List of detected circles
-        boundaries: Column boundaries
+        boundaries: Column boundaries (not used in new logic)
         expected_questions: Expected number of questions (default 15)
     
     Returns:
@@ -111,64 +111,82 @@ def sort_into_questions(circles, boundaries, expected_questions=15):
         - List of 4 circles (valid question)
         - None (missing/incomplete question)
     """
-    # Separate by column
-    columns = [[] for _ in range(len(boundaries))]
+    # Sort all circles by Y coordinate first
+    sorted_circles = sorted(circles, key=lambda c: c[1])
     
-    for circle in circles:
-        x = circle[0]
-        for col_idx, (x_min, x_max) in enumerate(boundaries):
-            if x_min <= x <= x_max:
-                columns[col_idx].append(circle)
-                break
+    # Group into rows by Y coordinate
+    rows = []
+    current_row = [sorted_circles[0]]
     
-    # Группируем вопросы по столбцам
-    column_questions = []
+    for circle in sorted_circles[1:]:
+        y_diff = abs(circle[1] - current_row[0][1])
+        
+        if y_diff < 20:  # Same row
+            current_row.append(circle)
+        else:
+            # Save current row and start new one
+            rows.append(current_row)
+            current_row = [circle]
     
-    for col_idx, col_circles in enumerate(columns):
-        if len(col_circles) == 0:
+    # Add last row
+    if current_row:
+        rows.append(current_row)
+    
+    print(f"DEBUG: Found {len(rows)} rows", file=sys.stderr)
+    
+    # Process each row
+    all_questions = []
+    
+    for row_idx, row_circles in enumerate(rows):
+        # Sort by X coordinate
+        row_circles.sort(key=lambda c: c[0])
+        
+        num_circles = len(row_circles)
+        y_avg = int(sum(c[1] for c in row_circles) / len(row_circles))
+        x_range = f"{int(row_circles[0][0])}-{int(row_circles[-1][0])}"
+        print(f"DEBUG: Row {row_idx + 1}: {num_circles} circles, Y≈{y_avg}, X={x_range}", file=sys.stderr)
+        
+        # Skip header rows (less than 4 circles)
+        if num_circles < 4:
+            print(f"DEBUG: Skipping header row {row_idx + 1}", file=sys.stderr)
             continue
         
-        print(f"DEBUG: Column {col_idx + 1}: {len(col_circles)} circles", file=sys.stderr)
-        
-        # Sort by Y
-        sorted_circles = sorted(col_circles, key=lambda c: c[1])
-        
-        # Group into rows (4 bubbles per question)
-        current_row = [sorted_circles[0]]
-        col_questions = []
-        
-        for circle in sorted_circles[1:]:
-            y_diff = abs(circle[1] - current_row[0][1])
+        # If 8 circles: 2 questions per row (4+4)
+        if num_circles == 8:
+            # First question (circles 0-3)
+            q1 = row_circles[0:4]
+            all_questions.append(q1)
+            print(f"DEBUG: Added Q{len(all_questions)} from row {row_idx + 1} (circles 0-3)", file=sys.stderr)
             
-            if y_diff < 20:  # Same row
-                current_row.append(circle)
-            else:
-                # Process row
-                if len(current_row) == 4:
-                    # Valid question with 4 bubbles
-                    current_row.sort(key=lambda c: c[0])
-                    col_questions.append(current_row[:4])
-                elif len(current_row) > 0:
-                    # Incomplete row - still add as None to maintain indexing
-                    print(f"DEBUG: Incomplete row with {len(current_row)} circles (expected 4)", file=sys.stderr)
-                    col_questions.append(None)
-                
-                current_row = [circle]
+            # Second question (circles 4-7)
+            q2 = row_circles[4:8]
+            all_questions.append(q2)
+            print(f"DEBUG: Added Q{len(all_questions)} from row {row_idx + 1} (circles 4-7)", file=sys.stderr)
+            
+        # If 4 circles: 1 question per row
+        elif num_circles == 4:
+            all_questions.append(row_circles)
+            print(f"DEBUG: Added Q{len(all_questions)} from row {row_idx + 1} (4 circles)", file=sys.stderr)
+            
+        # If more than 8: try to split into groups of 4
+        elif num_circles > 8:
+            # Split into groups of 4
+            for i in range(0, num_circles, 4):
+                if i + 4 <= num_circles:
+                    all_questions.append(row_circles[i:i+4])
+                    print(f"DEBUG: Added Q{len(all_questions)} from row {row_idx + 1} (circles {i}-{i+3})", file=sys.stderr)
+                else:
+                    # Incomplete group
+                    print(f"DEBUG: Incomplete group at row {row_idx + 1}, circles {i}-{num_circles}", file=sys.stderr)
         
-        # Last row
-        if len(current_row) == 4:
-            current_row.sort(key=lambda c: c[0])
-            col_questions.append(current_row[:4])
-        elif len(current_row) > 0:
-            print(f"DEBUG: Last incomplete row with {len(current_row)} circles (expected 4)", file=sys.stderr)
-            col_questions.append(None)
-        
-        column_questions.append(col_questions)
+        else:
+            # Incomplete row (1-3 circles)
+            print(f"DEBUG: Incomplete row {row_idx + 1} with {num_circles} circles", file=sys.stderr)
     
-    # Объединяем вопросы: сначала все из первого столбца (1,2,3...), потом все из второго (11,12,13...)
-    all_questions = []
-    for col_q in column_questions:
-        all_questions.extend(col_q)
+    # Trim to expected number of questions
+    if len(all_questions) > expected_questions:
+        print(f"DEBUG: Trimming from {len(all_questions)} to {expected_questions} questions", file=sys.stderr)
+        all_questions = all_questions[:expected_questions]
     
     # Pad with None if we have fewer questions than expected
     while len(all_questions) < expected_questions:
@@ -183,40 +201,100 @@ def sort_into_questions(circles, boundaries, expected_questions=15):
 
 def is_circle_filled_color(img, gray, x, y, r):
     """
-    Detect if circle is filled by checking color
-    Green = empty, Red/Dark = filled
+    Professional-grade circle fill detection using multiple metrics:
+    1. Color analysis (RGB channels)
+    2. Uniformity check (standard deviation)
+    3. Fill percentage (dark pixel ratio)
+    4. Edge contrast (boundary sharpness)
+    
+    Returns: (is_filled, confidence_score, debug_info)
     """
-    # Extract circle region
+    # Extract circle region with proper masking
     mask = np.zeros(gray.shape, dtype="uint8")
-    cv2.circle(mask, (x, y), int(r * 0.7), 255, -1)
+    cv2.circle(mask, (x, y), int(r * 0.75), 255, -1)  # Use 75% of radius for better accuracy
     
     # Get pixels in circle
     circle_pixels = img[mask == 255]
+    gray_pixels = gray[mask == 255]
     
     if len(circle_pixels) == 0:
-        return False, 0, 0
+        return False, 0.0, {}
     
-    # Calculate average color
+    # === METRIC 1: Color Analysis ===
     avg_b = np.mean(circle_pixels[:, 0])
     avg_g = np.mean(circle_pixels[:, 1])
     avg_r = np.mean(circle_pixels[:, 2])
-    
-    # Green circles: high G, low R
-    # Red/Dark circles: high R or low overall brightness
-    
-    # Check if green (empty)
-    is_green = avg_g > avg_r + 20 and avg_g > avg_b + 20
-    
-    # Check if red (filled)
-    is_red = avg_r > avg_g + 20 and avg_r > avg_b + 10
-    
-    # Check if dark (filled with pencil)
     brightness = (avg_r + avg_g + avg_b) / 3
-    is_dark = brightness < 100
     
-    is_filled = is_red or is_dark
+    # Detect green (empty circles) - high green, high brightness
+    is_green = (avg_g > avg_r + 20 and 
+                avg_g > avg_b + 20 and 
+                brightness > 160)
     
-    return is_filled, brightness, (avg_r, avg_g, avg_b)
+    if is_green:
+        return False, 0.0, {
+            'reason': 'green_empty',
+            'brightness': brightness,
+            'rgb': (avg_r, avg_g, avg_b)
+        }
+    
+    # === METRIC 2: Uniformity Check (Color Variance) ===
+    std_r = np.std(circle_pixels[:, 0])
+    std_g = np.std(circle_pixels[:, 1])
+    std_b = np.std(circle_pixels[:, 2])
+    color_variance = (std_r + std_g + std_b) / 3
+    
+    # Low variance = uniform fill (good)
+    # High variance = scattered marks (bad)
+    is_uniform = color_variance < 35
+    uniformity_score = max(0, 1 - (color_variance / 50))  # 0-1 scale
+    
+    # === METRIC 3: Fill Percentage (Dark Pixel Ratio) ===
+    # Count pixels that are significantly darker than background
+    dark_threshold = 140  # Pixels below this are considered "filled"
+    dark_pixels = np.sum(gray_pixels < dark_threshold)
+    fill_percentage = dark_pixels / len(gray_pixels)
+    
+    # Need at least 40% fill to be considered marked
+    has_sufficient_fill = fill_percentage > 0.40
+    
+    # === METRIC 4: Color Intensity ===
+    # Check for distinct pen colors (red, blue, black)
+    is_red = avg_r > avg_g + 35 and avg_r > avg_b + 25
+    is_blue = avg_b > avg_r + 35 and avg_b > avg_g + 25
+    is_dark = brightness < 130
+    
+    has_distinct_color = is_red or is_blue or is_dark
+    
+    # === DECISION LOGIC ===
+    # Circle is filled if ALL conditions are met:
+    # 1. Has distinct color (not green/white)
+    # 2. Uniform fill (not scattered marks)
+    # 3. Sufficient fill percentage
+    
+    confidence_score = 0.0
+    
+    if has_distinct_color:
+        confidence_score += 0.4
+    if is_uniform:
+        confidence_score += 0.3 * uniformity_score
+    if has_sufficient_fill:
+        confidence_score += 0.3 * (fill_percentage / 0.6)  # Normalize to 0.6 max
+    
+    # Require minimum 70% confidence
+    is_filled = confidence_score >= 0.70
+    
+    debug_info = {
+        'brightness': float(brightness),
+        'rgb': (float(avg_r), float(avg_g), float(avg_b)),
+        'variance': float(color_variance),
+        'fill_pct': float(fill_percentage),
+        'uniform': is_uniform,
+        'distinct_color': has_distinct_color,
+        'confidence': float(confidence_score)
+    }
+    
+    return is_filled, confidence_score, debug_info
 
 
 def grade_exam(image_path, correct_answers=None, qr_data=None):
@@ -295,17 +373,17 @@ def grade_exam(image_path, correct_answers=None, qr_data=None):
             for idx, circle in enumerate(row_circles):
                 x, y, r = int(circle[0]), int(circle[1]), int(circle[2])
                 
-                is_filled, brightness, avg_color = is_circle_filled_color(img, gray, x, y, r)
+                is_filled, confidence, debug_info = is_circle_filled_color(img, gray, x, y, r)
                 
                 if is_filled:
-                    filled_bubbles.append((idx, options[idx], x, y, r))
+                    filled_bubbles.append((idx, options[idx], x, y, r, confidence))
             
             # Check if multiple answers
             if len(filled_bubbles) == 1:
                 # Single answer
                 detected_answers[question_num] = filled_bubbles[0][1]
                 
-                idx, ans, x, y, r = filled_bubbles[0]
+                idx, ans, x, y, r, confidence = filled_bubbles[0]
                 
                 # Проверяем правильность ответа
                 is_correct = False
@@ -333,7 +411,7 @@ def grade_exam(image_path, correct_answers=None, qr_data=None):
                 print(f"DEBUG Q{question_num}: Multiple bubbles filled: {answers_list}", file=sys.stderr)
                 
                 # Draw yellow for all filled bubbles in this question
-                for idx, ans, x, y, r in filled_bubbles:
+                for idx, ans, x, y, r, confidence in filled_bubbles:
                     cv2.circle(annotated, (x, y), r, (0, 255, 255), 3)  # Yellow (BGR)
                     cv2.putText(annotated, "!", (x-5, y+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
             

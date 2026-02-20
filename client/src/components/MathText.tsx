@@ -61,7 +61,7 @@ export default function MathText({ text, className = '' }: MathTextProps) {
       // Normalize format
       let normalizedText = cleanedText;
       normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$1$$');
-      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$$$1$$$$');
+      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$$1$$$$');
 
       const container = containerRef.current;
       

@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   Trash2,
   ImagePlus,
+  FileText,
+  ClipboardList,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useImportTest } from '@/hooks/useTests';
@@ -58,6 +60,7 @@ export default function TestImportPage() {
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
   const [error, setError] = useState<string>('');
   const [step, setStep] = useState<'upload' | 'preview' | 'complete'>('upload');
+  const [viewMode, setViewMode] = useState<'full' | 'compact'>('full'); // NEW: View mode toggle
 
   // File handling
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -329,7 +332,7 @@ export default function TestImportPage() {
           ...q,
           text: textToSave,
           variants: variantsFormatted,
-          imageUrl: q.image,
+          imageUrl: q.imageUrl || q.image,
           image: undefined,
         };
       });
@@ -476,9 +479,39 @@ export default function TestImportPage() {
                 <h1 className="text-2xl font-bold">Test import qilish</h1>
               </div>
             </div>
+            
+            {/* View Mode Switch - Only show in preview step */}
             {step === 'preview' && (
-              <div className="text-sm text-gray-600">
-                Topilgan savollar: <span className="font-bold text-gray-900">{parsedQuestions.length} ta</span>
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-600">
+                  Topilgan: <span className="font-bold text-gray-900">{parsedQuestions.length} ta</span>
+                </div>
+                
+                {/* Toggle Switch */}
+                <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('full')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all ${
+                      viewMode === 'full'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span className="hidden sm:inline">To'liq</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('compact')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all ${
+                      viewMode === 'compact'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    <span className="hidden sm:inline">Titul</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -589,6 +622,37 @@ export default function TestImportPage() {
               )}
             </div>
 
+            {/* Warning Alert for Problematic Questions - MOVED AFTER FORM */}
+            {(() => {
+              const problematicQuestions = parsedQuestions
+                .map((q, idx) => {
+                  const textStr = typeof q.text === 'string' ? q.text : JSON.stringify(q.text);
+                  const hasProblematicText = !q.text || textStr.includes('(parse qilinmadi)');
+                  const hasEmptyVariants = q.variants.some(v => !v.text);
+                  return { idx: idx + 1, isProblematic: hasProblematicText || hasEmptyVariants };
+                })
+                .filter(item => item.isProblematic);
+              
+              if (problematicQuestions.length > 0) {
+                const questionNumbers = problematicQuestions.map(item => item.idx).join(', ');
+                return (
+                  <div className="bg-amber-50 border-l-4 border-amber-400 rounded-r-lg p-4 flex items-start gap-3 shadow-sm">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-amber-900 text-sm">
+                        Diqqat: Ba'zi savollar to'liq yuklanmadi
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        {problematicQuestions.length} ta savol ({questionNumbers}) to'liq parse qilinmadi. 
+                        Iltimos, ularni qo'lda to'ldiring.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* Add Question Button */}
             <div className="flex justify-end">
               <Button onClick={handleAddQuestion} variant="outline">
@@ -598,123 +662,225 @@ export default function TestImportPage() {
 
             {/* Questions List */}
             <div className="space-y-4">
-              {parsedQuestions.map((q, idx) => (
-                <div key={idx} className="bg-white border-2 border-gray-200 p-6 rounded-xl space-y-4">
-                  {/* Question Header */}
-                  <div className="flex items-start gap-3">
-                    <span className="font-bold text-gray-700 text-lg mt-2">{idx + 1}.</span>
-                    <div className="flex-1 space-y-3">
-                      <div className="border rounded-lg">
-                        <RichTextEditor
-                          value={q.text}
-                          onChange={(value) => handleQuestionChange(idx, 'text', value)}
-                          placeholder="Savol matni..."
-                        />
-                      </div>
-
-                      {/* Image Upload */}
-                      {(q.image || q.imageUrl) ? (
-                        <div className="relative inline-block">
-                          <img
-                            src={q.imageUrl || q.image}
-                            alt="Question"
-                            className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveImage(idx)}
-                            className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg transition-colors"
-                            title="Rasmni o'chirish"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <label className="cursor-pointer">
-                          <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
-                            <ImagePlus className="w-5 h-5 text-gray-500" />
-                            <span className="text-sm text-gray-600">Rasm qo'shish</span>
-                          </div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => handleImageUpload(idx, e)}
-                          />
-                        </label>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleRemoveQuestion(idx)}
-                      className="text-red-500 hover:text-red-700 p-2"
-                      title="Savolni o'chirish"
+              {viewMode === 'full' ? (
+                // FULL VIEW - Hozirgi ko'rinish
+                parsedQuestions.map((q, idx) => {
+                  // Check if question is problematic
+                  const textStr = typeof q.text === 'string' ? q.text : JSON.stringify(q.text);
+                  const hasProblematicText = !q.text || textStr.includes('(parse qilinmadi)');
+                  const hasEmptyVariants = q.variants.some(v => !v.text);
+                  const isProblematic = hasProblematicText || hasEmptyVariants;
+                  
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`bg-white border-2 p-6 rounded-xl space-y-4 ${
+                        isProblematic ? 'border-amber-400 bg-amber-50' : 'border-gray-200'
+                      }`}
                     >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Variants */}
-                  {q.variants.length > 0 ? (
-                    <div className="space-y-3 ml-8">
-                      {q.variants.map((v, vIdx) => (
-                        <div key={vIdx} className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => handleQuestionChange(idx, 'correctAnswer', v.letter)}
-                            className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
-                              q.correctAnswer === v.letter
-                                ? 'bg-green-500 border-green-600 text-white shadow-lg'
-                                : 'bg-gray-50 border-gray-300 text-gray-700 hover:border-green-400 hover:bg-green-50'
-                            }`}
-                            title={`Вариант ${v.letter} - to'g'ri javob sifatida belgilash`}
-                          >
-                            <span className="font-bold text-xl">{v.letter}</span>
-                          </button>
-                          <div className="flex-1 border rounded-lg">
-                            <RichTextEditor
-                              value={v.text}
-                              onChange={(value) => handleVariantChange(idx, vIdx, value)}
-                              placeholder="Variant matni..."
-                            />
-                          </div>
-
-                          <button
-                            onClick={() => handleRemoveVariant(idx, vIdx)}
-                            className="text-red-500 hover:text-red-700 p-2"
-                            title="Variantni o'chirish"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                    {/* Question Header */}
+                    <div className="flex items-start gap-3">
+                      <span className="font-bold text-gray-700 text-lg mt-2">{idx + 1}.</span>
+                      <div className="flex-1 space-y-3">
+                        <div className="border rounded-lg">
+                          <RichTextEditor
+                            value={q.text}
+                            onChange={(value) => handleQuestionChange(idx, 'text', value)}
+                            placeholder="Savol matni..."
+                          />
                         </div>
-                      ))}
+
+                        {/* Image Upload */}
+                        {(q.image || q.imageUrl) ? (
+                          <div className="relative inline-block">
+                            <img
+                              src={q.imageUrl || q.image}
+                              alt="Question"
+                              className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(idx)}
+                              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg transition-colors"
+                              title="Rasmni o'chirish"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer">
+                            <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
+                              <ImagePlus className="w-5 h-5 text-gray-500" />
+                              <span className="text-sm text-gray-600">Rasm qo'shish</span>
+                            </div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleImageUpload(idx, e)}
+                            />
+                          </label>
+                        )}
+                      </div>
                       <button
-                        onClick={() => handleAddVariant(idx)}
-                        className="ml-16 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        onClick={() => handleRemoveQuestion(idx)}
+                        className="text-red-500 hover:text-red-700 p-2"
+                        title="Savolni o'chirish"
                       >
-                        + Variant qo'shish
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
-                  ) : (
-                    <div className="ml-8">
-                      <p className="text-sm text-gray-500 italic">Variantsiz savol (to'ldirish uchun)</p>
-                    </div>
-                  )}
 
-                  {/* Settings */}
-                  <div className="flex items-center gap-6 ml-8 pt-4 border-t">
-                    <div className="flex items-center gap-3">
-                      <label className="text-sm text-gray-600 font-medium">Ball:</label>
-                      <input
-                        type="number"
-                        value={q.points}
-                        onChange={(e) => handleQuestionChange(idx, 'points', e.target.value)}
-                        className="w-20 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
-                        min="1"
-                      />
+                    {/* Variants */}
+                    {q.variants.length > 0 ? (
+                      <div className="space-y-3 ml-8">
+                        {q.variants.map((v, vIdx) => (
+                          <div key={vIdx} className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleQuestionChange(idx, 'correctAnswer', v.letter)}
+                              className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
+                                q.correctAnswer === v.letter
+                                  ? 'bg-green-500 border-green-600 text-white shadow-lg'
+                                  : 'bg-gray-50 border-gray-300 text-gray-700 hover:border-green-400 hover:bg-green-50'
+                              }`}
+                              title={`Вариант ${v.letter} - to'g'ri javob sifatida belgilash`}
+                            >
+                              <span className="font-bold text-xl">{v.letter}</span>
+                            </button>
+                            <div className="flex-1 border rounded-lg">
+                              <RichTextEditor
+                                value={v.text}
+                                onChange={(value) => handleVariantChange(idx, vIdx, value)}
+                                placeholder="Variant matni..."
+                              />
+                            </div>
+
+                            <button
+                              onClick={() => handleRemoveVariant(idx, vIdx)}
+                              className="text-red-500 hover:text-red-700 p-2"
+                              title="Variantni o'chirish"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => handleAddVariant(idx)}
+                          className="ml-16 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          + Variant qo'shish
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="ml-8">
+                        <p className="text-sm text-gray-500 italic">Variantsiz savol (to'ldirish uchun)</p>
+                      </div>
+                    )}
+
+                    {/* Settings */}
+                    <div className="flex items-center gap-6 ml-8 pt-4 border-t">
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm text-gray-600 font-medium">Ball:</label>
+                        <input
+                          type="number"
+                          value={q.points}
+                          onChange={(e) => handleQuestionChange(idx, 'points', e.target.value)}
+                          className="w-20 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
+                          min="1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+                })
+              ) : (
+                // COMPACT VIEW - Titul varoq (1 qatorda)
+                <div className="bg-white border-2 border-gray-200 rounded-xl shadow-sm">
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-gray-200 px-8 py-6 rounded-t-xl">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                          <ClipboardList className="w-6 h-6 text-blue-600" />
+                          Titul varoq
+                        </h3>
+                        <p className="text-gray-600 mt-1">Faqat to'g'ri javoblarni belgilang</p>
+                      </div>
+                      
+                      {/* Statistics */}
+                      <div className="flex gap-6">
+                        <div className="text-center">
+                          <div className="text-3xl font-bold text-gray-900">
+                            {parsedQuestions.length}
+                          </div>
+                          <div className="text-xs text-gray-600 uppercase tracking-wide">Jami</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-3xl font-bold text-green-600">
+                            {parsedQuestions.filter(q => q.correctAnswer).length}
+                          </div>
+                          <div className="text-xs text-gray-600 uppercase tracking-wide">Belgilangan</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-3xl font-bold text-amber-600">
+                            {parsedQuestions.filter(q => !q.correctAnswer).length}
+                          </div>
+                          <div className="text-xs text-gray-600 uppercase tracking-wide">Qolgan</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Questions Grid - 1 qatorda: 1. A B C D */}
+                  <div className="p-8">
+                    <div className="space-y-2">
+                      {parsedQuestions.map((q, idx) => (
+                        <div 
+                          key={idx} 
+                          className={`flex items-center gap-4 px-6 py-4 rounded-lg border-2 transition-all ${
+                            q.correctAnswer 
+                              ? 'border-green-500 bg-green-50 shadow-sm' 
+                              : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm'
+                          }`}
+                        >
+                          {/* Question Number */}
+                          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-lg shadow-md">
+                            {idx + 1}
+                          </div>
+                          
+                          {/* Variants - Horizontal */}
+                          <div className="flex-1 flex items-center gap-3">
+                            {q.variants.map((v) => (
+                              <button
+                                key={v.letter}
+                                type="button"
+                                onClick={() => handleQuestionChange(idx, 'correctAnswer', v.letter)}
+                                className={`flex items-center justify-center w-14 h-14 rounded-lg border-2 font-bold text-lg transition-all ${
+                                  q.correctAnswer === v.letter
+                                    ? 'bg-green-500 border-green-600 text-white shadow-lg scale-110 ring-4 ring-green-200'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:border-green-400 hover:bg-green-50 hover:scale-105'
+                                }`}
+                                title={`Savol ${idx + 1} - Variant ${v.letter}`}
+                              >
+                                {v.letter}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Selected Answer Indicator */}
+                          {q.correctAnswer && (
+                            <div className="flex items-center gap-2 px-4 py-2 bg-green-100 border border-green-300 rounded-lg">
+                              <CheckCircle className="w-5 h-5 text-green-600" />
+                              <span className="font-bold text-green-700">{q.correctAnswer}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
 
             {error && (
