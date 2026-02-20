@@ -89,8 +89,8 @@ async function processWordExport(job: Job<WordExportJobData>): Promise<WordExpor
     // Step 2: Load variants (30%)
     await job.updateProgress(30);
     
-    const variantQuery = isBlockTest 
-      ? { blockTestId: testId, studentId: { $in: studentIds.map(id => new Types.ObjectId(id)) } }
+    const variantQuery = isBlockTest
+      ? { testId: new Types.ObjectId(testId), testType: 'BlockTest', studentId: { $in: studentIds.map(id => new Types.ObjectId(id)) } }
       : { testId: new Types.ObjectId(testId), studentId: { $in: studentIds.map(id => new Types.ObjectId(id)) } };
     
     const variants = await StudentVariant.find(variantQuery)
@@ -215,11 +215,9 @@ async function processWordExport(job: Job<WordExportJobData>): Promise<WordExpor
 
 /**
  * Convert TipTap JSON to LaTeX string
- * DEPRECATED: Use convertVariantText from utils/tiptapConverter instead
+ * @deprecated Use convertVariantText directly instead
  */
 function convertTiptapToLatex(json: any): string {
-  // Import the new function
-  const { convertVariantText } = require('../../utils/tiptapConverter');
   return convertVariantText(json);
 }
 

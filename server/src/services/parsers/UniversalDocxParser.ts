@@ -137,7 +137,8 @@ export class UniversalDocxParser extends BaseParser {
       }
 
       // PRIORITY 2: Check QUESTION or VARIANT
-      const match = line.match(/^(\d+)[\\.]\s*(.+)/);
+      // Support both "1." and "1)" formats
+      const match = line.match(/^(\d+)[.)]\s*(.+)/);
       if (match) {
         const [, number, text] = match;
         const num = parseInt(number);

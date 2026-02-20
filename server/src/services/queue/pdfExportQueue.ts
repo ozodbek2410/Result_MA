@@ -81,8 +81,8 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     // Step 2: Load variants (30%)
     await job.updateProgress(30);
     
-    const variantQuery = isBlockTest 
-      ? { blockTestId: testId, studentId: { $in: studentIds.map(id => new Types.ObjectId(id)) } }
+    const variantQuery = isBlockTest
+      ? { testId: new Types.ObjectId(testId), testType: 'BlockTest', studentId: { $in: studentIds.map(id => new Types.ObjectId(id)) } }
       : { testId: new Types.ObjectId(testId), studentId: { $in: studentIds.map(id => new Types.ObjectId(id)) } };
     
     const variants = await StudentVariant.find(variantQuery)

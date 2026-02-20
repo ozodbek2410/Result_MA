@@ -180,10 +180,6 @@ export class PDFGeneratorService {
     .student-page {
       position: relative;
       min-height: 100vh;
-      background-image: url('http://localhost:9998/logo.png');
-      background-size: contain;
-      background-position: center;
-      background-repeat: no-repeat;
       margin-bottom: 20px;
     }
     
@@ -351,7 +347,7 @@ export class PDFGeneratorService {
     }
     
     body {
-      font-family: 'Timew Roman', Times, serif;
+      font-family: 'Times New Roman', Times, serif;
       font-size: 9pt;
       line-height: 1.2;
       color: #000;
@@ -363,10 +359,6 @@ export class PDFGeneratorService {
       margin: 0 auto;
       position: relative;
       min-height: 100vh;
-      background-image: url('http://localhost:9998/logo.png');
-      background-size: contain;
-      background-position: center;
-      background-repeat: no-repeat;
     }
     
     .background-overlay {
@@ -511,7 +503,7 @@ export class PDFGeneratorService {
             <div class="${optionsClass}">
               ${q.options.map((opt, idx) => `
                 <div class="option">
-          g.fromCharCode(65 + idx)})</span>
+                  <span class="option-letter">${String.fromCharCode(65 + idx)})</span>
                   <span class="option-text">${this.renderMath(opt)}</span>
                 </div>
               `).join('')}
@@ -526,7 +518,7 @@ export class PDFGeneratorService {
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       const formulas = document.querySelectorAll('.math-formula');
-      formulas.forEach(el) {
+      formulas.forEach(function(el) {
         const latex = el.getAttribute('data-latex');
         if (latex) {
           try {

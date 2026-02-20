@@ -857,6 +857,14 @@ router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res)
     const { id } = req.params;
     const { students } = req.body;
     
+    // Redis o'chirilgan bo'lsa sync versiyaga yo'naltirish
+    if (process.env.REDIS_ENABLED !== 'true') {
+      return res.status(503).json({
+        message: 'Queue service mavjud emas, sync versiya ishlatiladi',
+        error: 'redis_disabled'
+      });
+    }
+    
     // Validation
     if (!students || !Array.isArray(students) || students.length === 0) {
       return res.status(400).json({ 
@@ -1089,25 +1097,33 @@ router.post('/:id/export-docx-async', authenticate, async (req: AuthRequest, res
   try {
     const { id } = req.params;
     const { students, settings } = req.body;
-    
+
+    // Redis o'chirilgan bo'lsa sync versiyaga yo'naltirish
+    if (process.env.REDIS_ENABLED !== 'true') {
+      return res.status(503).json({
+        message: 'Queue service mavjud emas, sync versiya ishlatiladi',
+        error: 'redis_disabled'
+      });
+    }
+
     // Validation
     if (!students || !Array.isArray(students) || students.length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'O\'quvchilar tanlanmagan',
         error: 'students array is required'
       });
     }
-    
+
     // Check access
     const test = await Test.findById(id).select('branchId name').lean();
     if (!test) {
       return res.status(404).json({ message: 'Test topilmadi' });
     }
-    
+
     if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
       return res.status(403).json({ message: 'Ruxsat yo\'q' });
     }
-    
+
     // Add job to queue
     const job = await wordExportQueue.add('export', {
       testId: id,
@@ -1382,5 +1398,200 @@ function convertTiptapToLatex(json: any): string {
   return convertVariantText(json);
 }
 
+// ============================================================================
+// ANSWER KEY (TITUL VAROQ) EXPORT
+// ============================================================================
+
+/**
+ * Export Answer Key as PDF
+ * GET /tests/:id/export-answer-key-pdf
+ */
+router.get('/:id/export-answer-key-pdf', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const testId = req.params.id;
+    
+    // Fetch test
+    const test = await Test.findById(testId)
+      .populate('subjectId', 'nameUzb')
+      .populate('groupId', 'classNumber letter')
+      .lean();
+    
+    if (!test) {
+      return res.status(404).json({ message: 'Test topilmadi' });
+    }
+    
+    // Fetch all variants
+    const variants = await StudentVariant.find({ testId })
+      .populate('studentId', 'firstName lastName')
+      .lean();
+    
+    if (variants.length === 0) {
+      return res.status(400).json({ message: 'Variantlar topilmadi' });
+    }
+    
+    // Create answer key data (only correct answers)
+    const answerKeyData = {
+      title: `${test.name} - Titul varoq`,
+      className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+      subjectName: (test.subjectId as any)?.nameUzb || '',
+      variants: variants.map(v => ({
+        variantCode: v.variantCode,
+        studentName: v.studentId ? `${(v.studentId as any).firstName} ${(v.studentId as any).lastName}` : '',
+        answers: v.shuffledQuestions?.map((q: any, idx: number) => ({
+          number: idx + 1,
+          correctAnswer: q.correctAnswer || ''
+        })) || []
+      }))
+    };
+    
+    // Generate PDF (simple table format)
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('end', () => {
+      const pdfBuffer = Buffer.concat(chunks);
+      const filename = `titul-varoq-${test.name?.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+    });
+    
+    // Title
+    doc.fontSize(16).font('Helvetica-Bold').text(answerKeyData.title, { align: 'center' });
+    doc.fontSize(12).font('Helvetica').text(`${answerKeyData.className} - ${answerKeyData.subjectName}`, { align: 'center' });
+    doc.moveDown(2);
+    
+    // Answer key table
+    answerKeyData.variants.forEach((variant, vIdx) => {
+      if (vIdx > 0 && vIdx % 2 === 0) {
+        doc.addPage();
+      }
+      
+      doc.fontSize(12).font('Helvetica-Bold').text(`Variant ${variant.variantCode} - ${variant.studentName}`);
+      doc.moveDown(0.5);
+      
+      // Answers in grid format (10 per row)
+      const answersPerRow = 10;
+      let currentRow = '';
+      variant.answers.forEach((ans, idx) => {
+        currentRow += `${ans.number}.${ans.correctAnswer}  `;
+        if ((idx + 1) % answersPerRow === 0 || idx === variant.answers.length - 1) {
+          doc.fontSize(10).font('Helvetica').text(currentRow);
+          currentRow = '';
+        }
+      });
+      
+      doc.moveDown(1.5);
+    });
+    
+    doc.end();
+    
+    console.log('✅ Answer key PDF exported');
+  } catch (error: any) {
+    console.error('❌ Error exporting answer key PDF:', error);
+    res.status(500).json({ message: 'Titul varoq PDF yaratishda xatolik', error: error.message });
+  }
+});
+
+/**
+ * Export Answer Key as Word
+ * GET /tests/:id/export-answer-key-docx
+ */
+router.get('/:id/export-answer-key-docx', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const testId = req.params.id;
+    
+    // Fetch test
+    const test = await Test.findById(testId)
+      .populate('subjectId', 'nameUzb')
+      .populate('groupId', 'classNumber letter')
+      .lean();
+    
+    if (!test) {
+      return res.status(404).json({ message: 'Test topilmadi' });
+    }
+    
+    // Fetch all variants
+    const variants = await StudentVariant.find({ testId })
+      .populate('studentId', 'firstName lastName')
+      .lean();
+    
+    if (variants.length === 0) {
+      return res.status(400).json({ message: 'Variantlar topilmadi' });
+    }
+    
+    // Create Word document
+    const docx = require('docx');
+    const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType } = docx;
+    
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: [
+          // Title
+          new Paragraph({
+            text: `${test.name} - Titul varoq`,
+            heading: 'Heading1',
+            alignment: AlignmentType.CENTER,
+          }),
+          new Paragraph({
+            text: `${test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : ''} - ${(test.subjectId as any)?.nameUzb || ''}`,
+            alignment: AlignmentType.CENTER,
+          }),
+          new Paragraph({ text: '' }),
+          
+          // Answer key table
+          ...variants.flatMap((variant, vIdx) => {
+            const rows: any[] = [];
+            
+            // Variant header
+            rows.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `Variant ${variant.variantCode} - ${variant.studentId ? `${(variant.studentId as any).firstName} ${(variant.studentId as any).lastName}` : ''}`,
+                    bold: true,
+                  })
+                ]
+              })
+            );
+            
+            // Answers (10 per row)
+            const answersPerRow = 10;
+            let currentRow = '';
+            variant.shuffledQuestions?.forEach((q: any, idx: number) => {
+              currentRow += `${idx + 1}.${q.correctAnswer || ''}  `;
+              if ((idx + 1) % answersPerRow === 0 || idx === variant.shuffledQuestions.length - 1) {
+                rows.push(new Paragraph({ text: currentRow }));
+                currentRow = '';
+              }
+            });
+            
+            rows.push(new Paragraph({ text: '' }));
+            
+            return rows;
+          })
+        ]
+      }]
+    });
+    
+    // Generate buffer
+    const buffer = await docx.Packer.toBuffer(doc);
+    
+    const filename = `titul-varoq-${test.name?.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}.docx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+    
+    console.log('✅ Answer key Word exported');
+  } catch (error: any) {
+    console.error('❌ Error exporting answer key Word:', error);
+    res.status(500).json({ message: 'Titul varoq Word yaratishda xatolik', error: error.message });
+  }
+});
+
 
 export default router;
+

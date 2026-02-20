@@ -77,10 +77,10 @@ export class ChemistryParser extends BaseParser {
       const accuracy = ((fullCount / questions.length) * 100).toFixed(1);
 
       console.log('\n' + '='.repeat(70));
-      console.log('⚠️  XATOLAR TOPILDI - Qo\'lda tuzatish kerak');
+      console.log('⚠️  OGOHLANTIRISHLAR - Faylda muammolar topildi');
       console.log('='.repeat(70));
       console.log(`📊 Natija: ${fullCount}/${questions.length} to'liq (${accuracy}%)`);
-      console.log('='.repeat(70));
+      console.log(`⚠️  ${issues.length} ta savol muammoli (lekin import qilindi)`);      console.log('='.repeat(70));
 
       issues.forEach((issue, idx) => {
         console.log(`\n📌 XATO #${idx + 1}: Savol ${issue.number}`);
@@ -173,7 +173,8 @@ export class ChemistryParser extends BaseParser {
       }
 
       // PRIORITY 2: QUESTION or VARIANT
-      const match = line.match(/^(\d+)[\\.]\s*(.+)/);
+      // Support both "1." and "1)" formats
+      const match = line.match(/^(\d+)[.)]\s*(.+)/);
       if (match) {
         const [, number, text] = match;
         const num = parseInt(number);
