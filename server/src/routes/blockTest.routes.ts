@@ -1456,11 +1456,25 @@ router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReques
         : 'A'
       : 'A';
 
+    // Collect all subject names
+    const subjectNames: string[] = [];
+    allTests.forEach((t: Record<string, unknown>) => {
+      const subjectTests = t.subjectTests as Array<Record<string, unknown>> | undefined;
+      subjectTests?.forEach((st) => {
+        const subjectId = st.subjectId as Record<string, unknown> | undefined;
+        const name = subjectId?.nameUzb as string | undefined;
+        if (name && !subjectNames.includes(name)) {
+          subjectNames.push(name);
+        }
+      });
+    });
+
     const pdfBuffer = await PDFGeneratorService.generateAnswerSheetsPDF({
       students: pdfStudents,
       test: {
         classNumber: blockTest.classNumber,
         groupLetter,
+        subjectName: subjectNames.length > 0 ? subjectNames.join(', ') : undefined,
         periodMonth: blockTest.periodMonth,
         periodYear: blockTest.periodYear
       },
