@@ -332,6 +332,9 @@ export abstract class BaseParser {
         '/usr/bin/pandoc',
       ];
 
+      // Temporary directory for extracted media
+      const tempMediaDir = path.join(path.dirname(filePath), `media_${Date.now()}`);
+
       let lastError: any;
       for (const pandocPath of pandocPaths) {
         try {
@@ -342,17 +345,31 @@ export abstract class BaseParser {
             '-t',
             'markdown',
             '--wrap=none',
+            '--extract-media=' + tempMediaDir,
           ]);
           
+          // Clean up temp media directory (we already extract images via adm-zip)
+          try {
+            if (fsSync.existsSync(tempMediaDir)) {
+              fsSync.rmSync(tempMediaDir, { recursive: true, force: true });
+            }
+          } catch {}
+
           // Clean Pandoc escape characters and fix formatting
           let cleaned = this.cleanPandocMarkdown(stdout);
-          
+
           // Jadval markerlarini qo'yish
           cleaned = this.replaceTablesWithMarkers(cleaned);
-          
+
           return cleaned;
         } catch (err) {
           lastError = err;
+          // Clean up on error too
+          try {
+            if (fsSync.existsSync(tempMediaDir)) {
+              fsSync.rmSync(tempMediaDir, { recursive: true, force: true });
+            }
+          } catch {}
         }
       }
       throw lastError;
@@ -423,8 +440,8 @@ export abstract class BaseParser {
     cleaned = cleaned.replace(/(\n\d+)\.([A-Z])/g, '$1. $2');
 
     // Pandoc rasm o'lchamlarini OLDIN ajratib olish (Word original o'lchami)
-    // ![](media/image1.emf){width="4.5in" height="2.3in"} → width=4.5in, height=2.3in
-    const dimPattern = /!\[.*?\]\(media\/image(\d+)\.[a-z]+\)\{[^}]*?width="([^"]+)"[^}]*?height="([^"]+)"[^}]*?\}/gi;
+    // ![](media/image1.emf){width="4.5in" height="2.3in"} or ![](tempDir/media/image1.emf){...}
+    const dimPattern = /!\[.*?\]\((?:[^)]*\/)?media\/image(\d+)\.[a-z]+\)\{[^}]*?width="([^"]+)"[^}]*?height="([^"]+)"[^}]*?\}/gi;
     let dimMatch;
     while ((dimMatch = dimPattern.exec(cleaned)) !== null) {
       const [, num, width, height] = dimMatch;
@@ -437,11 +454,10 @@ export abstract class BaseParser {
     }
 
     // Pandoc rasm markerlarini ___IMAGE_N___ ga aylantirish (BARCHA parserlar uchun)
-    // ![](media/image1.png){width="4.5in" height="2.3in"} → ___IMAGE_1___
+    // ![](media/image1.png){...} or ![](tempDir/media/image1.png){...} → ___IMAGE_1___
     // MUHIM: \n bilan ajratish — marker ALOHIDA qatorda bo'lishi kerak
-    // aks holda "___IMAGE_1___ 12. Savol matni" bitta qatorda qoladi va savol yo'qoladi
-    cleaned = cleaned.replace(/!\[\]\(media\/image(\d+)\.[a-z]+\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
-    cleaned = cleaned.replace(/!\[.*?\]\(.*?image(\d+).*?\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
+    cleaned = cleaned.replace(/!\[\]\((?:[^)]*\/)?media\/image(\d+)\.[a-z]+\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
+    cleaned = cleaned.replace(/!\[.*?\]\((?:[^)]*\/)?media\/image(\d+)(?:\.[a-z]+)?(?:[^)]*)\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
     // Bold ichidagi rasmlarni tozalash: **___IMAGE_1___** → ___IMAGE_1___
     cleaned = cleaned.replace(/\*\*\s*(___IMAGE_\d+___)\s*\*\*/g, '\n$1\n');
 
@@ -841,13 +857,13 @@ export abstract class BaseParser {
       }
     }
     
-    // Pandoc format: ![](media/image2.emf) yoki ![](media/image2.png)
-    // Pandoc rasm nomini aniq ko'rsatadi
-    const pandocImageMatches = questionText.matchAll(/!\[\]\(media\/([^)]+)\)/g);
+    // Pandoc format: ![](media/image2.emf) or ![](path/media/image2.png)
+    // With --extract-media, Pandoc outputs: ![](tempDir/media/image1.png)
+    const pandocImageMatches = questionText.matchAll(/!\[([^\]]*)\]\((?:[^)]*\/)?media\/([^)]+)\)/g);
     if (pandocImageMatches) {
       const matches = Array.from(pandocImageMatches);
       for (const match of matches) {
-        const fullName = match[1]; // "image2.emf"
+        const fullName = match[2]; // "image2.emf"
         
         // extractedImages Map'da to'liq nom bilan qidirish
         let imageUrl = this.extractedImages.get(fullName);
