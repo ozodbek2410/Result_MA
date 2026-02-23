@@ -975,6 +975,77 @@ router.get('/pdf-export-status/:jobId', authenticate, async (req: AuthRequest, r
 });
 
 // ============================================================================
+// ANSWER SHEETS PDF EXPORT
+// ============================================================================
+
+router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const testId = req.params.id;
+    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+
+    const test = await Test.findById(testId).populate('subjectId', 'nameUzb').lean();
+    if (!test) {
+      return res.status(404).json({ message: 'Test topilmadi' });
+    }
+
+    const totalQuestions = (test as Record<string, unknown>).questions
+      ? ((test as Record<string, unknown>).questions as Array<unknown>).length
+      : 0;
+
+    // Load students from group
+    const groupId = (test as Record<string, unknown>).groupId;
+    let allStudents: Array<Record<string, unknown>> = [];
+    if (groupId) {
+      const group = await StudentGroup.findById(groupId).populate('students', 'fullName directionId').lean();
+      allStudents = ((group as Record<string, unknown>)?.students as Array<Record<string, unknown>>) || [];
+    }
+
+    const selectedStudents = studentIds.length > 0
+      ? allStudents.filter((s: Record<string, unknown>) => studentIds.includes((s._id as string).toString()))
+      : allStudents;
+
+    // Load variants
+    const variants = await StudentVariant.find({
+      testId,
+      testType: 'Test',
+      studentId: { $in: selectedStudents.map((s: Record<string, unknown>) => s._id) }
+    }).lean();
+
+    const variantMap = new Map<string, string>();
+    variants.forEach((v: Record<string, unknown>) => {
+      variantMap.set((v.studentId as string)?.toString() || '', (v.variantCode as string) || '');
+    });
+
+    const pdfStudents = selectedStudents.map((s: Record<string, unknown>) => ({
+      fullName: (s.fullName as string) || '',
+      variantCode: variantMap.get((s._id as string).toString()) || ''
+    }));
+
+    const classNumber = (test as Record<string, unknown>).classNumber as number || 10;
+    const subjectName = ((test as Record<string, unknown>).subjectId as Record<string, unknown>)?.nameUzb as string || '';
+
+    const pdfBuffer = await PDFGeneratorService.generateAnswerSheetsPDF({
+      students: pdfStudents,
+      test: {
+        classNumber,
+        groupLetter: 'A',
+        subjectName
+      },
+      totalQuestions
+    });
+
+    const filename = `javob-varaqasi-${classNumber}-sinf-${Date.now()}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('Error exporting answer sheets PDF:', err);
+    res.status(500).json({ message: 'Javob varaqasi PDF yaratishda xatolik', error: err.message });
+  }
+});
+
+// ============================================================================
 // PDF EXPORT - SYNC VERSION (Legacy, for backward compatibility)
 // ============================================================================
 
