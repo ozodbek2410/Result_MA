@@ -91,14 +91,59 @@ export default function TestPrintPage() {
     window.print();
   };
 
-  // Handle Answer Sheet PDF Export (using browser print)
+  // Handle Answer Sheet PDF Export (server-side Playwright)
   const handleDownloadAnswerKeyPDF = async () => {
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
-      // Browser print dialog ni ochish
-      window.print();
-    } catch (error: any) {
-      console.error('Error printing:', error);
-      showError('Print qilishda xatolik');
+      setExporting(true);
+      setExportProgress(5);
+      success('Javob varaqasi PDF yaratilmoqda...');
+
+      const endpoint = isBlockTest
+        ? `/block-tests/${id}/export-answer-sheets-pdf`
+        : `/tests/${id}/export-answer-sheets-pdf`;
+
+      const studentParam = selectedStudents.length > 0
+        ? `?students=${selectedStudents.map(s => s._id).join(',')}`
+        : '';
+
+      const studentCount = Math.max(selectedStudents.length, 1);
+      const estimatedMs = studentCount * 1500;
+      const startTime = Date.now();
+      progressTimer = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const ratio = Math.min(elapsed / estimatedMs, 1);
+        const simulated = 5 + 85 * (1 - Math.pow(1 - ratio, 2));
+        setExportProgress(Math.round(simulated));
+      }, 300);
+
+      const response = await api.get(`${endpoint}${studentParam}`, {
+        responseType: 'blob',
+      });
+
+      clearInterval(progressTimer);
+      setExportProgress(100);
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `javob-varaqasi-${Date.now()}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      success('PDF yuklandi');
+      setTimeout(() => {
+        setExporting(false);
+        setExportProgress(0);
+      }, 500);
+    } catch (error: unknown) {
+      if (progressTimer) clearInterval(progressTimer);
+      console.error('Error downloading answer sheets PDF:', error);
+      showError('PDF yuklashda xatolik');
+      setExporting(false);
+      setExportProgress(0);
     }
   };
 

@@ -1386,6 +1386,101 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
 });
 
 // ============================================================================
+// ANSWER SHEETS (JAVOB VARAQASI) PDF EXPORT FOR BLOCK TESTS
+// ============================================================================
+
+/**
+ * Export Answer Sheets (bubble sheets) as PDF for Block Test
+ * GET /block-tests/:id/export-answer-sheets-pdf
+ */
+router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const blockTestId = req.params.id;
+    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+
+    const blockTest = await BlockTest.findById(blockTestId)
+      .populate('subjectTests.subjectId', 'nameUzb')
+      .lean();
+
+    if (!blockTest) {
+      return res.status(404).json({ message: 'Block test topilmadi' });
+    }
+
+    // Get all block tests for this class/period to count total questions
+    const allTests = await BlockTest.find({
+      branchId: blockTest.branchId,
+      classNumber: blockTest.classNumber,
+      periodMonth: blockTest.periodMonth,
+      periodYear: blockTest.periodYear
+    }).populate('subjectTests.subjectId', 'nameUzb').lean();
+
+    let totalQuestions = 0;
+    allTests.forEach((t: Record<string, unknown>) => {
+      const subjectTests = t.subjectTests as Array<Record<string, unknown>> | undefined;
+      subjectTests?.forEach((st) => {
+        const questions = st.questions as Array<unknown> | undefined;
+        totalQuestions += questions?.length || 0;
+      });
+    });
+
+    // Load students
+    const allStudents = await Student.find({
+      classNumber: blockTest.classNumber,
+      branchId: blockTest.branchId
+    }).populate('directionId', 'nameUzb').lean();
+
+    const selectedStudents = studentIds.length > 0
+      ? allStudents.filter(s => studentIds.includes(s._id.toString()))
+      : allStudents;
+
+    // Load variants for variant codes
+    const variants = await StudentVariant.find({
+      testType: 'BlockTest',
+      studentId: { $in: selectedStudents.map(s => s._id) }
+    }).lean();
+
+    const variantMap = new Map<string, string>();
+    variants.forEach((v: Record<string, unknown>) => {
+      const sid = v.studentId?.toString() || '';
+      variantMap.set(sid, (v.variantCode as string) || '');
+    });
+
+    const pdfStudents = selectedStudents.map(s => ({
+      fullName: (s as Record<string, unknown>).fullName as string || '',
+      variantCode: variantMap.get(s._id.toString()) || ''
+    }));
+
+    const groupLetter = (selectedStudents[0] as Record<string, unknown>)?.directionId
+      ? ((selectedStudents[0] as Record<string, unknown>).directionId as Record<string, unknown>)?.nameUzb
+        ? (((selectedStudents[0] as Record<string, unknown>).directionId as Record<string, unknown>).nameUzb as string).charAt(0)
+        : 'A'
+      : 'A';
+
+    const pdfBuffer = await PDFGeneratorService.generateAnswerSheetsPDF({
+      students: pdfStudents,
+      test: {
+        classNumber: blockTest.classNumber,
+        groupLetter,
+        periodMonth: blockTest.periodMonth,
+        periodYear: blockTest.periodYear
+      },
+      totalQuestions
+    });
+
+    const filename = `javob-varaqasi-${blockTest.classNumber}-sinf-${Date.now()}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+
+    console.log(`✅ Answer sheets PDF exported: ${pdfStudents.length} students, ${totalQuestions} questions`);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('❌ Error exporting answer sheets PDF:', err);
+    res.status(500).json({ message: 'Javob varaqasi PDF yaratishda xatolik', error: err.message });
+  }
+});
+
+// ============================================================================
 // ANSWER KEY (TITUL VAROQ) EXPORT FOR BLOCK TESTS
 // ============================================================================
 
