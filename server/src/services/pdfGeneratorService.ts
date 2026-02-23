@@ -1,6 +1,7 @@
 import { chromium, Browser } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
+import QRCode from 'qrcode';
 
 interface Question {
   number: number;
@@ -875,7 +876,7 @@ export class PDFGeneratorService {
       page.setDefaultTimeout(60000);
 
       try {
-        const html = this.generateAnswerSheetsHTML(data);
+        const html = await this.generateAnswerSheetsHTML(data);
         await page.setContent(html, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(500);
 
@@ -899,12 +900,12 @@ export class PDFGeneratorService {
   /**
    * Generate answer sheets HTML
    */
-  private static generateAnswerSheetsHTML(data: {
+  private static async generateAnswerSheetsHTML(data: {
     students: Array<{ fullName: string; variantCode: string }>;
     test: { classNumber: number; groupLetter: string; subjectName?: string; periodMonth?: number; periodYear?: number };
     totalQuestions: number;
     sheetsPerPage?: number;
-  }): string {
+  }): Promise<string> {
     const { students, test, totalQuestions } = data;
     const layout = this.getAnswerSheetLayout(totalQuestions);
     const questionsPerColumn = Math.ceil(totalQuestions / layout.columns);
@@ -923,7 +924,26 @@ export class PDFGeneratorService {
       }
     } catch {}
 
+    // Generate QR codes for all students
+    const qrCodeMap = new Map<string, string>();
+    for (const student of students) {
+      if (student.variantCode) {
+        try {
+          const qrDataUrl = await QRCode.toDataURL(student.variantCode.trim().toUpperCase(), {
+            width: 200,
+            margin: 1,
+            errorCorrectionLevel: 'H',
+            color: { dark: '#000000', light: '#FFFFFF' }
+          });
+          qrCodeMap.set(student.variantCode, qrDataUrl);
+        } catch (err) {
+          console.warn('QR code generation failed for', student.variantCode);
+        }
+      }
+    }
+
     const sheetsHtml = students.map((student) => {
+      const qrDataUrl = qrCodeMap.get(student.variantCode) || '';
       // Build bubble grid columns
       let gridHtml = '';
       for (let col = 0; col < layout.columns; col++) {
@@ -981,6 +1001,9 @@ export class PDFGeneratorService {
               </div>
             </div>
           </div>
+          ${qrDataUrl ? `<div style="width:30mm;height:30mm;display:flex;align-items:center;justify-content:center">
+            <img src="${qrDataUrl}" style="width:28mm;height:28mm" />
+          </div>` : ''}
         </div>
 
         <!-- Instructions -->
