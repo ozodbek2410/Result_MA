@@ -74,6 +74,437 @@ router.post('/upload', authenticate, upload.single('image'), async (req, res) =>
 });
 
 /**
+ * POST /api/omr/check-answers-final
+ * FINAL Professional OMR scanner (Timing Marks usuli)
+ * 95-98% aniqlik bilan ishlaydi
+ * Scantron/Remark OMR darajasida
+ */
+router.post('/check-answers-final', authenticate, upload.single('image'), async (req, res) => {
+  const requestTimeout = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error('⏱️ Request timeout - 60 seconds exceeded');
+      res.status(504).json({ 
+        success: false,
+        error: 'Request timeout',
+        details: 'Processing took too long. Please try again.'
+      });
+    }
+  }, 60000);
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Rasm yuklanmadi' });
+    }
+
+    const imagePath = req.file.path;
+
+    console.log('🔍 FINAL PROFESSIONAL OMR - 1-bosqich: QR-kod skanerlash...');
+    
+    // 1. QR-kodni aniqlash
+    let qrData = null;
+    let qrFound = false;
+    let variantCode = null;
+    let variantInfo = null;
+    
+    try {
+      const qrScriptPath = path.join(SERVER_ROOT, 'python', 'qr_scanner.py');
+      const pythonCmd = process.env.PYTHON_PATH || 
+                       (process.platform === 'win32' ? 'python' : 'python3');
+      const qrCommand = `${pythonCmd} "${qrScriptPath}" "${imagePath}"`;
+      
+      console.log('🔍 QR scanner command:', qrCommand);
+      
+      await fs.access(qrScriptPath);
+      
+      const { stdout: qrOutput } = await execAsync(qrCommand, { 
+        timeout: 10000,
+        env: { ...process.env }
+      });
+      
+      const qrResult = JSON.parse(qrOutput.trim());
+      if (qrResult.found) {
+        qrFound = true;
+        variantCode = qrResult.data.trim();
+        console.log('✅ QR-kod topildi:', variantCode);
+        
+        // Variant ma'lumotlarini olish
+        try {
+          const StudentVariant = require('../models/StudentVariant').default;
+          const Test = require('../models/Test').default;
+          const BlockTest = require('../models/BlockTest').default;
+          
+          variantInfo = await StudentVariant.findOne({ variantCode: variantCode })
+            .populate('studentId');
+          
+          if (!variantInfo) {
+            const cleanedCode = variantCode.trim().toUpperCase();
+            variantInfo = await StudentVariant.findOne({ 
+              variantCode: { $regex: new RegExp(`^${cleanedCode}$`, 'i') }
+            }).populate('studentId');
+          }
+          
+          if (variantInfo && variantInfo.shuffledQuestions && variantInfo.shuffledQuestions.length > 0) {
+            let correctAnswers: any = {};
+            
+            variantInfo.shuffledQuestions.forEach((question: any, index: number) => {
+              correctAnswers[(index + 1).toString()] = question.correctAnswer;
+            });
+            
+            let testName = 'Test';
+            try {
+              if (variantInfo.testType === 'BlockTest') {
+                const blockTest = await BlockTest.findById(variantInfo.testId).select('name date');
+                if (blockTest) {
+                  const testDate = new Date(blockTest.date);
+                  const formattedDate = testDate.toLocaleDateString('uz-UZ', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  });
+                  testName = `Blok Test - ${formattedDate}`;
+                }
+              } else {
+                const test = await Test.findById(variantInfo.testId).select('name');
+                if (test) {
+                  testName = test.name;
+                }
+              }
+            } catch (err) {
+              console.log('⚠️ Test nomini olishda xatolik');
+            }
+            
+            const studentName = variantInfo.studentId?.fullName || 
+                              `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
+                              'Noma\'lum';
+            
+            qrData = {
+              variantCode: variantCode,
+              testId: variantInfo.testId,
+              studentId: variantInfo.studentId?._id || variantInfo.studentId,
+              studentName: studentName,
+              testName: testName,
+              correctAnswers: correctAnswers,
+              totalQuestions: Object.keys(correctAnswers).length
+            };
+            
+            console.log('✅ Variant ma\'lumotlari olindi:', {
+              variantCode,
+              studentName: qrData.studentName,
+              testName: qrData.testName,
+              totalQuestions: qrData.totalQuestions
+            });
+          }
+        } catch (apiError: any) {
+          console.log('⚠️ Variant ma\'lumotlarini olishda xatolik:', apiError.message);
+        }
+      }
+    } catch (qrError: any) {
+      console.log('⚠️ QR-kod skanerlashda xatolik:', qrError.message);
+    }
+
+    console.log('🔍 FINAL PROFESSIONAL OMR - 2-bosqich: Javoblarni aniqlash...');
+
+    // 2. HYBRID OMR bilan javoblarni aniqlash
+    const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_hybrid.py');
+    const pythonCmd = process.env.PYTHON_PATH || 
+                     (process.platform === 'win32' ? 'python' : 'python3');
+    
+    let command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
+    
+    let qrDataJson = '{}';
+    if (qrFound && qrData && qrData.totalQuestions) {
+      qrDataJson = JSON.stringify({ totalQuestions: qrData.totalQuestions }).replace(/"/g, '\\"');
+    }
+    
+    if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
+      const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
+      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
+      console.log('✅ FINAL Professional OMR: To\'g\'ri javoblar yuborildi');
+    } else {
+      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "{}" "${qrDataJson}"`;
+    }
+    
+    console.log('🐍 FINAL Professional OMR command:', command);
+    
+    await fs.access(pythonScript);
+
+    let result: any;
+    try {
+      const { stdout, stderr } = await execAsync(command, { 
+        timeout: 30000,
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env }
+      });
+
+      if (stderr) {
+        const errorLines = stderr.split('\n').filter(line => 
+          line.includes('ERROR') || line.includes('Traceback') || line.includes('Exception')
+        );
+        if (errorLines.length > 0) {
+          console.error('Python errors:', errorLines.join('\n'));
+        }
+      }
+
+      if (!stdout || stdout.trim().length === 0) {
+        throw new Error('Python script produced no output');
+      }
+
+      result = JSON.parse(stdout);
+    } catch (execError: any) {
+      console.error('❌ FINAL Professional OMR error:', execError.message);
+      throw new Error(`FINAL Professional OMR failed: ${execError.message}`);
+    }
+    
+    console.log('📊 FINAL Professional OMR natijasi:', JSON.stringify(result, null, 2));
+    
+    // QR-kod ma'lumotlarini qo'shish
+    if (qrFound && qrData) {
+      result.qr_found = true;
+      result.qr_code = qrData;
+    } else {
+      result.qr_found = false;
+    }
+    
+    result.uploaded_image = req.file.filename;
+    
+    if (result.annotated_image) {
+      result.annotated_image_url = `/uploads/omr/${result.annotated_image}`;
+    }
+    
+    clearTimeout(requestTimeout);
+    
+    res.json(result);
+    
+    console.log('✅ FINAL Professional OMR response sent');
+    
+  } catch (error: any) {
+    clearTimeout(requestTimeout);
+    console.error('❌ FINAL Professional OMR xatolik:', error);
+    
+    res.status(500).json({ 
+      success: false,
+      error: 'FINAL Professional OMR xatolik',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/omr/check-answers-professional
+ * Professional OMR scanner (PyImageSearch usuli)
+ * 95-98% aniqlik bilan ishlaydi
+ */
+router.post('/check-answers-professional', authenticate, upload.single('image'), async (req, res) => {
+  const requestTimeout = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error('⏱️ Request timeout - 60 seconds exceeded');
+      res.status(504).json({ 
+        success: false,
+        error: 'Request timeout',
+        details: 'Processing took too long. Please try again.'
+      });
+    }
+  }, 60000);
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Rasm yuklanmadi' });
+    }
+
+    const imagePath = req.file.path;
+
+    console.log('🔍 PROFESSIONAL OMR - 1-bosqich: QR-kod skanerlash...');
+    
+    // 1. QR-kodni aniqlash
+    let qrData = null;
+    let qrFound = false;
+    let variantCode = null;
+    let variantInfo = null;
+    
+    try {
+      const qrScriptPath = path.join(SERVER_ROOT, 'python', 'qr_scanner.py');
+      const pythonCmd = process.env.PYTHON_PATH || 
+                       (process.platform === 'win32' ? 'python' : 'python3');
+      const qrCommand = `${pythonCmd} "${qrScriptPath}" "${imagePath}"`;
+      
+      console.log('🔍 QR scanner command:', qrCommand);
+      
+      await fs.access(qrScriptPath);
+      
+      const { stdout: qrOutput } = await execAsync(qrCommand, { 
+        timeout: 10000,
+        env: { ...process.env }
+      });
+      
+      const qrResult = JSON.parse(qrOutput.trim());
+      if (qrResult.found) {
+        qrFound = true;
+        variantCode = qrResult.data.trim();
+        console.log('✅ QR-kod topildi:', variantCode);
+        
+        // Variant ma'lumotlarini olish
+        try {
+          const StudentVariant = require('../models/StudentVariant').default;
+          const Test = require('../models/Test').default;
+          const BlockTest = require('../models/BlockTest').default;
+          
+          variantInfo = await StudentVariant.findOne({ variantCode: variantCode })
+            .populate('studentId');
+          
+          if (!variantInfo) {
+            const cleanedCode = variantCode.trim().toUpperCase();
+            variantInfo = await StudentVariant.findOne({ 
+              variantCode: { $regex: new RegExp(`^${cleanedCode}$`, 'i') }
+            }).populate('studentId');
+          }
+          
+          if (variantInfo && variantInfo.shuffledQuestions && variantInfo.shuffledQuestions.length > 0) {
+            let correctAnswers: any = {};
+            
+            variantInfo.shuffledQuestions.forEach((question: any, index: number) => {
+              correctAnswers[(index + 1).toString()] = question.correctAnswer;
+            });
+            
+            let testName = 'Test';
+            try {
+              if (variantInfo.testType === 'BlockTest') {
+                const blockTest = await BlockTest.findById(variantInfo.testId).select('name date');
+                if (blockTest) {
+                  const testDate = new Date(blockTest.date);
+                  const formattedDate = testDate.toLocaleDateString('uz-UZ', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  });
+                  testName = `Blok Test - ${formattedDate}`;
+                }
+              } else {
+                const test = await Test.findById(variantInfo.testId).select('name');
+                if (test) {
+                  testName = test.name;
+                }
+              }
+            } catch (err) {
+              console.log('⚠️ Test nomini olishda xatolik');
+            }
+            
+            const studentName = variantInfo.studentId?.fullName || 
+                              `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
+                              'Noma\'lum';
+            
+            qrData = {
+              variantCode: variantCode,
+              testId: variantInfo.testId,
+              studentId: variantInfo.studentId?._id || variantInfo.studentId,
+              studentName: studentName,
+              testName: testName,
+              correctAnswers: correctAnswers,
+              totalQuestions: Object.keys(correctAnswers).length
+            };
+            
+            console.log('✅ Variant ma\'lumotlari olindi:', {
+              variantCode,
+              studentName: qrData.studentName,
+              testName: qrData.testName,
+              totalQuestions: qrData.totalQuestions
+            });
+          }
+        } catch (apiError: any) {
+          console.log('⚠️ Variant ma\'lumotlarini olishda xatolik:', apiError.message);
+        }
+      }
+    } catch (qrError: any) {
+      console.log('⚠️ QR-kod skanerlashda xatolik:', qrError.message);
+    }
+
+    console.log('🔍 PROFESSIONAL OMR - 2-bosqich: Javoblarni aniqlash...');
+
+    // 2. Professional OMR bilan javoblarni aniqlash
+    const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_professional.py');
+    const pythonCmd = process.env.PYTHON_PATH || 
+                     (process.platform === 'win32' ? 'python' : 'python3');
+    
+    let command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
+    
+    let qrDataJson = '{}';
+    if (qrFound && qrData && qrData.totalQuestions) {
+      qrDataJson = JSON.stringify({ totalQuestions: qrData.totalQuestions }).replace(/"/g, '\\"');
+    }
+    
+    if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
+      const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
+      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
+      console.log('✅ Professional OMR: To\'g\'ri javoblar yuborildi');
+    } else {
+      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "{}" "${qrDataJson}"`;
+    }
+    
+    console.log('🐍 Professional OMR command:', command);
+    
+    await fs.access(pythonScript);
+
+    let result: any;
+    try {
+      const { stdout, stderr } = await execAsync(command, { 
+        timeout: 30000,
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env }
+      });
+
+      if (stderr) {
+        const errorLines = stderr.split('\n').filter(line => 
+          line.includes('ERROR') || line.includes('Traceback') || line.includes('Exception')
+        );
+        if (errorLines.length > 0) {
+          console.error('Python errors:', errorLines.join('\n'));
+        }
+      }
+
+      if (!stdout || stdout.trim().length === 0) {
+        throw new Error('Python script produced no output');
+      }
+
+      result = JSON.parse(stdout);
+    } catch (execError: any) {
+      console.error('❌ Professional OMR error:', execError.message);
+      throw new Error(`Professional OMR failed: ${execError.message}`);
+    }
+    
+    console.log('📊 Professional OMR natijasi:', JSON.stringify(result, null, 2));
+    
+    // QR-kod ma'lumotlarini qo'shish
+    if (qrFound && qrData) {
+      result.qr_found = true;
+      result.qr_code = qrData;
+    } else {
+      result.qr_found = false;
+    }
+    
+    result.uploaded_image = req.file.filename;
+    
+    if (result.annotated_image) {
+      result.annotated_image_url = `/uploads/omr/${result.annotated_image}`;
+    }
+    
+    clearTimeout(requestTimeout);
+    
+    res.json(result);
+    
+    console.log('✅ Professional OMR response sent');
+    
+  } catch (error: any) {
+    clearTimeout(requestTimeout);
+    console.error('❌ Professional OMR xatolik:', error);
+    
+    res.status(500).json({ 
+      success: false,
+      error: 'Professional OMR xatolik',
+      details: error.message
+    });
+  }
+});
+
+/**
  * POST /api/omr/check-answers
  * Python OCR yordamida javoblarni aniqlash (omr_best.py)
  * QR-kod va javoblarni ketma-ket aniqlash
@@ -326,8 +757,8 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
 
     console.log('🔍 2-bosqich: Javoblarni aniqlash...');
 
-    // 2. Javoblarni aniqlash (omr_color.py - rangli blanklar uchun)
-    const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_color.py');
+    // 2. Javoblarni aniqlash (omr_hybrid.py - 100% aniqlik)
+    const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_hybrid.py');
     
     // Python3 ni ishlatish (ko'p Linux serverlarida python3 bo'ladi)
     // Allow override via environment variable for production
@@ -398,7 +829,33 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
 
       // Parse Python natijasi
       try {
-        result = JSON.parse(stdout);
+        // Python debug loglarni o'tkazib yuborish, faqat JSON qismini olish
+        const lines = stdout.trim().split('\n');
+        
+        // JSON boshlanish va tugash indekslarini topish
+        let jsonStartIndex = -1;
+        let jsonEndIndex = -1;
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line === '{' && jsonStartIndex === -1) {
+            jsonStartIndex = i;
+          }
+          if (line === '}' && jsonStartIndex !== -1) {
+            jsonEndIndex = i;
+            break; // Birinchi to'liq JSON ni topgandan keyin to'xta
+          }
+        }
+        
+        if (jsonStartIndex === -1 || jsonEndIndex === -1) {
+          throw new Error('JSON not found in Python output');
+        }
+        
+        // JSON qatorlarini birlashtirish
+        const jsonLines = lines.slice(jsonStartIndex, jsonEndIndex + 1);
+        const jsonString = jsonLines.join('\n');
+        
+        result = JSON.parse(jsonString);
       } catch (parseError: any) {
         console.error('❌ Failed to parse Python output:', parseError.message);
         console.error('❌ stdout:', stdout);

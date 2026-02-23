@@ -9,7 +9,12 @@ export class MathParser extends BaseParser {
     try {
       console.log('📐 [MATH] Parsing DOCX with math support...');
       
+      // 1. Rasmlarni ajratish
       await this.extractImagesFromDocx(filePath);
+      
+      // 2. Jadvallarni ajratish va rasm qilish
+      await this.extractTablesFromDocx(filePath);
+      
       let rawMarkdown = await this.extractTextWithPandoc(filePath);
       
       console.log('📝 [MATH] Raw Markdown length:', rawMarkdown.length);
@@ -28,6 +33,12 @@ export class MathParser extends BaseParser {
       console.log('🧹 [MATH] Math blocks found:', mathBlocks.length);
       
       const questions = this.parseQuestions(cleanText, mathBlocks);
+      
+      // Media qo'shish
+      for (const question of questions) {
+        this.attachMediaToQuestion(question);
+      }
+      
       console.log(`✅ [MATH] Parsed ${questions.length} questions`);
       
       // Xatolarni tekshirish va chiroyli ko'rsatish
@@ -190,9 +201,7 @@ export class MathParser extends BaseParser {
     });
     cleaned = cleaned.replace(/\\\(\s*\\\)/g, ' ');
 
-    // 6. Remove image markers from Pandoc
-    cleaned = cleaned.replace(/!\[\]\(media\/image(\d+)\.[a-z]+\)(\{[^}]*\})?/gi, ' ___IMAGE_$1___ ');
-    cleaned = cleaned.replace(/!\[.*?\]\(.*?image(\d+).*?\)(\{[^}]*\})?/gi, ' ___IMAGE_$1___ ');
+    // 6. Image markers - endi BaseParser.cleanPandocMarkdown() da markazlashtirilgan
 
     // 7. Hide math blocks (protection)
     const mathBlocks: string[] = [];

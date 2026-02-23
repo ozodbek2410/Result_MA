@@ -22,6 +22,9 @@ export class BiologyParser extends BaseParser {
       // Extract images (biologiyada ko'p rasm bor)
       await this.extractImagesFromDocx(filePath);
       
+      // Extract tables (biologiyada jadvallar ko'p)
+      await this.extractTablesFromDocx(filePath);
+      
       // Convert to Markdown
       const markdown = await this.convertToMarkdown(filePath);
       
@@ -29,6 +32,15 @@ export class BiologyParser extends BaseParser {
       
       // Parse with biology-specific rules
       const questions = this.parseMarkdown(markdown);
+      
+      // Media qo'shish
+      console.log(`🔗 [BIOLOGY] Attaching media to ${questions.length} questions...`);
+      for (const question of questions) {
+        this.attachMediaToQuestion(question);
+        if (question.imageUrl) {
+          console.log(`  ✅ Question has imageUrl: ${question.imageUrl}`);
+        }
+      }
       
       const duration = Date.now() - startTime;
       console.log(`✅ [BIOLOGY] Parsed ${questions.length} questions in ${duration}ms`);
@@ -130,6 +142,12 @@ export class BiologyParser extends BaseParser {
       const line = lines[i].trim();
 
       if (!line || line.includes('---') || line.includes('|')) {
+        continue;
+      }
+
+      // Rasm marker qatorlarini savol matniga qo'shish
+      if (line.includes('___IMAGE_') && current) {
+        current.text = (current.text || '') + ' ' + line;
         continue;
       }
 

@@ -30,7 +30,7 @@ async function seedData() {
     if (existingSubjects === 0) {
       await Subject.insertMany([
         { nameUzb: 'Matematika', isMandatory: true, isActive: true },
-        { nameUzb: 'Ona tili', isMandatory: true, isActive: true },
+        { nameUzb: 'Ona tili va Adabiyot', isMandatory: true, isActive: true },
         { nameUzb: 'Tarix', isMandatory: true, isActive: true },
         { nameUzb: 'Fizika', isMandatory: false, isActive: true },
         { nameUzb: 'Kimyo', isMandatory: false, isActive: true },
@@ -50,6 +50,20 @@ async function seedData() {
         isActive: true
       });
       console.log('✅ Demo branch created');
+    }
+
+    // Migration: "Ona tili" → "Ona tili va Adabiyot" (mavjud DB uchun)
+    const onaTili = await Subject.findOne({ nameUzb: 'Ona tili' });
+    if (onaTili) {
+      await Subject.updateOne({ _id: onaTili._id }, { $set: { nameUzb: 'Ona tili va Adabiyot' } });
+      console.log('✅ Renamed "Ona tili" → "Ona tili va Adabiyot"');
+    } else {
+      // Agar "Ona tili va Adabiyot" ham yo'q bo'lsa, yaratish
+      const onaAdabiyot = await Subject.findOne({ nameUzb: 'Ona tili va Adabiyot' });
+      if (!onaAdabiyot) {
+        await Subject.create({ nameUzb: 'Ona tili va Adabiyot', isMandatory: true, isActive: true });
+        console.log('✅ Created "Ona tili va Adabiyot" subject');
+      }
     }
 
     console.log('\n🎉 Database seeded successfully!');

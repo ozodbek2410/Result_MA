@@ -275,6 +275,8 @@ export default function EditBlockTestSubjectPage() {
   const handleRemoveImage = (questionIndex: number) => {
     const updated = [...questions];
     delete updated[questionIndex].image;
+    delete updated[questionIndex].imageUrl;
+    updated[questionIndex].media = (updated[questionIndex].media || []).filter((m: any) => m.type !== 'image');
     setQuestions(updated);
   };
 
@@ -334,21 +336,51 @@ export default function EditBlockTestSubjectPage() {
                     />
                   </div>
                   
-                  {q.image ? (
-                    <div className="relative inline-block">
-                      <img 
-                        src={q.image} 
-                        alt="Question" 
-                        className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveImage(idx)}
-                        className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg transition-colors"
-                        title="Rasmni o'chirish"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                  {(q.image || q.imageUrl || (q.media && q.media.some((m: any) => m.type === 'image'))) ? (
+                    <div className="space-y-2">
+                      {/* Show image from image/imageUrl field */}
+                      {(q.image || q.imageUrl) && (
+                        <div className="relative inline-block">
+                          <img
+                            src={q.image || q.imageUrl}
+                            alt="Question"
+                            className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg transition-colors"
+                            title="Rasmni o'chirish"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                      {/* Show images from media array (excluding already shown imageUrl) */}
+                      {q.media && q.media
+                        .filter((m: any) => m.type === 'image' && m.url && m.url !== q.imageUrl && m.url !== q.image)
+                        .map((m: any, mIdx: number) => (
+                          <div key={mIdx} className="relative inline-block">
+                            <img
+                              src={m.url}
+                              alt="Media"
+                              className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...questions];
+                                updated[idx].media = updated[idx].media.filter((mi: any) => mi.url !== m.url);
+                                setQuestions(updated);
+                              }}
+                              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg transition-colors"
+                              title="Rasmni o'chirish"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))
+                      }
                     </div>
                   ) : (
                     <label className="cursor-pointer">

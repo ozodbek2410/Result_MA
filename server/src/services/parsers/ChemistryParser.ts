@@ -26,6 +26,9 @@ export class ChemistryParser extends BaseParser {
       // Extract images (kimyoda ko'p rasm bor)
       await this.extractImagesFromDocx(filePath);
       
+      // Extract tables (kimyoda jadvallar ham bor)
+      await this.extractTablesFromDocx(filePath);
+      
       // Convert to Markdown
       const markdown = await this.convertToMarkdown(filePath);
       
@@ -33,6 +36,12 @@ export class ChemistryParser extends BaseParser {
       
       // Parse with chemistry-specific rules
       const questions = this.parseMarkdown(markdown);
+      
+      // Media qo'shish (jadval va rasmlar)
+      console.log(`🔗 [CHEMISTRY] Attaching media to ${questions.length} questions...`);
+      for (const question of questions) {
+        this.attachMediaToQuestion(question);
+      }
       
       const duration = Date.now() - startTime;
       console.log(`✅ [CHEMISTRY] Parsed ${questions.length} questions in ${duration}ms`);
@@ -137,6 +146,12 @@ export class ChemistryParser extends BaseParser {
       const line = lines[i].trim();
 
       if (!line || line.includes('---') || line.includes('|')) {
+        continue;
+      }
+
+      // Rasm marker qatorlarini savol matniga qo'shish (cleanPandocMarkdown dan keyin ___IMAGE_N___ formatda)
+      if (line.includes('___IMAGE_') && current && state === 'QUESTION') {
+        current.text += ' ' + line;
         continue;
       }
 

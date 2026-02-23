@@ -90,6 +90,12 @@ debug.log
 server/temp/
 temp/
 
+# Test fixtures (DOCX fayllar)
+server/test-fixtures/*.docx
+server/test-fixtures/*.doc
+server/test-fixtures/*.jpg
+server/test-fixtures/*.png
+
 # Lock files (optional - uncomment if needed)
 # yarn.lock
 # pnpm-lock.yaml

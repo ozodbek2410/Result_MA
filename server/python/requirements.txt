@@ -1,7 +1,13 @@
 # Python dependencies for ResultMA
-# Currently only used for OMR scanning (omr_color.py, qr_scanner.py)
+# Currently only used for OMR scanning (omr_color.py, qr_scanner.py, omr_professional.py)
 
 # Image processing for OMR
 opencv-python>=4.8.0
 numpy>=1.24.0
 pyzbar>=0.1.9
+
+# Professional OMR (PyImageSearch method)
+imutils>=0.5.4
+
+# EMF/WMF to PNG conversion (Word import rasmlari uchun)
+Pillow>=10.0.0

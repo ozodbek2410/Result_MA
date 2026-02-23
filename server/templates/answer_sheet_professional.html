@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Javob Varaqasi - ResultMA</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 10mm;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: white;
+            color: black;
+        }
+        
+        .answer-sheet {
+            width: 210mm;
+            height: 297mm;
+            position: relative;
+            background: white;
+            padding: 15mm;
+        }
+        
+        /* CORNER MARKS - 4 ta burchakda KATTA qora kvadratlar (DTM kabi) */
+        .corner-mark {
+            position: absolute;
+            width: 12mm;
+            height: 12mm;
+            background: black;
+            border: 6mm solid black;  /* Border har doim print bo'ladi */
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            color-adjust: exact;
+        }
+        
+        .corner-mark.top-left { top: 3mm; left: 3mm; }
+        .corner-mark.top-right { top: 3mm; right: 3mm; }
+        .corner-mark.bottom-left { bottom: 3mm; left: 3mm; }
+        .corner-mark.bottom-right { bottom: 3mm; right: 3mm; }
+        
+        /* HEADER */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 5mm;
+            padding: 0 5mm;
+        }
+        
+        .header-info {
+            flex: 1;
+        }
+        
+        .header-info h1 {
+            font-size: 18pt;
+            font-weight: bold;
+            margin-bottom: 3mm;
+        }
+        
+        .header-info p {
+            font-size: 10pt;
+            margin: 1mm 0;
+        }
+        
+        .qr-code {
+            width: 30mm;
+            height: 30mm;
+            border: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8pt;
+        }
+        
+        /* INSTRUCTIONS */
+        .instructions {
+            background: #f0f0f0;
+            padding: 3mm;
+            margin-bottom: 5mm;
+            border: 1px solid #ccc;
+            font-size: 9pt;
+        }
+        
+        .instructions h3 {
+            font-size: 11pt;
+            margin-bottom: 2mm;
+        }
+        
+        .instructions ul {
+            margin-left: 5mm;
+        }
+        
+        .instructions li {
+            margin: 1mm 0;
+        }
+        
+        /* ANSWER GRID */
+        .answer-grid {
+            display: flex;
+            gap: 10mm;
+            padding: 0 5mm;
+        }
+        
+        .column {
+            flex: 1;
+        }
+        
+        .column-title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 12pt;
+            margin-bottom: 3mm;
+            padding: 2mm;
+            background: #e0e0e0;
+            border: 1px solid #999;
+        }
+        
+        /* QUESTION ROW */
+        .question-row {
+            display: flex;
+            align-items: center;
+            margin: 2mm 0;
+            padding: 1mm 0;
+        }
+        
+        .question-number {
+            width: 8mm;
+            font-weight: bold;
+            font-size: 10pt;
+        }
+        
+        .bubbles {
+            display: flex;
+            gap: 3mm;
+            flex: 1;
+        }
+        
+        .bubble {
+            width: 9mm;
+            height: 9mm;
+            border: 2.5px solid black;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9pt;
+            font-weight: bold;
+            background: white;
+        }
+        
+        /* FOOTER */
+        .footer {
+            position: absolute;
+            bottom: 15mm;
+            left: 20mm;
+            right: 20mm;
+            text-align: center;
+            font-size: 8pt;
+            color: #666;
+            border-top: 1px solid #ccc;
+            padding-top: 2mm;
+        }
+        
+        @media print {
+            .answer-sheet {
+                page-break-after: always;
+            }
+            
+            /* Print da qora ranglarni majburiy chiqarish */
+            .corner-mark {
+                background: black !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+            
+            .bubble {
+                border-color: black !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="answer-sheet">
+        <!-- CORNER MARKS - DTM kabi 4 ta KATTA qora kvadrat -->
+        <div class="corner-mark top-left"></div>
+        <div class="corner-mark top-right"></div>
+        <div class="corner-mark bottom-left"></div>
+        <div class="corner-mark bottom-right"></div>
+        
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-info">
+                <h1>JAVOB VARAQASI</h1>
+                <p><strong>O'quvchi:</strong> {{studentName}}</p>
+                <p><strong>Fan:</strong> {{subjectName}}</p>
+                <p><strong>Variant:</strong> {{variantCode}}</p>
+                <p><strong>Sinf:</strong> {{className}}</p>
+            </div>
+            <div class="qr-code">
+                <!-- QR kod bu yerga qo'yiladi -->
+                <div id="qrcode"></div>
+            </div>
+        </div>
+        
+        <!-- INSTRUCTIONS -->
+        <div class="instructions">
+            <h3>📋 Ko'rsatmalar:</h3>
+            <ul>
+                <li>✅ Qora yoki ko'k ruchka ishlatiladi</li>
+                <li>✅ Doirachani to'liq to'ldiring</li>
+                <li>✅ Bir savolga faqat bitta javob belgilang</li>
+                <li>❌ O'chirish yoki tuzatish mumkin emas</li>
+            </ul>
+        </div>
+        
+        <!-- ANSWER GRID -->
+        <div class="answer-grid">
+            <!-- LEFT COLUMN (Questions 1-15) -->
+            <div class="column">
+                
+                <div class="question-row">
+                    <div class="question-number">1.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">2.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">3.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">4.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">5.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">6.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">7.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">8.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">9.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">10.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">11.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">12.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">13.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">14.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">15.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- RIGHT COLUMN (Questions 16-30) -->
+            <div class="column">
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">16.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">17.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">18.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">19.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">20.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">21.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">22.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">23.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">24.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">25.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">26.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">27.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">28.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">29.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+                
+                <div class="question-row">
+                    <div class="row-mark"></div>
+                    <div class="question-number">30.</div>
+                    <div class="bubbles">
+                        <div class="bubble">A</div>
+                        <div class="bubble">B</div>
+                        <div class="bubble">C</div>
+                        <div class="bubble">D</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- QR Code Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+        // QR kod yaratish
+        const variantCode = "{{variantCode}}";
+        if (variantCode && variantCode !== "{{variantCode}}") {
+            new QRCode(document.getElementById("qrcode"), {
+                text: variantCode,
+                width: 100,
+                height: 100
+            });
+        }
+    </script>
+</body>
+</html>

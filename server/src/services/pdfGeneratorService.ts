@@ -1,4 +1,6 @@
 import { chromium, Browser } from 'playwright';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface Question {
   number: number;
@@ -6,12 +8,25 @@ interface Question {
   text: string;
   options: string[];
   correctAnswer?: string;
+  imageUrl?: string;
+  media?: { type: string; url: string; position: string }[];
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 interface StudentTest {
   studentName: string;
   variantCode: string;
   questions: Question[];
+}
+
+interface PDFSettings {
+  fontSize?: number;
+  fontFamily?: string;
+  lineHeight?: number;
+  columnsCount?: number;
+  backgroundOpacity?: number;
+  backgroundImage?: string;
 }
 
 interface TestData {
@@ -21,11 +36,87 @@ interface TestData {
   studentName?: string;
   variantCode?: string;
   questions: Question[];
-  students?: StudentTest[]; // Для множественных студентов
+  students?: StudentTest[];
+  settings?: PDFSettings;
 }
 
 export class PDFGeneratorService {
   private static browserInstance: Browser | null = null;
+
+  /**
+   * Convert question image URL to base64 data URI for embedding in PDF
+   */
+  private static resolveImageForPdf(url: string): string {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+
+    const candidates: string[] = [];
+    if (url.startsWith('/uploads/')) {
+      candidates.push(
+        path.join(process.cwd(), url),
+        path.join(process.cwd(), 'server', url),
+        path.join(__dirname, '../..', url),
+      );
+    } else if (url.startsWith('/')) {
+      candidates.push(
+        path.join(process.cwd(), '..', 'client', 'public', url),
+        path.join(process.cwd(), 'client', 'public', url),
+      );
+    }
+
+    for (const filePath of candidates) {
+      if (fs.existsSync(filePath)) {
+        const ext = path.extname(filePath).toLowerCase().replace('.', '');
+        const mime = ext === 'jpg' ? 'image/jpeg' : ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
+        const b64 = fs.readFileSync(filePath).toString('base64');
+        return `data:${mime};base64,${b64}`;
+      }
+    }
+    return url;
+  }
+
+  /**
+   * Calculate max-width for PDF images based on original dimensions.
+   * 2-column layout ~340px per column, scale proportionally.
+   */
+  private static calcImageStyle(q: Question, isTable: boolean): string {
+    if (isTable) return 'max-width: 320px; max-height: 300px; object-fit: contain;';
+    if (q.imageWidth && q.imageWidth > 0) {
+      // Scale: original px proportional to column width (340px)
+      const maxW = Math.min(q.imageWidth, 320);
+      const maxH = q.imageHeight ? Math.min(q.imageHeight, 280) : 280;
+      return `max-width: ${maxW}px; max-height: ${maxH}px; object-fit: contain;`;
+    }
+    return 'max-width: 250px; max-height: 200px; object-fit: contain;';
+  }
+
+  /**
+   * Generate HTML for question images — deduplicated with URL normalization
+   */
+  private static renderQuestionImages(q: Question): string {
+    let html = '';
+    const seen = new Set<string>();
+    const normalize = (url: string) => url.replace(/^https?:\/\/[^/]+/, '').replace(/\\/g, '/');
+
+    if (q.imageUrl) {
+      seen.add(normalize(q.imageUrl));
+      const src = this.resolveImageForPdf(q.imageUrl);
+      const style = this.calcImageStyle(q, false);
+      html += `<div style="margin: 4px 0 4px 24px;"><img src="${src}" style="${style}" /></div>`;
+    }
+    if (q.media && q.media.length > 0) {
+      for (const m of q.media) {
+        if (m.url && !seen.has(normalize(m.url))) {
+          seen.add(normalize(m.url));
+          const src = this.resolveImageForPdf(m.url);
+          const style = this.calcImageStyle(q, m.type === 'table');
+          html += `<div style="margin: 4px 0 4px 24px;"><img src="${src}" style="${style}" /></div>`;
+        }
+      }
+    }
+    return html;
+  }
 
   /**
    * Генерирует PDF из HTML с формулами
@@ -106,13 +197,58 @@ export class PDFGeneratorService {
    * Генерирует HTML шаблон с KaTeX
    */
   private static generateHTML(testData: TestData): string {
+    const s = testData.settings || {};
+    const fontFamily = s.fontFamily || 'Times New Roman';
+    const fontSize = s.fontSize || 9;
+    const lineHeight = s.lineHeight || 1.2;
+    const columnsCount = s.columnsCount || 2;
+    const bgOpacity = s.backgroundOpacity ?? 0.08;
+
+    // Logo base64
+    let logoBase64 = '';
+    try {
+      const logoPath = path.join(__dirname, '../../..', 'client/public/logo.png');
+      console.log('🖼️ Logo path:', logoPath, 'exists:', fs.existsSync(logoPath));
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath);
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+        console.log('🖼️ Logo loaded, base64 length:', logoBase64.length);
+      } else {
+        // Try alternative paths
+        const altPaths = [
+          path.join(process.cwd(), 'client/public/logo.png'),
+          path.join(process.cwd(), '../client/public/logo.png'),
+        ];
+        for (const alt of altPaths) {
+          if (fs.existsSync(alt)) {
+            const logoBuffer = fs.readFileSync(alt);
+            logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+            console.log('🖼️ Logo loaded from alt path:', alt);
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Logo file not found:', err);
+    }
+
     // Если есть несколько студентов - генерируем для каждого
     if (testData.students && testData.students.length > 0) {
       const studentsHTML = testData.students.map((student, index) => `
         ${index > 0 ? '<div style="page-break-before: always;"></div>' : ''}
         <div class="student-page">
-          <div class="background-overlay"></div>
           <div class="content-wrapper">
+            <div class="academy-header">
+              <img src="${logoBase64 || '/logo.png'}" class="academy-logo" alt="Logo" />
+              <div class="academy-center">
+                <div class="academy-name">MATH ACADEMY</div>
+                <div class="academy-sub">Xususiy maktabi</div>
+              </div>
+              <div class="academy-right">
+                <div class="academy-slogan">Sharqona ta'lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+                <div class="academy-phone">&#9742; +91-333-66-22</div>
+              </div>
+            </div>
             <div class="header">
               <h1>${student.studentName}</h1>
               <div class="info">
@@ -120,7 +256,7 @@ export class PDFGeneratorService {
                   `Variant: ${student.variantCode}`,
                   testData.subjectName,
                   testData.className
-                ].filter(Boolean).join(' • ')}
+                ].filter(Boolean).join(' &bull; ')}
               </div>
             </div>
             
@@ -132,8 +268,9 @@ export class PDFGeneratorService {
                 return `
                 <div class="question">
                   <div class="question-text">
-                    <span class="question-number">${q.number}.</span> ${q.subjectName ? `<span class="subject-tag">[${q.subjectName}]</span> ` : ''}${this.renderMath(q.text)}
+                    <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
                   </div>
+                  ${this.renderQuestionImages(q)}
                   <div class="${optionsClass}">
                     ${q.options.map((opt, idx) => `
                       <div class="option">
@@ -162,12 +299,14 @@ export class PDFGeneratorService {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
-    
+
     body {
-      font-family: 'Times New Roman', Times, serif;
-      font-size: 9pt;
-      line-height: 1.2;
+      font-family: '${fontFamily}', Times, serif;
+      font-size: ${fontSize}pt;
+      line-height: ${lineHeight};
       color: #000;
       background: #fff;
     }
@@ -179,8 +318,19 @@ export class PDFGeneratorService {
     
     .student-page {
       position: relative;
-      min-height: 100vh;
       margin-bottom: 20px;
+    }
+    .bg-watermark {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 300px;
+      height: 300px;
+      object-fit: contain;
+      opacity: ${bgOpacity};
+      z-index: 0;
+      pointer-events: none;
     }
     
     .background-overlay {
@@ -189,7 +339,7 @@ export class PDFGeneratorService {
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: rgba(255, 255, 255, 0.95);
+      background-color: rgba(255, 255, 255, ${1 - bgOpacity});
       pointer-events: none;
       z-index: 0;
     }
@@ -198,27 +348,70 @@ export class PDFGeneratorService {
       position: relative;
       z-index: 1;
     }
-    
+
+    .academy-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #333;
+      padding-bottom: 4px;
+      margin-bottom: 4px;
+      font-family: 'Times New Roman', serif;
+    }
+    .academy-logo {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+    }
+    .academy-center {
+      text-align: center;
+      flex: 1;
+      padding: 0 8px;
+    }
+    .academy-name {
+      font-size: 16px;
+      font-weight: bold;
+      color: #1a1a6e;
+      letter-spacing: 0.5px;
+    }
+    .academy-sub {
+      font-size: 11px;
+      color: #444;
+      font-weight: bold;
+    }
+    .academy-right {
+      text-align: right;
+    }
+    .academy-slogan {
+      font-size: 10px;
+      color: #333;
+      line-height: 1.3;
+    }
+    .academy-phone {
+      font-size: 11px;
+      font-weight: bold;
+      color: #1a1a6e;
+    }
+
     .header {
       text-align: center;
-      margin-bottom: 8px;
-      border-bottom: 1.5px solid #000;
-      padding-bottom: 5px;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
     }
-    
+
     .header h1 {
-      font-size: 12pt;
+      font-size: 11pt;
       font-weight: bold;
-      margin-bottom: 3px;
+      margin-bottom: 2px;
     }
-    
+
     .header .info {
-      font-size: 9pt;
+      font-size: 8pt;
       color: #333;
     }
     
     .questions {
-      column-count: 2;
+      column-count: ${columnsCount};
       column-gap: 15px;
       column-rule: 1px solid #ddd;
     }
@@ -301,10 +494,11 @@ export class PDFGeneratorService {
   </style>
 </head>
 <body>
+  ${logoBase64 ? `<img src="${logoBase64}" class="bg-watermark" />` : ''}
   <div class="container">
     ${studentsHTML}
   </div>
-  
+
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -344,12 +538,14 @@ export class PDFGeneratorService {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
-    
+
     body {
-      font-family: 'Times New Roman', Times, serif;
-      font-size: 9pt;
-      line-height: 1.2;
+      font-family: '${fontFamily}', Times, serif;
+      font-size: ${fontSize}pt;
+      line-height: ${lineHeight};
       color: #000;
       background: #fff;
     }
@@ -360,6 +556,18 @@ export class PDFGeneratorService {
       position: relative;
       min-height: 100vh;
     }
+    .bg-watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 300px;
+      height: 300px;
+      object-fit: contain;
+      opacity: ${bgOpacity};
+      z-index: 0;
+      pointer-events: none;
+    }
     
     .background-overlay {
       position: absolute;
@@ -367,7 +575,7 @@ export class PDFGeneratorService {
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: rgba(255, 255, 255, 0.95);
+      background-color: rgba(255, 255, 255, ${1 - bgOpacity});
       pointer-events: none;
       z-index: 0;
     }
@@ -376,27 +584,70 @@ export class PDFGeneratorService {
       position: relative;
       z-index: 1;
     }
-    
+
+    .academy-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #333;
+      padding-bottom: 4px;
+      margin-bottom: 4px;
+      font-family: 'Times New Roman', serif;
+    }
+    .academy-logo {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+    }
+    .academy-center {
+      text-align: center;
+      flex: 1;
+      padding: 0 8px;
+    }
+    .academy-name {
+      font-size: 16px;
+      font-weight: bold;
+      color: #1a1a6e;
+      letter-spacing: 0.5px;
+    }
+    .academy-sub {
+      font-size: 11px;
+      color: #444;
+      font-weight: bold;
+    }
+    .academy-right {
+      text-align: right;
+    }
+    .academy-slogan {
+      font-size: 10px;
+      color: #333;
+      line-height: 1.3;
+    }
+    .academy-phone {
+      font-size: 11px;
+      font-weight: bold;
+      color: #1a1a6e;
+    }
+
     .header {
       text-align: center;
-      margin-bottom: 8px;
-      border-bottom: 1.5px solid #000;
-      padding-bottom: 5px;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
     }
-    
+
     .header h1 {
-      font-size: 12pt;
+      font-size: 11pt;
       font-weight: bold;
-      margin-bottom: 3px;
+      margin-bottom: 2px;
     }
-    
+
     .header .info {
-      font-size: 9pt;
+      font-size: 8pt;
       color: #333;
     }
     
     .questions {
-      column-count: 2;
+      column-count: ${columnsCount};
       column-gap: 15px;
       column-rule: 1px solid #ddd;
     }
@@ -476,8 +727,19 @@ export class PDFGeneratorService {
 </head>
 <body>
   <div class="container">
-    <div class="background-overlay"></div>
+    ${logoBase64 ? `<img src="${logoBase64}" class="bg-watermark" />` : ''}
     <div class="content-wrapper">
+      <div class="academy-header">
+        <img src="${logoBase64 || '/logo.png'}" class="academy-logo" alt="Logo" />
+        <div class="academy-center">
+          <div class="academy-name">MATH ACADEMY</div>
+          <div class="academy-sub">Xususiy maktabi</div>
+        </div>
+        <div class="academy-right">
+          <div class="academy-slogan">Sharqona ta'lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+          <div class="academy-phone">&#9742; +91-333-66-22</div>
+        </div>
+      </div>
       <div class="header">
         <h1>${testData.title}</h1>
         <div class="info">
@@ -486,7 +748,7 @@ export class PDFGeneratorService {
             testData.subjectName ? `Fan: ${testData.subjectName}` : '',
             testData.studentName ? `O'quvchi: ${testData.studentName}` : '',
             testData.variantCode ? `Variant: ${testData.variantCode}` : ''
-          ].filter(Boolean).join(' • ')}
+          ].filter(Boolean).join(' &bull; ')}
         </div>
       </div>
       
@@ -498,8 +760,9 @@ export class PDFGeneratorService {
           return `
           <div class="question">
             <div class="question-text">
-              <span class="question-number">${q.number}.</span> ${q.subjectName ? `<span class="subject-tag">[${q.subjectName}]</span> ` : ''}${this.renderMath(q.text)}
+              <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
             </div>
+            ${this.renderQuestionImages(q)}
             <div class="${optionsClass}">
               ${q.options.map((opt, idx) => `
                 <div class="option">

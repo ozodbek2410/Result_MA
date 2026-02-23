@@ -7,10 +7,17 @@ export interface IQuestionVariant {
   imageUrl?: string;
 }
 
+export interface IMediaItem {
+  type: 'image' | 'table';
+  url: string;
+  position: 'before' | 'after' | 'inline';
+}
+
 export interface IQuestion {
   text: string;
   formula?: string;
-  imageUrl?: string;
+  imageUrl?: string; // Legacy support
+  media?: IMediaItem[]; // Yangi format
   variants: IQuestionVariant[];
   correctAnswer?: 'A' | 'B' | 'C' | 'D' | ''; // Необязательно для вопросов без вариантов
   points: number;
@@ -34,10 +41,17 @@ const QuestionVariantSchema = new Schema<IQuestionVariant>({
   imageUrl: String
 }, { _id: false });
 
+const MediaItemSchema = new Schema<IMediaItem>({
+  type: { type: String, enum: ['image', 'table'], required: true },
+  url: { type: String, required: true },
+  position: { type: String, enum: ['before', 'after', 'inline'], default: 'after' }
+}, { _id: false });
+
 const QuestionSchema = new Schema<IQuestion>({
   text: { type: String, required: true },
   formula: String,
-  imageUrl: String,
+  imageUrl: String, // Legacy support
+  media: [MediaItemSchema], // Yangi format
   variants: [QuestionVariantSchema],
   correctAnswer: { type: String, enum: ['A', 'B', 'C', 'D', ''], required: false }, // Необязательно для вопросов без вариантов
   points: { type: Number, required: true, default: 1 }
