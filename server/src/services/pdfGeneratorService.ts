@@ -844,4 +844,188 @@ export class PDFGeneratorService {
       this.browserInstance = null;
     }
   }
+
+  /**
+   * Generate answer sheets PDF for multiple students
+   */
+  static async generateAnswerSheetsPDF(data: {
+    students: Array<{
+      fullName: string;
+      variantCode: string;
+    }>;
+    test: {
+      classNumber: number;
+      groupLetter: string;
+      subjectName?: string;
+      periodMonth?: number;
+      periodYear?: number;
+    };
+    totalQuestions: number;
+    sheetsPerPage?: number;
+  }): Promise<Buffer> {
+    let browser: Browser | null = null;
+
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+      });
+
+      const page = await browser.newPage();
+      page.setDefaultTimeout(60000);
+
+      try {
+        const html = this.generateAnswerSheetsHTML(data);
+        await page.setContent(html, { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(500);
+
+        const pdfBuffer = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          margin: { top: '0', right: '0', bottom: '0', left: '0' }
+        });
+
+        return pdfBuffer;
+      } finally {
+        await page.close();
+      }
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+  }
+
+  /**
+   * Generate answer sheets HTML
+   */
+  private static generateAnswerSheetsHTML(data: {
+    students: Array<{ fullName: string; variantCode: string }>;
+    test: { classNumber: number; groupLetter: string; subjectName?: string; periodMonth?: number; periodYear?: number };
+    totalQuestions: number;
+    sheetsPerPage?: number;
+  }): string {
+    const { students, test, totalQuestions } = data;
+    const layout = this.getAnswerSheetLayout(totalQuestions);
+    const questionsPerColumn = Math.ceil(totalQuestions / layout.columns);
+
+    const months = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+    const periodText = test.periodMonth && test.periodYear
+      ? `${months[test.periodMonth - 1]} ${test.periodYear}` : '';
+
+    // Read logo as base64
+    let logoBase64 = '';
+    try {
+      const logoPath = path.join(process.cwd(), '..', 'client', 'public', 'logo.png');
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath);
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+      }
+    } catch {}
+
+    const sheetsHtml = students.map((student) => {
+      // Build bubble grid columns
+      let gridHtml = '';
+      for (let col = 0; col < layout.columns; col++) {
+        const start = col * questionsPerColumn + 1;
+        const count = Math.min(questionsPerColumn, totalQuestions - col * questionsPerColumn);
+        let colHtml = `<div style="flex:1">`;
+        for (let i = 0; i < count; i++) {
+          const qNum = start + i;
+          colHtml += `<div style="display:flex;align-items:center;margin:${layout.rowMargin}mm 0">`;
+          colHtml += `<div style="width:${layout.numberWidth}mm;font-weight:bold;font-size:${layout.fontSize}pt;text-align:left">${qNum}.</div>`;
+          colHtml += `<div style="display:flex;gap:${layout.bubbleGap}mm;flex:1">`;
+          for (const letter of ['A','B','C','D']) {
+            colHtml += `<div style="width:${layout.bubbleSize}mm;height:${layout.bubbleSize}mm;border:${layout.borderWidth}px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:${layout.bubbleFontSize}pt;font-weight:bold;box-sizing:border-box">${letter}</div>`;
+          }
+          colHtml += `</div></div>`;
+        }
+        colHtml += `</div>`;
+        gridHtml += colHtml;
+      }
+
+      return `
+      <div class="sheet" style="width:210mm;position:relative;background:white;padding:10mm;font-family:Arial,sans-serif;color:black;box-sizing:border-box;page-break-after:always">
+        <!-- Academy Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:2mm;margin-bottom:2mm;padding:0 5mm;font-family:'Times New Roman',serif">
+          <div style="display:flex;align-items:center;gap:2mm">
+            ${logoBase64 ? `<img src="${logoBase64}" style="width:12mm;height:12mm;object-fit:contain"/>` : ''}
+          </div>
+          <div style="text-align:center;flex:1;padding:0 2mm">
+            <div style="font-weight:bold;color:#1a1a6e;font-size:14pt;letter-spacing:0.5px">MATH ACADEMY</div>
+            <div style="font-weight:bold;color:#444;font-size:9pt">Xususiy maktabi</div>
+          </div>
+          <div style="text-align:right">
+            <div style="color:#333;font-size:8pt;line-height:1.3">Sharqona ta'lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+            <div style="font-weight:bold;color:#1a1a6e;font-size:9pt">&#9742; +91-333-66-22</div>
+          </div>
+        </div>
+
+        <!-- Corner Marks -->
+        <div style="position:absolute;top:1mm;left:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
+        <div style="position:absolute;top:1mm;right:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
+        <div style="position:absolute;bottom:1mm;left:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
+        <div style="position:absolute;bottom:1mm;right:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
+
+        <!-- Header -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3mm;padding:0 5mm">
+          <div style="flex:1">
+            <h1 style="font-size:16pt;font-weight:bold;margin:0 0 2mm 0">JAVOB VARAQASI</h1>
+            <div style="font-size:10pt">
+              <div style="margin:1mm 0"><span style="font-weight:600">O'quvchi:</span> ${student.fullName}</div>
+              ${test.subjectName ? `<div style="margin:1mm 0"><span style="font-weight:600">Fan:</span> ${test.subjectName}</div>` : ''}
+              ${periodText ? `<div style="margin:1mm 0"><span style="font-weight:600">Davr:</span> ${periodText}</div>` : ''}
+              <div style="margin:1mm 0"><span style="font-weight:600">Variant:</span> <b>${student.variantCode}</b></div>
+              <div style="margin:1mm 0"><span style="font-weight:600">Sinf:</span> ${test.classNumber}-${test.groupLetter}
+                <span style="margin-left:5mm;font-weight:600">Savollar soni: ${totalQuestions}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div style="background:#f0f0f0;padding:2mm;margin-bottom:3mm;border:1px solid #ccc;font-size:8pt">
+          <h3 style="font-size:9pt;font-weight:bold;margin:0 0 1.5mm 0">Ko'rsatmalar:</h3>
+          <ul style="margin:0;padding-left:5mm">
+            <li style="margin:0.5mm 0">Qora yoki ko'k ruchka ishlatiladi. Doirachani to'liq to'ldiring.</li>
+            <li style="margin:0.5mm 0">Bir savolga faqat bitta javob belgilang. O'chirish yoki tuzatish mumkin emas.</li>
+          </ul>
+        </div>
+
+        <!-- Answer Grid -->
+        <div style="display:flex;gap:${layout.columnGap}mm;padding:0 5mm">
+          ${gridHtml}
+        </div>
+      </div>`;
+    }).join('\n');
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  @page { size: A4 portrait; margin: 0; }
+  body { margin: 0; padding: 0; }
+  .sheet:last-child { page-break-after: auto; }
+</style>
+</head><body>${sheetsHtml}</body></html>`;
+  }
+
+  /**
+   * Get layout config for answer sheet based on question count
+   */
+  private static getAnswerSheetLayout(totalQuestions: number) {
+    if (totalQuestions <= 44) {
+      return { columns: 2, bubbleSize: 7.5, bubbleGap: 2.5, rowMargin: 1.2, columnGap: 8, numberWidth: 8, fontSize: 9, bubbleFontSize: 8, borderWidth: 2 };
+    }
+    if (totalQuestions <= 60) {
+      return { columns: 3, bubbleSize: 7.5, bubbleGap: 2.5, rowMargin: 1.2, columnGap: 6, numberWidth: 8, fontSize: 9, bubbleFontSize: 8, borderWidth: 2 };
+    }
+    if (totalQuestions <= 75) {
+      return { columns: 3, bubbleSize: 7, bubbleGap: 2, rowMargin: 0.8, columnGap: 5, numberWidth: 8, fontSize: 8, bubbleFontSize: 7, borderWidth: 2 };
+    }
+    if (totalQuestions <= 100) {
+      return { columns: 4, bubbleSize: 6.5, bubbleGap: 1.5, rowMargin: 0.6, columnGap: 4, numberWidth: 7, fontSize: 7.5, bubbleFontSize: 6.5, borderWidth: 1.5 };
+    }
+    return { columns: 5, bubbleSize: 5.5, bubbleGap: 1.2, rowMargin: 0.4, columnGap: 3, numberWidth: 6, fontSize: 7, bubbleFontSize: 6, borderWidth: 1.5 };
+  }
 }
