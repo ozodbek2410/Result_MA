@@ -1652,9 +1652,10 @@ router.get('/:id/export-answer-key-docx', authenticate, async (req: AuthRequest,
             // Answers (10 per row)
             const answersPerRow = 10;
             let currentRow = '';
-            variant.shuffledQuestions?.forEach((q: any, idx: number) => {
+            const questions = variant.shuffledQuestions || [];
+            questions.forEach((q: any, idx: number) => {
               currentRow += `${idx + 1}.${q.correctAnswer || ''}  `;
-              if ((idx + 1) % answersPerRow === 0 || idx === variant.shuffledQuestions.length - 1) {
+              if ((idx + 1) % answersPerRow === 0 || idx === questions.length - 1) {
                 rows.push(new Paragraph({ text: currentRow }));
                 currentRow = '';
               }
