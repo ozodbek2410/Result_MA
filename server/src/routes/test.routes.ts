@@ -585,8 +585,18 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
         
         console.log(`📋 Found ${studentGroups.length} students in group`);
         
+        // Filter out students with null studentId (deleted students)
+        const validStudentGroups = studentGroups.filter(sg => sg.studentId != null);
+        
+        if (validStudentGroups.length === 0) {
+          console.log('⚠️ No valid students found in group, skipping variant generation');
+          return;
+        }
+        
+        console.log(`✅ ${validStudentGroups.length} valid students (${studentGroups.length - validStudentGroups.length} skipped)`);
+        
         const variants = [];
-        for (const sg of studentGroups) {
+        for (const sg of validStudentGroups) {
           const variantCode = uuidv4().substring(0, 8).toUpperCase();
           const questionOrder = shuffleArray([...Array(test.questions.length).keys()]);
           
@@ -855,8 +865,8 @@ function shuffleArray(array: any[]) {
 router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { students } = req.body;
-    
+    const { students, settings } = req.body;
+
     // Redis o'chirilgan bo'lsa sync versiyaga yo'naltirish
     if (process.env.REDIS_ENABLED !== 'true') {
       return res.status(503).json({
@@ -864,31 +874,32 @@ router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res)
         error: 'redis_disabled'
       });
     }
-    
+
     // Validation
     if (!students || !Array.isArray(students) || students.length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'O\'quvchilar tanlanmagan',
         error: 'students array is required'
       });
     }
-    
+
     // Check access
     const test = await Test.findById(id).select('branchId name').lean();
     if (!test) {
       return res.status(404).json({ message: 'Test topilmadi' });
     }
-    
+
     if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
       return res.status(403).json({ message: 'Ruxsat yo\'q' });
     }
-    
+
     // Add job to queue
     const job = await pdfExportQueue.add('export', {
       testId: id,
       studentIds: students,
       userId: req.user?.id || 'unknown',
-      isBlockTest: false
+      isBlockTest: false,
+      settings
     }, {
       priority: students.length > 50 ? 2 : 1,
       jobId: `pdf-test-${id}-${Date.now()}`
@@ -1069,15 +1080,24 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
       };
     }
     
+    // Settings from query params
+    testData.settings = {
+      fontSize: req.query.fontSize ? parseInt(req.query.fontSize as string) : undefined,
+      fontFamily: req.query.fontFamily as string | undefined,
+      lineHeight: req.query.lineHeight ? parseFloat(req.query.lineHeight as string) : undefined,
+      columnsCount: req.query.columnsCount ? parseInt(req.query.columnsCount as string) : undefined,
+      backgroundOpacity: req.query.backgroundOpacity ? parseFloat(req.query.backgroundOpacity as string) : undefined,
+    };
+
     // Генерируем PDF через Playwright + KaTeX
     const pdfBuffer = await PDFGeneratorService.generatePDF(testData);
-    
+
     // Отправляем файл
     const filename = `test-${test.name?.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(pdfBuffer);
-    
+
     console.log('✅ PDF exported successfully with formulas');
   } catch (error: any) {
     console.error('❌ Error exporting PDF:', error);

@@ -30,7 +30,11 @@
     "fix-profile-tokens": "tsx src/scripts/fixMissingProfileTokens.ts",
     "recreate-students": "tsx src/scripts/recreateStudents.ts",
     "create-reference": "tsx scripts/createReferenceDocx.ts",
-    "add-watermark": "tsx scripts/addWatermarkToReference.ts"
+    "add-watermark": "tsx scripts/addWatermarkToReference.ts",
+    "generate-answer-sheet": "tsx src/scripts/generateAnswerSheet.ts",
+    "list-variants": "tsx src/scripts/listVariants.ts",
+    "test-tables": "tsx src/scripts/testTableExtraction.ts",
+    "cleanup-media": "tsx src/scripts/cleanupMedia.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",
@@ -67,6 +71,7 @@
     "playwright": "^1.58.2",
     "qrcode": "^1.5.3",
     "redis": "^5.10.0",
+    "sharp": "^0.34.5",
     "tesseract.js": "^7.0.0",
     "uuid": "^9.0.1",
     "word-math": "^0.1.0",

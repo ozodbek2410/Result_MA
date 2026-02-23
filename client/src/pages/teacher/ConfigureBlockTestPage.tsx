@@ -1,47 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { StudentList } from '@/components/ui/StudentCard';
 import { useToast } from '@/hooks/useToast';
-import StudentConfigModal from '@/components/StudentConfigModal';
-import GroupConfigModal from '@/components/GroupConfigModal';
 import StudentSelectionPrintModal from '@/components/StudentSelectionPrintModal';
 import BlockTestActionsModal from '@/components/BlockTestActionsModal';
-import { 
-  ArrowLeft, 
-  Users, 
-  Settings, 
-  RotateCcw,
-  Save,
-  User,
+import {
+  ArrowLeft,
+  Users,
   Eye,
   FileText,
-  Printer,
-  Shuffle,
-  MoreVertical
+  BookOpen
 } from 'lucide-react';
 
 export default function ConfigureBlockTestPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { success, error } = useToast();
-  
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [isShuffling, setIsShuffling] = useState(false);
   const [blockTest, setBlockTest] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
-  const [studentConfigs, setStudentConfigs] = useState<any[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  const [showGroupSettingsModal, setShowGroupSettingsModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [printMode, setPrintMode] = useState<'questions' | 'answers'>('questions');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -49,7 +34,6 @@ export default function ConfigureBlockTestPage() {
     loadData();
   }, [id]);
 
-  // Фильтрация студентов по поисковому запросу
   const filteredStudents = students.filter(student =>
     student.fullName.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -57,105 +41,44 @@ export default function ConfigureBlockTestPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      
-      // Загружаем блок-тест
+
       const { data: testData } = await api.get(`/block-tests/${id}`);
-      
+
       const testDate = new Date(testData.date).toISOString().split('T')[0];
-      
-      // Загружаем ТОЛЬКО блок-тесты с таким же классом и датой (С вопросами!)
+
       const { data: sameGroupTests } = await api.get('/block-tests', {
-        params: { 
+        params: {
           classNumber: testData.classNumber,
           date: testDate,
-          fields: 'full' // ✅ Загружаем полные данные с вопросами
+          fields: 'full'
         }
       });
-      
-      console.log('🔍 Loaded same group tests:', sameGroupTests.length);
-      sameGroupTests.forEach((test: any, idx: number) => {
-        console.log(`  Test ${idx + 1}:`, test.subjectTests?.length || 0, 'subjects');
-        test.subjectTests?.forEach((st: any) => {
-          console.log(`    - ${st.subjectId?.nameUzb || 'Unknown'}:`, st.questions?.length || 0, 'questions');
-        });
-      });
-      
-      // Объединяем все предметы из всех тестов
+
       const allSubjects: any[] = [];
       sameGroupTests.forEach((test: any) => {
         test.subjectTests?.forEach((st: any) => {
           if (st.subjectId) {
             allSubjects.push({
               ...st,
-              testId: test._id // Сохраняем ID теста для каждого предмета
+              testId: test._id
             });
           }
         });
       });
-      
-      console.log('🔍 Merged subjects:', allSubjects.length);
-      allSubjects.forEach((st: any, idx: number) => {
-        console.log(`  Subject ${idx + 1}:`, st.subjectId?.nameUzb || 'Unknown', '-', st.questions?.length || 0, 'questions');
-      });
-      
-      // Создаем объединенный блок-тест для отображения
+
       const mergedBlockTest = {
         ...testData,
         subjectTests: allSubjects,
         allTestIds: sameGroupTests.map((t: any) => t._id)
       };
-      
-      console.log('✅ Final mergedBlockTest.subjectTests:', mergedBlockTest.subjectTests.length);
-      
+
       setBlockTest(mergedBlockTest);
-      
-      // Загружаем учеников класса
+
       const { data: studentsData } = await api.get('/students', {
         params: { classNumber: testData.classNumber }
       });
       setStudents(studentsData);
-      
-      // Загружаем конфигурации учеников ПАРТИЯМИ (по 10 за раз)
-      const studentIds = studentsData.map((s: any) => s._id);
-      
-      // Используем batch endpoint для оптимизации
-      let configs: any[] = [];
-      try {
-        const { data: batchConfigs } = await api.post('/student-test-configs/batch', {
-          studentIds
-        });
-        configs = batchConfigs;
-      } catch (batchError) {
-        // Fallback: загружаем по 10 за раз (увеличили с 5)
-        const batchSize = 10;
-        for (let i = 0; i < studentsData.length; i += batchSize) {
-          const batch = studentsData.slice(i, i + batchSize);
-          
-          const batchResults = await Promise.all(
-            batch.map(async (student: any) => {
-              try {
-                const { data } = await api.get(`/student-test-configs/${student._id}`);
-                return data;
-              } catch (err: any) {
-                // Если конфигурации нет (404), создаем дефолтную
-                if (err.response?.status === 404) {
-                  try {
-                    const { data } = await api.post(`/student-test-configs/create-for-block-test/${student._id}/${id}`);
-                    return data;
-                  } catch (createErr) {
-                    return null;
-                  }
-                }
-                return null;
-              }
-            })
-          );
-          
-          configs.push(...batchResults);
-        }
-      }
-      
-      setStudentConfigs(configs.filter(c => c !== null));
+
     } catch (err: any) {
       error('Ma\'lumotlarni yuklashda xatolik');
     } finally {
@@ -163,76 +86,14 @@ export default function ConfigureBlockTestPage() {
     }
   };
 
-  const handleResetAll = async () => {
-    if (!confirm(`Barcha o'quvchilar uchun sozlamalarni tiklashni xohlaysizmi?\n\nBu amal:\n• Qo'shimcha fanlarni o'chiradi\n• Dефолт savollar soniga qaytaradi\n• Ballar sozlamasini tozalaydi`)) {
-      return;
-    }
-    
-    try {
-      setSaving(true);
-      
-      // Сначала удаляем все конфигурации
-      await api.post(`/student-test-configs/reset-class/${blockTest.classNumber}`);
-      
-      // Затем создаём новые конфигурации для всех студентов
-      const configs = await Promise.all(
-        students.map(async (student: any) => {
-          try {
-            const { data } = await api.post(`/student-test-configs/create-for-block-test/${student._id}/${id}`);
-            return data;
-          } catch (createErr) {
-            console.error('Error creating config for student:', student._id, createErr);
-            return null;
-          }
-        })
-      );
-      
-      setStudentConfigs(configs);
-      success('Barcha sozlamalar tiklandi');
-    } catch (err: any) {
-      console.error('Error resetting configs:', err);
-      error('Sozlamalarni tiklashda xatolik');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleApplyConfigs = async () => {
-    try {
-      setSaving(true);
-      await api.post(`/student-test-configs/apply-to-block-test/${id}`);
-      success('Sozlamalar qo\'llanildi');
-      navigate('/teacher/block-tests');
-    } catch (err: any) {
-      console.error('Error applying configs:', err);
-      error('Sozlamalarni qo\'llashda xatolik');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const getStudentConfig = (studentId: string) => {
-    return studentConfigs.find(c => c?.studentId === studentId);
-  };
-
-  const handleConfigureStudent = (student: any) => {
-    setSelectedStudent(student);
-    setShowConfigModal(true);
-  };
-
-  const handleConfigSaved = () => {
-    loadData();
-  };
-
   const handlePrint = async (selectedStudentIds: string[], fontSize: number = 12) => {
     try {
-      // Сохраняем выбранных студентов в localStorage
       const selectedStudentsData = students.filter(s => selectedStudentIds.includes(s._id));
       localStorage.setItem('selectedStudents', JSON.stringify(selectedStudentsData));
-      
+
       let url = '';
       const studentParams = selectedStudentIds.length > 0 ? `?students=${selectedStudentIds.join(',')}` : '';
-      
+
       switch (printMode) {
         case 'questions':
           url = `/teacher/block-tests/${id}/print/questions${studentParams}`;
@@ -241,10 +102,8 @@ export default function ConfigureBlockTestPage() {
           url = `/teacher/block-tests/${id}/print/sheets${studentParams}`;
           break;
       }
-      
-      // Используем navigate вместо window.open для сохранения контекста
+
       navigate(url);
-      
       setShowPrintModal(false);
     } catch (err: any) {
       console.error('Error printing:', err);
@@ -252,7 +111,8 @@ export default function ConfigureBlockTestPage() {
     }
   };
 
-
+  // Fanlar va jami savollar
+  const totalQuestions = blockTest?.subjectTests?.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0) || 0;
 
   if (loading) {
     return (
@@ -264,118 +124,54 @@ export default function ConfigureBlockTestPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Compact Header - Single Line */}
-      <div className="flex items-center justify-between gap-4">
-        {/* Left: Back + Title */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/teacher/block-tests')}
-            className="flex-shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold text-slate-900 truncate">Blok testni sozlash</h1>
-            <p className="text-xs text-slate-500">
-              {blockTest?.classNumber}-sinf • {students.length} ta o'quvchi
-            </p>
-          </div>
-        </div>
-        
-        {/* Right: Action Buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Desktop buttons */}
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setShowGroupSettingsModal(true)}
-            className="hidden md:flex"
-          >
-            <Users className="w-4 h-4 mr-2" />
-            Guruh sozlamalari
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleResetAll}
-            disabled={saving}
-            className="hidden md:flex"
-          >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Tiklash
-          </Button>
-          
-          {/* Mobile menu button */}
-          <div className="relative md:hidden">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowMobileMenu(!showMobileMenu)}
-            >
-              <MoreVertical className="w-4 h-4" />
-            </Button>
-            
-            {showMobileMenu && (
-              <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setShowMobileMenu(false)}
-                />
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-lg border border-slate-200 py-2 z-50">
-                  <button
-                    onClick={() => {
-                      setShowGroupSettingsModal(true);
-                      setShowMobileMenu(false);
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-3"
-                  >
-                    <Users className="w-4 h-4 text-slate-500" />
-                    Guruh sozlamalari
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleResetAll();
-                      setShowMobileMenu(false);
-                    }}
-                    disabled={saving}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-3 disabled:opacity-50"
-                  >
-                    <RotateCcw className="w-4 h-4 text-slate-500" />
-                    Tiklash
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-          
-          {/* Save button - always visible */}
-          <Button 
-            size="sm"
-            onClick={handleApplyConfigs}
-            disabled={saving}
-            loading={saving}
-            className="hidden md:flex"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Saqlash
-          </Button>
-          
-          {/* Save button - mobile (icon only) */}
-          <Button 
-            size="sm"
-            onClick={handleApplyConfigs}
-            disabled={saving}
-            loading={saving}
-            className="md:hidden"
-          >
-            <Save className="w-4 h-4" />
-          </Button>
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/teacher/block-tests')}
+          className="flex-shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-slate-900 truncate">Blok test</h1>
+          <p className="text-xs text-slate-500">
+            {blockTest?.classNumber}-sinf • {students.length} ta o'quvchi • {totalQuestions} ta savol
+          </p>
         </div>
       </div>
 
-      {/* Actions Card - Clean and Simple */}
+      {/* Fanlar ro'yxati */}
+      {blockTest?.subjectTests?.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-b px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <BookOpen className="w-4 h-4 text-indigo-600" />
+              Fanlar
+              <Badge variant="info" size="sm">{blockTest.subjectTests.length} ta fan</Badge>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {blockTest.subjectTests.map((st: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center">
+                    {idx + 1}
+                  </div>
+                  <span className="font-medium text-slate-900">{st.subjectId?.nameUzb || 'Fan'}</span>
+                </div>
+                <span className="text-sm font-semibold text-slate-600">{st.questions?.length || 0} ta savol</span>
+              </div>
+            ))}
+          </div>
+          <div className="bg-slate-50 border-t px-4 py-2 text-right">
+            <span className="text-sm font-bold text-slate-700">Jami: {totalQuestions} ta savol</span>
+          </div>
+        </div>
+      )}
+
+      {/* Actions Card */}
       <button
         onClick={() => setShowActionsModal(true)}
         className="w-full bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:bg-blue-50/50 transition-all group"
@@ -407,8 +203,8 @@ export default function ConfigureBlockTestPage() {
             </Badge>
           </div>
         </div>
-        
-        {/* Search Input */}
+
+        {/* Search */}
         <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
           <div className="relative">
             <Input
@@ -443,41 +239,14 @@ export default function ConfigureBlockTestPage() {
             )}
           </div>
         </div>
-        
+
         <div>
           <StudentList
             students={filteredStudents}
-            configs={studentConfigs}
-            onConfigure={handleConfigureStudent}
             emptyMessage={searchQuery ? "Qidiruv bo'yicha o'quvchi topilmadi" : "O'quvchilar topilmadi"}
           />
         </div>
       </div>
-
-      {/* Student Config Modal */}
-      {selectedStudent && (
-        <StudentConfigModal
-          isOpen={showConfigModal}
-          onClose={() => {
-            setShowConfigModal(false);
-            setSelectedStudent(null);
-          }}
-          student={selectedStudent}
-          config={getStudentConfig(selectedStudent._id)}
-          blockTest={blockTest}
-          onSave={handleConfigSaved}
-        />
-      )}
-
-      {/* Group Settings Modal */}
-      <GroupConfigModal
-        isOpen={showGroupSettingsModal}
-        onClose={() => setShowGroupSettingsModal(false)}
-        students={students}
-        studentConfigs={studentConfigs}
-        blockTest={blockTest}
-        onSave={handleConfigSaved}
-      />
 
       {/* Block Test Actions Modal */}
       <BlockTestActionsModal
@@ -505,17 +274,15 @@ export default function ConfigureBlockTestPage() {
           setShowPrintModal(true);
         }}
         onShuffle={async () => {
-          // Сразу перемешиваем для всех студентов без модального окна
           try {
             setIsShuffling(true);
             const studentIds = students.map(s => s._id);
             await api.post(`/block-tests/${id}/generate-variants`, {
               studentIds
             });
-            
-            // Показываем уведомление
+
             success(`${studentIds.length} ta o'quvchi uchun variantlar muvaffaqiyatli aralashtirildi!`);
-            
+
             await loadData();
           } catch (err: any) {
             console.error('Error shuffling:', err);

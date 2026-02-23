@@ -3,8 +3,14 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import sharp from 'sharp';
 import Upload from '../models/Upload';
 import { authenticate, AuthRequest } from '../middleware/auth';
+
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+const MAX_WIDTH = 1200;
+const MAX_HEIGHT = 1200;
+const JPEG_QUALITY = 80;
 
 const router = express.Router();
 
@@ -52,12 +58,45 @@ router.post('/', authenticate, upload.single('file'), async (req: AuthRequest, r
       return res.status(400).json({ message: 'Fayl yuklanmadi' });
     }
 
+    let finalFilename = req.file.filename;
+    let finalSize = req.file.size;
+    let finalMimetype = req.file.mimetype;
+    const ext = path.extname(req.file.originalname).toLowerCase();
+
+    // Optimize images with sharp
+    if (IMAGE_EXTENSIONS.includes(ext)) {
+      try {
+        const inputPath = path.join(uploadDir, req.file.filename);
+        const optimizedName = `opt-${uuidv4()}.jpg`;
+        const outputPath = path.join(uploadDir, optimizedName);
+
+        await sharp(inputPath)
+          .resize(MAX_WIDTH, MAX_HEIGHT, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+          .toFile(outputPath);
+
+        const stats = fs.statSync(outputPath);
+
+        // Use optimized only if smaller
+        if (stats.size < req.file.size) {
+          fs.unlinkSync(inputPath);
+          finalFilename = optimizedName;
+          finalSize = stats.size;
+          finalMimetype = 'image/jpeg';
+        } else {
+          fs.unlinkSync(outputPath);
+        }
+      } catch (sharpErr) {
+        console.warn('Sharp optimization failed, using original:', sharpErr);
+      }
+    }
+
     const uploadDoc = new Upload({
-      filename: req.file.filename,
+      filename: finalFilename,
       originalName: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      path: `/uploads/${req.file.filename}`,
+      mimetype: finalMimetype,
+      size: finalSize,
+      path: `/uploads/${finalFilename}`,
       uploadedBy: req.user?.id
     });
 
@@ -68,11 +107,11 @@ router.post('/', authenticate, upload.single('file'), async (req: AuthRequest, r
       filename: uploadDoc.filename,
       originalName: uploadDoc.originalName,
       path: uploadDoc.path,
-      // Don't include full URL - let client handle it with relative path
       url: uploadDoc.path
     });
-  } catch (error: any) {
-    res.status(500).json({ message: error.message || 'Fayl yuklashda xatolik' });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Fayl yuklashda xatolik';
+    res.status(500).json({ message: msg });
   }
 });
 

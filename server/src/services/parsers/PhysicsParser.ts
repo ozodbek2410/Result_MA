@@ -25,6 +25,9 @@ export class PhysicsParser extends BaseParser {
       // Extract images (fizikada grafik va diagrammalar ko'p)
       await this.extractImagesFromDocx(filePath);
       
+      // Extract tables (fizikada jadvallar ko'p)
+      await this.extractTablesFromDocx(filePath);
+      
       // Convert to Markdown
       const markdown = await this.convertToMarkdown(filePath);
       
@@ -32,6 +35,11 @@ export class PhysicsParser extends BaseParser {
       
       // Parse with physics-specific rules
       const questions = this.parseMarkdown(markdown);
+      
+      // Media qo'shish
+      for (const question of questions) {
+        this.attachMediaToQuestion(question);
+      }
       
       const duration = Date.now() - startTime;
       console.log(`✅ [PHYSICS] Parsed ${questions.length} questions in ${duration}ms`);
@@ -58,47 +66,26 @@ export class PhysicsParser extends BaseParser {
     let current: Partial<ParsedQuestion> | null = null;
     let state: 'IDLE' | 'QUESTION' | 'OPTIONS' | 'VARIANTS' = 'IDLE';
     let variantLines: string[] = [];
+    let pendingImageMarker: string | null = null; // Rasm markerni keyingi savol uchun saqlash
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // PRIORITY 1: OPTIONS (A), B), C), D))
-      const options = this.extractOptions(line);
-      if (options.length >= 2) {
+      // Rasm marker qatorlarini savol matniga qo'shish
+      if (line.includes('___IMAGE_')) {
         if (current) {
-          if (!current.variants) {
-            current.variants = [];
-          }
-          for (const opt of options) {
-            if (current.variants.length >= 4) break;
-            if (!current.variants.some(v => v.letter === opt.label)) {
-              current.variants.push({
-                letter: opt.label,
-                text: opt.text,
-              });
-            }
-          }
-          
-          if (current.variants && current.variants.length >= 4) {
-            if (variantLines.length > 0) {
-              const variantsText = '\n\n' + variantLines.map(v => this.cleanPhysicsText(v)).join(' ');
-              current.text = (current.text || '') + variantsText;
-              variantLines = [];
-            }
-            
-            questions.push(this.finalizeQuestion(current));
-            current = null;
-            state = 'IDLE';
-          } else {
-            state = 'OPTIONS';
-          }
+          current.text = (current.text || '') + ' ' + line;
+        } else {
+          // current null — keyingi savolga biriktirish uchun saqlash
+          pendingImageMarker = line;
         }
         continue;
       }
 
-      // PRIORITY 2: QUESTION or VARIANT
-      // Support both "1." and "1)" formats
+      // PRIORITY 1: RAQAMLI QATOR (savol yoki variant)
+      // MUHIM: Bu extractOptions DAN OLDIN bo'lishi kerak!
+      // Aks holda "14. Moddiy nuqta A nuqtadan D nuqtaga..." dagi "A" va "D" variant deb hisoblanadi
       const match = line.match(/^(\d+)[.)]\s*(.+)/);
       if (match) {
         const [, number, text] = match;
@@ -118,44 +105,151 @@ export class PhysicsParser extends BaseParser {
           continue;
         }
 
-        if (this.isPhysicsQuestion(text)) {
-          // Check if this is actually a variant
-          if (current && (!current.variants || current.variants.length === 0) && num === 1 && this.isPhysicsVariant(text)) {
-            variantLines.push(line);
-            state = 'VARIANTS';
-            continue;
+        // Check if this is actually a variant (faqat 1-raqam va qisqa matn)
+        if (current && (!current.variants || current.variants.length === 0) && num === 1 && this.isPhysicsVariant(text)) {
+          variantLines.push(line);
+          state = 'VARIANTS';
+          continue;
+        }
+
+        // Agar qisqa matn va variant ga o'xshasa — variant sifatida qo'shish
+        if (this.isPhysicsVariant(text) && current && (!current.variants || current.variants.length === 0)) {
+          variantLines.push(line);
+          state = 'VARIANTS';
+          continue;
+        }
+
+        // DEFAULT: har qanday raqamli qatorni SAVOL deb qabul qilish
+
+        // Save previous question
+        if (current) {
+          if (variantLines.length > 0) {
+            const variantsText = '\n\n' + variantLines.map(v => this.cleanPhysicsText(v)).join(' ');
+            current.text = (current.text || '') + variantsText;
+            variantLines = [];
           }
-          
-          // Save previous question
-          if (current) {
+          questions.push(this.finalizeQuestion(current));
+        }
+
+        // Start new question
+        let questionText = this.cleanPhysicsText(text).replace(/^\.\s+/, '');
+        // Agar oldingi savoldan qolgan rasm marker bo'lsa — yangi savolga biriktirish
+        if (pendingImageMarker) {
+          questionText = pendingImageMarker + ' ' + questionText;
+          pendingImageMarker = null;
+        }
+        current = {
+          text: questionText,
+          variants: [],
+          correctAnswer: 'A',
+          points: 1,
+          originalNumber: num,
+        };
+        state = 'QUESTION';
+        variantLines = [];
+
+        // Savol matni ichida inline variantlar bormi? (masalan: "20. Savol matni A)1 B)2 C)3 D)4")
+        const inlineOpts = this.extractOptions(text);
+        if (inlineOpts.length >= 2) {
+          // Savol matnini variantlardan ajratish — birinchi variant boshlanish joyini topish
+          const firstOptMatch = text.match(/[A-D]\)\s*/);
+          if (firstOptMatch && firstOptMatch.index !== undefined) {
+            current.text = this.cleanPhysicsText(text.substring(0, firstOptMatch.index)).replace(/^\.\s+/, '');
+            if (pendingImageMarker) {
+              current.text = pendingImageMarker + ' ' + current.text;
+              pendingImageMarker = null;
+            }
+          }
+          for (const opt of inlineOpts) {
+            if (current.variants!.length >= 4) break;
+            if (!current.variants!.some(v => v.letter === opt.label)) {
+              current.variants!.push({ letter: opt.label, text: opt.text });
+            }
+          }
+          if (current.variants!.length >= 4) {
+            questions.push(this.finalizeQuestion(current));
+            current = null;
+            state = 'IDLE';
+          } else {
+            state = 'OPTIONS'; // Qisman inline variantlar topildi, qolganlarini kutish
+          }
+        }
+        continue;
+      }
+
+      // PRIORITY 2: OPTIONS (A), B), C), D)) — faqat raqamsiz qatorlar uchun
+      const options = this.extractOptions(line);
+      if (options.length >= 2) {
+        if (current) {
+          // Mixed line: savol davomi + variantlar (masalan: "bo'ladi? A)1 B)2 C)3 D)4")
+          if (state === 'QUESTION') {
+            const firstOptMatch = line.match(/[A-D]\)\s*/);
+            if (firstOptMatch && firstOptMatch.index && firstOptMatch.index > 3) {
+              const preText = line.substring(0, firstOptMatch.index).trim();
+              if (preText.length > 3) {
+                current.text = (current.text || '') + ' ' + this.cleanPhysicsText(preText);
+              }
+            }
+          }
+
+          if (!current.variants) {
+            current.variants = [];
+          }
+          for (const opt of options) {
+            if (current.variants.length >= 4) break;
+            if (!current.variants.some(v => v.letter === opt.label)) {
+              current.variants.push({
+                letter: opt.label,
+                text: opt.text,
+              });
+            }
+          }
+
+          if (current.variants && current.variants.length >= 4) {
             if (variantLines.length > 0) {
               const variantsText = '\n\n' + variantLines.map(v => this.cleanPhysicsText(v)).join(' ');
               current.text = (current.text || '') + variantsText;
               variantLines = [];
             }
-            questions.push(this.finalizeQuestion(current));
-          }
 
-          // Start new question
-          current = {
-            text: this.cleanPhysicsText(text).replace(/^\.\s+/, ''),
-            variants: [],
-            correctAnswer: 'A',
-            points: 1,
-          };
-          state = 'QUESTION';
-          variantLines = [];
-        } else if (this.isPhysicsVariant(text) && current && (!current.variants || current.variants.length === 0)) {
-          variantLines.push(line);
-          state = 'VARIANTS';
+            questions.push(this.finalizeQuestion(current));
+            current = null;
+            state = 'IDLE';
+          } else {
+            state = 'OPTIONS';
+          }
         }
         continue;
+      }
+
+      // Yakka variant qatori: "A)273 K da..." yoki "D) 220"
+      if (current && (state === 'OPTIONS' || state === 'QUESTION')) {
+        const singleVar = line.match(/^(\*\*|__)?([A-D])(\*\*|__)?\)\s*(.+)/i);
+        if (singleVar) {
+          const letter = singleVar[2].toUpperCase();
+          let vText = singleVar[4].trim();
+          vText = this.cleanPhysicsText(vText);
+          if (!current.variants!.some(v => v.letter === letter)) {
+            current.variants!.push({ letter, text: vText });
+          }
+          state = 'OPTIONS';
+          if (current.variants!.length >= 4) {
+            questions.push(this.finalizeQuestion(current));
+            current = null;
+            state = 'IDLE';
+          }
+          continue;
+        }
       }
 
       // Continue building current question or variants
       if (current) {
         if (state === 'QUESTION' && line.length > 10 && current.text) {
           current.text += ' ' + this.cleanPhysicsText(line);
+        } else if (state === 'OPTIONS' && current.variants && current.variants.length > 0) {
+          // Variant matn davomi (masalan: C variant 2 qatorda yozilgan)
+          const lastVariant = current.variants[current.variants.length - 1];
+          lastVariant.text += ' ' + this.cleanPhysicsText(line);
         } else if (state === 'VARIANTS') {
           const numberCount = (line.match(/\d+[\.\)]/g) || []).length;
           if (numberCount >= 2) {
@@ -249,6 +343,10 @@ export class PhysicsParser extends BaseParser {
       .replace(/\s*\/\s*/g, '/')
       .replace(/\s+/g, ' ')
       .trim();
+
+    // Convert $...$ inline math to \(...\) format (Pandoc LaTeX → frontend render)
+    cleaned = cleaned.replace(/\$\$(.*?)\$\$/gs, '\\($1\\)');
+    cleaned = cleaned.replace(/\$(.*?)\$/gs, '\\($1\\)');
     
     // PHYSICS: Convert special characters to LaTeX
     // × → \times (multiplication)
@@ -281,7 +379,28 @@ export class PhysicsParser extends BaseParser {
     // Fizik birliklarni formatlash
     // m/s, kg/m³, N/m va h.k.
     // (hozircha oddiy qoldiramiz, keyin yaxshilaymiz)
-    
+
+    // MERGE: LaTeX operatorlar \(...\) math bloklariga birlashtiriladi
+    // Muammo: "7,2\cdot \(10^{-27}\)" — \cdot tashqarida qoladi
+    // Natija: "\(7,2 \cdot 10^{-27}\)" — hammasi bitta math blokda
+
+    // Pattern 1: number\operator \(expr\) → \(number \operator expr\)
+    // Masalan: 7,2\cdot \(10^{-27}\) → \(7,2 \cdot 10^{-27}\)
+    cleaned = cleaned.replace(/([\d,\.]+)\s*\\(cdot|times|div)\s*\\\((.*?)\\\)/g, '\\($1 \\$2 $3\\)');
+
+    // Pattern 2: \(expr\) \operator number → \(expr \operator number\)
+    // Masalan: \(10^{23}\)\cdot 5 → \(10^{23} \cdot 5\)
+    cleaned = cleaned.replace(/\\\((.*?)\\\)\s*\\(cdot|times|div)\s*([\d,\.]+)/g, '\\($1 \\$2 $3\\)');
+
+    // Pattern 3: adjacent math blocks \(expr1\)\(expr2\) → \(expr1 expr2\)
+    cleaned = cleaned.replace(/\\\((.*?)\\\)\s*\\\((.*?)\\\)/g, '\\($1 $2\\)');
+
+    // Tashqarida qolgan LaTeX operatorlarni unicode ga qaytarish
+    // \(…\) ichidagi content o'zgarmaydi
+    cleaned = cleaned.replace(/\\cdot\s?(?![^\\(]*\\\))/g, '·');
+    cleaned = cleaned.replace(/\\times\s?(?![^\\(]*\\\))/g, '×');
+    cleaned = cleaned.replace(/\\div\s?(?![^\\(]*\\\))/g, '÷');
+
     return cleaned;
   }
 
@@ -301,6 +420,7 @@ export class PhysicsParser extends BaseParser {
       variants: q.variants || [],
       correctAnswer: q.correctAnswer || 'A',
       points: q.points || 1,
+      originalNumber: q.originalNumber,
       imageUrl: q.imageUrl,
     };
   }

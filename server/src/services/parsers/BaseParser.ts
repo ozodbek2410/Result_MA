@@ -5,15 +5,27 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import AdmZip from 'adm-zip';
 import { v4 as uuidv4 } from 'uuid';
+import { TableExtractor } from './TableExtractor';
+import { TableRenderer } from './TableRenderer';
 
 const execFileAsync = promisify(execFile);
+
+export interface MediaItem {
+  type: 'image' | 'table';
+  url: string;
+  position: 'before' | 'after' | 'inline';
+}
 
 export interface ParsedQuestion {
   text: string;
   variants: { letter: string; text: string }[];
   correctAnswer: string;
   points: number;
-  imageUrl?: string;
+  originalNumber?: number; // Fayldagi asl savol raqami (gap detection uchun)
+  imageUrl?: string; // Legacy support
+  imageWidth?: number; // Word dagi original kenglik (px)
+  imageHeight?: number; // Word dagi original balandlik (px)
+  media?: MediaItem[]; // Yangi format
 }
 
 /**
@@ -22,6 +34,15 @@ export interface ParsedQuestion {
  */
 export abstract class BaseParser {
   protected extractedImages: Map<string, string> = new Map();
+  protected extractedTables: Map<string, string> = new Map();
+  protected imageDimensions: Map<string, { widthPx: number; heightPx: number }> = new Map();
+  protected tableExtractor: TableExtractor;
+  protected tableRenderer: TableRenderer;
+  
+  constructor() {
+    this.tableExtractor = new TableExtractor();
+    this.tableRenderer = new TableRenderer();
+  }
   
   /**
    * Main parsing method - must be implemented by subclasses
@@ -70,20 +91,42 @@ export abstract class BaseParser {
           const ext = path.extname(entry.entryName).toLowerCase();
           const fileName = path.basename(entry.entryName);
           
-          if (['.png', '.jpg', '.jpeg', '.gif', '.bmp'].includes(ext)) {
+          if (['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.emf', '.wmf'].includes(ext)) {
             const size = entry.header.size || 0;
             
-            if (size > 5000) {
-              imageFiles.push({ entry, size, name: fileName });
-            }
+            // Barcha rasmlarni saqlash (size filter yo'q)
+            imageFiles.push({ entry, size, name: fileName });
           }
         }
       }
       
-      imageFiles.sort((a, b) => b.size - a.size);
+      // Tartib bo'yicha saqlash (image1, image2, ...)
+      imageFiles.sort((a, b) => {
+        const aNum = parseInt(a.name.match(/\d+/)?.[0] || '999');
+        const bNum = parseInt(b.name.match(/\d+/)?.[0] || '999');
+        return aNum - bNum;
+      });
       
       for (const { entry, name } of imageFiles) {
         const imageBuffer = entry.getData();
+        const ext = path.extname(name).toLowerCase();
+        
+        // EMF/WMF formatlarini PNG ga konvertatsiya qilish
+        if (ext === '.emf' || ext === '.wmf') {
+          try {
+            const convertedUrl = await this.convertEmfToPng(imageBuffer, name, uploadDir);
+            if (convertedUrl) {
+              this.extractedImages.set(name, convertedUrl);
+              console.log(`✅ [PARSER] Converted ${ext.toUpperCase()} to PNG: ${name} -> ${convertedUrl}`);
+              continue;
+            }
+          } catch (error) {
+            console.error(`❌ [PARSER] Failed to convert ${name}:`, error);
+            // Fallback: save original file
+          }
+        }
+        
+        // Oddiy rasmlarni saqlash
         const uniqueName = `${uuidv4()}${path.extname(name)}`;
         const savePath = path.join(uploadDir, uniqueName);
         
@@ -102,7 +145,183 @@ export abstract class BaseParser {
   }
 
   /**
+   * Convert EMF/WMF to PNG using Python + Pillow (best quality)
+   * Falls back to LibreOffice or ImageMagick if Python fails
+   */
+  private async convertEmfToPng(
+    buffer: Buffer,
+    originalName: string,
+    uploadDir: string
+  ): Promise<string | null> {
+    try {
+      const tempEmfPath = path.join(uploadDir, `temp_${uuidv4()}.emf`);
+      const uniqueName = `${uuidv4()}.png`;
+      const pngPath = path.join(uploadDir, uniqueName);
+      
+      // 1. Vaqtinchalik EMF faylni saqlash
+      await fs.writeFile(tempEmfPath, buffer);
+      
+      let converted = false;
+      
+      // 2. PRIORITY 1: Python + Pillow (eng sifatli)
+      const pythonPaths = [
+        'python',
+        'py',
+        'python3',
+        'C:\\Python314\\python.exe',
+        'C:\\Python313\\python.exe',
+        'C:\\Python312\\python.exe',
+        'C:\\Python311\\python.exe',
+        'C:\\Python310\\python.exe',
+        '/usr/bin/python3',
+        '/usr/local/bin/python3',
+      ];
+      
+      const scriptPath = path.join(__dirname, '..', '..', '..', 'python', 'convert_emf_to_png.py');
+      console.log(`🐍 [PARSER] Python script path: ${scriptPath}`);
+      
+      for (const pythonPath of pythonPaths) {
+        try {
+          const { stdout, stderr } = await execFileAsync(pythonPath, [
+            scriptPath,
+            tempEmfPath,
+            pngPath
+          ]);
+          
+          if (fsSync.existsSync(pngPath)) {
+            converted = true;
+            console.log(`✅ [PARSER] Converted EMF to PNG using Python + Pillow`);
+            if (stdout) console.log(`   ${stdout.trim()}`);
+            break;
+          }
+        } catch (err: any) {
+          // Log error for debugging
+          console.log(`⚠️ [PARSER] Python attempt failed (${pythonPath}): ${err.message}`);
+          
+          // Python failed, try next path or fallback
+          if (err.stderr && err.stderr.includes('Pillow not installed')) {
+            console.log(`⚠️ [PARSER] Pillow not installed, trying fallback methods...`);
+            break; // Skip other Python paths
+          }
+        }
+      }
+      
+      // 3. FALLBACK 1: LibreOffice (yaxshi sifat)
+      if (!converted) {
+        const libreofficePaths = [
+          'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+          'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+          '/usr/bin/libreoffice',
+          '/usr/local/bin/libreoffice',
+          'soffice',
+        ];
+        
+        for (const libreOfficePath of libreofficePaths) {
+          try {
+            await execFileAsync(libreOfficePath, [
+              '--headless',
+              '--convert-to', 'png',
+              '--outdir', uploadDir,
+              tempEmfPath
+            ]);
+            
+            const tempPngPath = tempEmfPath.replace('.emf', '.png');
+            if (fsSync.existsSync(tempPngPath)) {
+              await fs.rename(tempPngPath, pngPath);
+              converted = true;
+              console.log(`✅ [PARSER] Converted EMF to PNG using LibreOffice`);
+              break;
+            }
+          } catch (err) {
+            // Try next path
+          }
+        }
+      }
+      
+      // 4. FALLBACK 2: ImageMagick (oxirgi imkoniyat)
+      if (!converted) {
+        const magickPaths = [
+          'C:\\Program Files\\ImageMagick-7.1.2-Q16-HDRI\\magick.exe',
+          'C:\\Program Files\\ImageMagick-7.1.1-Q16-HDRI\\magick.exe',
+          'magick',
+          'convert',
+          '/usr/local/bin/magick',
+          '/usr/bin/convert',
+        ];
+        
+        for (const magickPath of magickPaths) {
+          try {
+            await execFileAsync(magickPath, [
+              tempEmfPath,
+              '-density', '96',
+              '-quality', '100',
+              '-background', 'white',
+              '-alpha', 'remove',
+              '-flatten',
+              pngPath
+            ]);
+            converted = true;
+            console.log(`✅ [PARSER] Converted EMF to PNG using ImageMagick`);
+            break;
+          } catch (err) {
+            // Try next path
+          }
+        }
+      }
+      
+      // 5. Vaqtinchalik faylni o'chirish
+      try {
+        await fs.unlink(tempEmfPath);
+      } catch {}
+      
+      if (converted) {
+        return `/uploads/test-images/${uniqueName}`;
+      }
+      
+      console.error(`❌ [PARSER] Failed to convert EMF: No converter available`);
+      console.error(`   Install one of: Python+Pillow, LibreOffice, or ImageMagick`);
+      return null;
+      
+    } catch (error) {
+      console.error('❌ [PARSER] EMF conversion error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Extract tables from DOCX file and render as images
+   */
+  protected async extractTablesFromDocx(filePath: string): Promise<void> {
+    try {
+      console.log('📊 [PARSER] Extracting tables from DOCX...');
+      
+      this.extractedTables.clear();
+      
+      // 1. Jadvallarni ajratish
+      const tables = await this.tableExtractor.extractTables(filePath);
+      
+      if (tables.length === 0) {
+        console.log('ℹ️ [PARSER] No tables found in DOCX');
+        return;
+      }
+      
+      // 2. Jadvallarni rasm qilish
+      const tableImages = await this.tableRenderer.renderMultipleTables(tables);
+      
+      // 3. Map ga saqlash
+      for (const [tableId, imageUrl] of tableImages) {
+        this.extractedTables.set(tableId, imageUrl);
+      }
+      
+      console.log(`✅ [PARSER] Extracted ${this.extractedTables.size} tables as images`);
+    } catch (error) {
+      console.error('❌ [PARSER] Error extracting tables:', error);
+    }
+  }
+
+  /**
    * Extract text from DOCX using Pandoc
+   * Jadval markerlarini qo'yadi
    */
   protected async extractTextWithPandoc(filePath: string): Promise<string> {
     try {
@@ -126,7 +345,12 @@ export abstract class BaseParser {
           ]);
           
           // Clean Pandoc escape characters and fix formatting
-          return this.cleanPandocMarkdown(stdout);
+          let cleaned = this.cleanPandocMarkdown(stdout);
+          
+          // Jadval markerlarini qo'yish
+          cleaned = this.replaceTablesWithMarkers(cleaned);
+          
+          return cleaned;
         } catch (err) {
           lastError = err;
         }
@@ -138,27 +362,110 @@ export abstract class BaseParser {
   }
 
   /**
+   * Pandoc markdown'dagi jadvallarni ___TABLE_X___ marker bilan almashtirish
+   */
+  protected replaceTablesWithMarkers(markdown: string): string {
+    let result = markdown;
+    let tableIndex = 1;
+    
+    // DEBUG: Save markdown to file
+    const fs = require('fs');
+    fs.writeFileSync('pandoc_markdown_debug.txt', markdown);
+    console.log('💾 [DEBUG] Saved Pandoc markdown to pandoc_markdown_debug.txt');
+    
+    // Pandoc создает таблицы в формате:
+    //   --- ---- ----
+    //   1   Text Ha
+    //   2   More Yo'q
+    //   --- ---- ----
+    
+    // Ищем строки с дефисами (границы таблиц) и все между ними
+    const tablePattern = /^\s*[-\s]{10,}\s*$[\s\S]*?^\s*[-\s]{10,}\s*$/gm;
+    
+    const matches = markdown.match(tablePattern);
+    console.log(`🔍 [PARSER] Found ${matches ? matches.length : 0} table patterns in markdown`);
+    
+    if (matches) {
+      matches.forEach((match, index) => {
+        console.log(`📋 [PARSER] Table ${index + 1} preview: ${match.substring(0, 100)}...`);
+      });
+    }
+    
+    result = result.replace(tablePattern, (match) => {
+      const marker = `___TABLE_${tableIndex}___`;
+      tableIndex++;
+      console.log(`🔄 [PARSER] Replaced table with ${marker}`);
+      return `\n${marker}\n\n`;
+    });
+    
+    return result;
+  }
+
+  /**
    * Clean Pandoc markdown output
    * Fixes common issues like escaped characters and missing spaces
    */
   protected cleanPandocMarkdown(markdown: string): string {
     let cleaned = markdown;
-    
+
     // Remove escape characters
     cleaned = cleaned.replace(/\\\'/g, "'");  // \' → '
     cleaned = cleaned.replace(/\\\./g, '.');  // \. → .
     cleaned = cleaned.replace(/\\\)/g, ')');  // \) → )
     cleaned = cleaned.replace(/\\\"/g, '"');  // \" → "
-    
+
     // Fix: Remove "\ \" (backslash + space + backslash) at END of LaTeX formulas
     // Example: $\sqrt{\mathbf{6}}\ \$ → $\sqrt{\mathbf{6}}$
     // IMPORTANT: Only remove at the END (before closing $), not in the middle!
     cleaned = cleaned.replace(/\\\s+\\\$/g, '$');
-    
+
     // Fix: "5.To'g'ri" → "5. To'g'ri" (add space after number+dot before capital letter)
     cleaned = cleaned.replace(/(\n\d+)\.([A-Z])/g, '$1. $2');
-    
+
+    // Pandoc rasm o'lchamlarini OLDIN ajratib olish (Word original o'lchami)
+    // ![](media/image1.emf){width="4.5in" height="2.3in"} → width=4.5in, height=2.3in
+    const dimPattern = /!\[.*?\]\(media\/image(\d+)\.[a-z]+\)\{[^}]*?width="([^"]+)"[^}]*?height="([^"]+)"[^}]*?\}/gi;
+    let dimMatch;
+    while ((dimMatch = dimPattern.exec(cleaned)) !== null) {
+      const [, num, width, height] = dimMatch;
+      const widthPx = this.parseDimensionToPixels(width);
+      const heightPx = this.parseDimensionToPixels(height);
+      if (widthPx > 0 && heightPx > 0) {
+        this.imageDimensions.set(num, { widthPx, heightPx });
+        console.log(`📐 [PARSER] Image ${num} dimensions: ${width} x ${height} → ${widthPx}x${heightPx}px`);
+      }
+    }
+
+    // Pandoc rasm markerlarini ___IMAGE_N___ ga aylantirish (BARCHA parserlar uchun)
+    // ![](media/image1.png){width="4.5in" height="2.3in"} → ___IMAGE_1___
+    // MUHIM: \n bilan ajratish — marker ALOHIDA qatorda bo'lishi kerak
+    // aks holda "___IMAGE_1___ 12. Savol matni" bitta qatorda qoladi va savol yo'qoladi
+    cleaned = cleaned.replace(/!\[\]\(media\/image(\d+)\.[a-z]+\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
+    cleaned = cleaned.replace(/!\[.*?\]\(.*?image(\d+).*?\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
+    // Bold ichidagi rasmlarni tozalash: **___IMAGE_1___** → ___IMAGE_1___
+    cleaned = cleaned.replace(/\*\*\s*(___IMAGE_\d+___)\s*\*\*/g, '\n$1\n');
+
     return cleaned;
+  }
+
+  /**
+   * Pandoc dimension stringni pikselga aylantirish
+   * "4.5in" → 432px (96 DPI - Word screen display DPI)
+   * "11.43cm" → 432px
+   */
+  private parseDimensionToPixels(value: string): number {
+    const match = value.match(/([\d.]+)\s*(in|cm|mm|px|pt)?/);
+    if (!match) return 0;
+    const num = parseFloat(match[1]);
+    const unit = match[2] || 'in';
+    switch (unit) {
+      case 'in': return Math.round(num * 96);
+      case 'cm': return Math.round(num * 96 / 2.54);
+      case 'mm': return Math.round(num * 96 / 25.4);
+      case 'pt': return Math.round(num * 96 / 72);
+      case 'px': return Math.round(num);
+      default: return Math.round(num * 96);
+    }
   }
 
   /**
@@ -213,6 +520,7 @@ export abstract class BaseParser {
       const question = this.extractQuestion(block, mathBlocks);
       
       if (question) {
+        question.originalNumber = parseInt(match[1]);
         console.log(`✅ [PARSER] Question ${i + 1}: ${question.text.substring(0, 50)}...`);
         questions.push(question);
       } else {
@@ -302,23 +610,43 @@ export abstract class BaseParser {
   }
 
   protected extractQuestion(block: string, mathBlocks: string[]): ParsedQuestion | null {
+    // Rasm markerlarini OLDIN ajratib olish (variant matniga kirib ketmasligi uchun)
+    let extractedImageUrl: string | undefined;
+    const allLines = block.split('\n').map(l => l.trim()).filter(l => l);
+    const nonImageLines: string[] = [];
+    for (const line of allLines) {
+      if (/^___IMAGE_\d+___$/.test(line)) {
+        // Standalone rasm marker — ajratib olish
+        const imgMatch = line.match(/___IMAGE_(\d+)___/);
+        if (imgMatch && !extractedImageUrl) {
+          extractedImageUrl = this.findImageByNumber(imgMatch[1]);
+        }
+      } else {
+        nonImageLines.push(line);
+      }
+    }
+
     // CRITICAL FIX: Join all lines first to handle multi-line inline variants
     // Example: "5) question text A) 1 B) 2\n**C) 3** D) 4"
-    const fullBlock = block.split('\n').map(l => l.trim()).filter(l => l).join(' ');
-    
+    const fullBlock = nonImageLines.join(' ');
+
     // Check if this block has inline variants (all variants on same line)
     const variantPattern = /(?:\*\*\s*)?[A-D]\s*\)(?:\s*\*\*)?/gi;
     const variantMatches = fullBlock.match(variantPattern);
     const variantCount = variantMatches ? variantMatches.length : 0;
-    
+
     // If 4 variants found in full block, process as single line
     if (variantCount === 4) {
       console.log(`🔍 [PARSER] Detected 4 inline variants in block, processing as single line`);
-      return this.extractInlineVariants(fullBlock, mathBlocks);
+      const result = this.extractInlineVariants(fullBlock, mathBlocks);
+      if (result && extractedImageUrl && !result.imageUrl) {
+        result.imageUrl = extractedImageUrl;
+      }
+      return result;
     }
-    
+
     // Otherwise, process line by line (standard format)
-    const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+    const lines = nonImageLines;
     
     if (lines.length === 0) return null;
     
@@ -348,10 +676,7 @@ export abstract class BaseParser {
       const imageMatch = line.match(/___IMAGE_(\d+)___/);
       if (imageMatch) {
         const imageNum = imageMatch[1];
-        const imageName = `image${imageNum}.png`;
-        imageUrl = this.extractedImages.get(imageName) || 
-                   this.extractedImages.get(`image${imageNum}.jpg`) ||
-                   this.extractedImages.get(`image${imageNum}.jpeg`);
+        imageUrl = this.findImageByNumber(imageNum);
         continue;
       }
       
@@ -442,7 +767,7 @@ export abstract class BaseParser {
       variants,
       correctAnswer,
       points,
-      imageUrl,
+      imageUrl: imageUrl || extractedImageUrl,
     };
   }
 
@@ -467,5 +792,223 @@ export abstract class BaseParser {
     cleaned = cleaned.trim();
     
     return cleaned;
+  }
+
+  /**
+   * Rasm raqami bo'yicha extractedImages dan topish
+   * Barcha formatlarni qo'llab-quvvatlaydi (png, jpg, emf, wmf, gif, bmp)
+   */
+  protected findImageByNumber(imageNum: string): string | undefined {
+    const baseName = `image${imageNum}`;
+    // Tez-tez ishlatiladigan formatlarni birinchi tekshirish
+    const url = this.extractedImages.get(`${baseName}.png`) ||
+                this.extractedImages.get(`${baseName}.jpg`) ||
+                this.extractedImages.get(`${baseName}.jpeg`) ||
+                this.extractedImages.get(`${baseName}.emf`) ||
+                this.extractedImages.get(`${baseName}.wmf`) ||
+                this.extractedImages.get(`${baseName}.gif`) ||
+                this.extractedImages.get(`${baseName}.bmp`);
+    if (url) return url;
+
+    // Boshqa har qanday format uchun map'ni tekshirish
+    for (const [key, value] of this.extractedImages.entries()) {
+      if (key.startsWith(baseName + '.')) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Savol uchun media topish (rasm va jadvallar)
+   */
+  protected findMediaForQuestion(questionText: string): MediaItem[] {
+    const media: MediaItem[] = [];
+    
+    // 1. Rasmlarni topish (___IMAGE_X___ yoki ![](media/imageX.ext))
+    // Marker format
+    const imageMarkerMatches = questionText.matchAll(/___IMAGE_(\d+)___/g);
+    for (const match of imageMarkerMatches) {
+      const imageNum = match[1];
+      const imageUrl = this.findImageByNumber(imageNum);
+
+      if (imageUrl) {
+        media.push({
+          type: 'image',
+          url: imageUrl,
+          position: 'inline',
+        });
+      }
+    }
+    
+    // Pandoc format: ![](media/image2.emf) yoki ![](media/image2.png)
+    // Pandoc rasm nomini aniq ko'rsatadi
+    const pandocImageMatches = questionText.matchAll(/!\[\]\(media\/([^)]+)\)/g);
+    if (pandocImageMatches) {
+      const matches = Array.from(pandocImageMatches);
+      for (const match of matches) {
+        const fullName = match[1]; // "image2.emf"
+        
+        // extractedImages Map'da to'liq nom bilan qidirish
+        let imageUrl = this.extractedImages.get(fullName);
+        
+        // Agar topilmasa, extension'siz qidirish (image2)
+        if (!imageUrl) {
+          const baseName = fullName.split('.')[0]; // "image2"
+          for (const [key, value] of this.extractedImages.entries()) {
+            if (key.startsWith(baseName + '.')) {
+              imageUrl = value;
+              break;
+            }
+          }
+        }
+        
+        if (imageUrl) {
+          media.push({
+            type: 'image',
+            url: imageUrl,
+            position: 'inline',
+          });
+        }
+      }
+    }
+    
+    // 2. Jadvallarni topish (___TABLE_X___)
+    const tableMatches = questionText.matchAll(/___TABLE_(\d+)___/g);
+    for (const match of tableMatches) {
+      const tableNum = match[1];
+      const tableId = `table${tableNum}`;
+      const tableUrl = this.extractedTables.get(tableId);
+      
+      if (tableUrl) {
+        media.push({
+          type: 'table',
+          url: tableUrl,
+          position: 'after',
+        });
+      }
+    }
+    
+    return media;
+  }
+
+  /**
+   * Savolga media qo'shish
+   * Jadvallarni imageUrl ga qo'yish (birinchi jadval)
+   */
+  protected attachMediaToQuestion(question: ParsedQuestion): ParsedQuestion {
+    console.log(`🔍 [MEDIA] Question text: ${question.text.substring(0, 50)}...`);
+    console.log(`🔍 [MEDIA] Full text length: ${question.text.length}`);
+    console.log(`🔍 [MEDIA] Contains ![](media/: ${question.text.includes('![](media/')}`);
+
+    // Variant matnlaridan ham rasm markerlarini tekshirish (xavfsizlik uchun)
+    // Ba'zan ___IMAGE_X___ variant text ichiga kirib qoladi
+    if (question.variants) {
+      for (const v of question.variants) {
+        const imgInVariant = v.text.match(/___IMAGE_(\d+)___/);
+        if (imgInVariant) {
+          const imgNum = imgInVariant[1];
+          if (!question.imageUrl) {
+            question.imageUrl = this.findImageByNumber(imgNum);
+            console.log(`  🔍 [MEDIA] Found image marker in variant ${v.letter}, set imageUrl`);
+          }
+          // Markerini variant matnidan olib tashlash
+          v.text = v.text.replace(/___IMAGE_\d+___/g, '').trim();
+        }
+      }
+    }
+
+    const media = this.findMediaForQuestion(question.text);
+
+    console.log(`🔍 [MEDIA] Found ${media.length} media items`);
+
+    // Rasm raqamini markerdan olish (o'lcham uchun kerak)
+    const imageNumMatch = question.text.match(/___IMAGE_(\d+)___/);
+
+    if (media.length > 0) {
+      // Birinchi jadvalni imageUrl ga qo'yish (legacy support)
+      const firstTable = media.find(m => m.type === 'table');
+      if (firstTable && !question.imageUrl) {
+        question.imageUrl = firstTable.url;
+        console.log(`  ✅ [MEDIA] Set imageUrl from table: ${firstTable.url}`);
+      }
+
+      // Agar imageUrl yo'q bo'lsa, eng mos rasmni tanlash
+      // OMR answer sheet (juda baland portrait rasm) ni skip qilish
+      if (!question.imageUrl) {
+        const allImageMarkers = Array.from(question.text.matchAll(/___IMAGE_(\d+)___/g));
+        let bestImageNum: string | null = null;
+        let bestImageUrl: string | null = null;
+
+        for (const marker of allImageMarkers) {
+          const imgNum = marker[1];
+          const dims = this.imageDimensions.get(imgNum);
+          const url = this.findImageByNumber(imgNum);
+          if (!url) continue;
+
+          // Skip: juda baland portrait rasmlar (OMR answer sheet, dekorativ)
+          // height > 1.4 * width VA height > 400px — bu odatda savol diagrammasi emas
+          if (dims && dims.heightPx > 1.4 * dims.widthPx && dims.heightPx > 400) {
+            console.log(`  ⏭️ [MEDIA] Skipping image ${imgNum} (${dims.widthPx}x${dims.heightPx}px — likely answer sheet)`);
+            continue;
+          }
+
+          bestImageNum = imgNum;
+          bestImageUrl = url;
+          break; // Birinchi mos rasmni olish
+        }
+
+        // Agar mos rasm topilmasa, media array dan birinchisini olish (fallback)
+        if (!bestImageUrl) {
+          const firstImage = media.find(m => m.type === 'image');
+          if (firstImage) {
+            bestImageUrl = firstImage.url;
+            // imageNumMatch dan raqamni olish
+            bestImageNum = imageNumMatch ? imageNumMatch[1] : null;
+          }
+        }
+
+        if (bestImageUrl) {
+          question.imageUrl = bestImageUrl;
+          console.log(`  ✅ [MEDIA] Set imageUrl from image: ${bestImageUrl}`);
+        }
+
+        // O'lchamlarni mos rasm uchun qo'yish
+        if (bestImageNum) {
+          const dims = this.imageDimensions.get(bestImageNum);
+          if (dims) {
+            question.imageWidth = dims.widthPx;
+            question.imageHeight = dims.heightPx;
+            console.log(`  📐 [MEDIA] Set image dimensions: ${dims.widthPx}x${dims.heightPx}px`);
+          }
+        }
+      } else {
+        // imageUrl allaqachon bor (variant dan topilgan), o'lcham qo'shish
+        if (imageNumMatch) {
+          const dims = this.imageDimensions.get(imageNumMatch[1]);
+          if (dims) {
+            question.imageWidth = dims.widthPx;
+            question.imageHeight = dims.heightPx;
+            console.log(`  📐 [MEDIA] Set image dimensions: ${dims.widthPx}x${dims.heightPx}px`);
+          }
+        }
+      }
+
+      // Media array'ga ham qo'shish (kelajak uchun)
+      question.media = media;
+    }
+    
+    // Media markerlarini matndan olib tashlash
+    question.text = question.text
+      .replace(/___IMAGE_\d+___/g, '')
+      .replace(/___TABLE_\d+___/g, '')
+      .replace(/!\[\]\(media\/[^)]+\)(\{[^}]*\})?/g, '') // Pandoc image + {width="..."} o'chirish
+      .replace(/!\[.*?\]\(.*?media\/[^)]+\)(\{[^}]*\})?/g, '') // Boshqa Pandoc image formatlari
+      .replace(/\{[^}]*(?:width|height)[^}]*\}/g, '') // Standalone Pandoc atributlari
+      .replace(/\*\*\s*\*\*/g, '') // Bo'sh bold markerlar
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    return question;
   }
 }

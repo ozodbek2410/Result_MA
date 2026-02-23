@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import { Printer, ArrowLeft, FileText, Download, FileDown } from 'lucide-react';
+import { Printer, ArrowLeft, FileText, Download, FileDown, X } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
 import { useToast } from '@/hooks/useToast';
@@ -91,75 +91,23 @@ export default function TestPrintPage() {
     window.print();
   };
 
-  // Handle Answer Key PDF Export
+  // Handle Answer Sheet PDF Export (using browser print)
   const handleDownloadAnswerKeyPDF = async () => {
     try {
-      setExporting(true);
-      setExportProgress(0);
-      success('Titul varoq PDF yaratilmoqda...');
-      
-      const endpoint = isBlockTest 
-        ? `/block-tests/${id}/export-answer-key-pdf`
-        : `/tests/${id}/export-answer-key-pdf`;
-      
-      const response = await api.get(endpoint, {
-        responseType: 'blob'
-      });
-      
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      const filename = isBlockTest 
-        ? `titul-varoq-block-test-${id}-${Date.now()}.pdf`
-        : `titul-varoq-test-${id}-${Date.now()}.pdf`;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
-      success('Titul varoq PDF yuklandi');
-      setExporting(false);
+      // Browser print dialog ni ochish
+      window.print();
     } catch (error: any) {
-      console.error('Error downloading answer key PDF:', error);
-      showError('Titul varoq PDF yuklashda xatolik');
-      setExporting(false);
+      console.error('Error printing:', error);
+      showError('Print qilishda xatolik');
     }
   };
 
-  // Handle Answer Key Word Export
+  // Handle Answer Sheet Word Export
   const handleDownloadAnswerKeyWord = async () => {
     try {
-      setExporting(true);
-      setExportProgress(0);
-      success('Titul varoq Word yaratilmoqda...');
-      
-      const endpoint = isBlockTest 
-        ? `/block-tests/${id}/export-answer-key-docx`
-        : `/tests/${id}/export-answer-key-docx`;
-      
-      const response = await api.get(endpoint, {
-        responseType: 'blob'
-      });
-      
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      const filename = isBlockTest 
-        ? `titul-varoq-block-test-${id}-${Date.now()}.docx`
-        : `titul-varoq-test-${id}-${Date.now()}.docx`;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
-      success('Titul varoq Word yuklandi');
-      setExporting(false);
+      showError('Word export hozircha mavjud emas. PDF dan foydalaning.');
     } catch (error: any) {
-      console.error('Error downloading answer key Word:', error);
-      showError('Titul varoq Word yuklashda xatolik');
-      setExporting(false);
+      console.error('Error:', error);
     }
   };
 
@@ -184,13 +132,15 @@ export default function TestPrintPage() {
       // Step 1: Start export job
       const { data } = await api.post(endpoint, {
         students: selectedStudents.map(s => s._id),
-        settings: type === 'sheets' ? {
-          sheetsPerPage,
+        settings: {
           fontSize,
           fontFamily,
+          lineHeight,
+          columnsCount,
           backgroundOpacity,
-          backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined
-        } : undefined
+          backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined,
+          ...(type === 'sheets' ? { sheetsPerPage } : {})
+        }
       });
       
       const { jobId, estimatedTime } = data;
@@ -268,25 +218,47 @@ export default function TestPrintPage() {
   
   // Fallback: Sync PDF version (old method)
   const handleDownloadPDFSync = async () => {
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
-      success('PDF yuklanmoqda...');
-      
-      const endpoint = isBlockTest 
+      success('PDF yaratilmoqda...');
+      setExportProgress(5);
+
+      const endpoint = isBlockTest
         ? `/block-tests/${id}/export-pdf`
         : `/tests/${id}/export-pdf`;
-      
-      const params = selectedStudents.length > 0 
-        ? `?students=${selectedStudents.map(s => s._id).join(',')}`
-        : '';
-      
+
+      const queryParts: string[] = [];
+      if (selectedStudents.length > 0) queryParts.push(`students=${selectedStudents.map(s => s._id).join(',')}`);
+      if (fontSize) queryParts.push(`fontSize=${fontSize}`);
+      if (fontFamily) queryParts.push(`fontFamily=${encodeURIComponent(fontFamily)}`);
+      if (lineHeight) queryParts.push(`lineHeight=${lineHeight}`);
+      if (columnsCount) queryParts.push(`columnsCount=${columnsCount}`);
+      if (backgroundOpacity !== undefined) queryParts.push(`backgroundOpacity=${backgroundOpacity}`);
+      const params = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+
+      // Simulated progress — server javob berguncha sekin oshadi
+      const studentCount = Math.max(selectedStudents.length, 1);
+      const estimatedMs = studentCount * 3000; // ~3s per student
+      const startTime = Date.now();
+      progressTimer = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const ratio = Math.min(elapsed / estimatedMs, 1);
+        // Ease-out: tez boshlanib, sekinlashadi (5% -> 90%)
+        const simulated = 5 + 85 * (1 - Math.pow(1 - ratio, 2));
+        setExportProgress(Math.round(simulated));
+      }, 300);
+
       const response = await api.get(`${endpoint}${params}`, {
-        responseType: 'blob'
+        responseType: 'blob',
       });
-      
+
+      clearInterval(progressTimer);
+      setExportProgress(100);
+
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      const filename = isBlockTest 
+      const filename = isBlockTest
         ? `block-test-${id}-${Date.now()}.pdf`
         : `test-${id}-${Date.now()}.pdf`;
       link.setAttribute('download', filename);
@@ -294,13 +266,18 @@ export default function TestPrintPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       success('PDF yuklandi');
-      setExporting(false);
-    } catch (error: any) {
+      setTimeout(() => {
+        setExporting(false);
+        setExportProgress(0);
+      }, 500);
+    } catch (error: unknown) {
+      if (progressTimer) clearInterval(progressTimer);
       console.error('Error downloading PDF:', error);
       showError('PDF yuklashda xatolik');
       setExporting(false);
+      setExportProgress(0);
     }
   };
 
@@ -411,42 +388,52 @@ export default function TestPrintPage() {
   
   // Fallback: Sync version (old method)
   const handleDownloadWordSync = async () => {
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
-      success('Word yuklanmoqda...');
-      
-      const endpoint = isBlockTest 
+      success('Word yaratilmoqda...');
+      setExportProgress(5);
+
+      const endpoint = isBlockTest
         ? `/block-tests/${id}/export-docx`
         : `/tests/${id}/export-docx`;
-      
-      // Sozlamalarni query parametrlar orqali yuboramiz
+
       const params = new URLSearchParams();
-      
       if (selectedStudents.length > 0) {
         params.append('students', selectedStudents.map(s => s._id).join(','));
       }
-      
-      // Print sozlamalari
       params.append('fontSize', fontSize.toString());
       params.append('fontFamily', fontFamily);
       params.append('lineHeight', lineHeight.toString());
       params.append('columnsCount', columnsCount.toString());
       params.append('backgroundOpacity', backgroundOpacity.toString());
-      
-      // Background image ni base64 formatda yuboramiz (agar mavjud bo'lsa)
       if (backgroundImage && backgroundImage !== '/logo.png') {
         params.append('customBackground', backgroundImage);
       } else if (backgroundImage === '/logo.png') {
         params.append('useDefaultLogo', 'true');
       }
-      
+
+      // Simulated progress
+      const studentCount = Math.max(selectedStudents.length, 1);
+      const estimatedMs = studentCount * 2000; // ~2s per student for Word
+      const startTime = Date.now();
+      progressTimer = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const ratio = Math.min(elapsed / estimatedMs, 1);
+        const simulated = 5 + 85 * (1 - Math.pow(1 - ratio, 2));
+        setExportProgress(Math.round(simulated));
+      }, 300);
+
       const response = await api.get(`${endpoint}?${params.toString()}`, {
-        responseType: 'blob'
+        responseType: 'blob',
       });
-      
+
+      clearInterval(progressTimer);
+      setExportProgress(100);
+
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      const filename = isBlockTest 
+      const filename = isBlockTest
         ? `block-test-${id}-${Date.now()}.docx`
         : `test-${id}-${Date.now()}.docx`;
       link.setAttribute('download', filename);
@@ -454,11 +441,14 @@ export default function TestPrintPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       success('Word yuklandi');
-      setExporting(false);
-      setExportProgress(0);
-    } catch (error: any) {
+      setTimeout(() => {
+        setExporting(false);
+        setExportProgress(0);
+      }, 500);
+    } catch (error: unknown) {
+      if (progressTimer) clearInterval(progressTimer);
       console.error('Error downloading Word:', error);
       showError('Word yuklashda xatolik');
       setExporting(false);
@@ -498,6 +488,25 @@ export default function TestPrintPage() {
     normal: { container: 'space-y-2', question: 'mb-2 pb-2', header: 'mb-3 pb-3', questions: 'space-y-2' },
     relaxed: { container: 'space-y-4', question: 'mb-3 pb-3', header: 'mb-4 pb-4', questions: 'space-y-3' }
   }[spacing];
+
+  // Pre-compute variants map for O(1) lookup
+  const variantsMap = useMemo(() => {
+    const map = new Map<string, any>();
+    variants.forEach(v => {
+      const sid = typeof v.studentId === 'string' ? v.studentId : v.studentId?._id;
+      if (sid) map.set(sid, v);
+    });
+    return map;
+  }, [variants]);
+
+  // Pre-compute raw questions count
+  const rawQuestionsCount = useMemo(() => {
+    if (!test) return 0;
+    if (isBlockTest) {
+      return test.subjectTests?.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0) || 0;
+    }
+    return test.questions?.length || 0;
+  }, [test, isBlockTest]);
 
   if (loading) {
     return (
@@ -549,64 +558,49 @@ export default function TestPrintPage() {
     return (
       <div className="print:px-0 print:max-w-full print:mx-0" style={{ fontSize: `${fontSize}px` }}>
         {pages.map((studentsOnPage, pageIndex) => (
-          <div key={pageIndex} className="page-break print-page mb-8 print:mb-0">
+          <div key={pageIndex} className="page-break print-page mb-8 print:mb-0" style={{ '--print-bg-image': backgroundImage ? `url(${backgroundImage})` : 'url(/logo.png)', '--print-bg-opacity': backgroundOpacity } as React.CSSProperties}>
             <div className={`grid gap-6 print:gap-0 ${testsPerPage === 2 ? 'grid-cols-2' : testsPerPage === 4 ? 'grid-cols-2' : ''}`}>
               {studentsOnPage.map((student) => {
-                // Более надежный поиск варианта
-                const variant = variants.find(v => {
-                  const variantStudentId = typeof v.studentId === 'string' 
-                    ? v.studentId 
-                    : v.studentId?._id;
-                  return variantStudentId === student._id;
-                });
-                
+                const variant = variantsMap.get(student._id);
                 const variantCode = variant?.variantCode || '';
-                const questionsToRender = variant?.shuffledQuestions && variant.shuffledQuestions.length > 0
-                  ? variant.shuffledQuestions
+                const rawQuestions = isBlockTest
+                  ? test.subjectTests?.flatMap((st: any) => st.questions || [])
                   : test.questions;
-
-                // console.log(`🎨 RENDER: Student ${student.fullName}:`, {
-                //   studentId: student._id,
-                //   hasVariant: !!variant,
-                //   variantStudentId: variant ? (typeof variant.studentId === 'string' ? variant.studentId : variant.studentId?._id) : 'none',
-                //   variantCode,
-                //   hasShuffledQuestions: !!variant?.shuffledQuestions,
-                //   questionsCount: questionsToRender?.length,
-                //   firstQuestionVariants: questionsToRender?.[0]?.variants?.map((v: any) => 
-                //     `${v.letter}: ${v.text?.substring(0, 20)}`
-                //   )
-                // });
+                const shuffledOk = variant?.shuffledQuestions?.length === rawQuestionsCount;
+                const questionsToRender = shuffledOk
+                  ? variant.shuffledQuestions
+                  : rawQuestions;
 
                 return (
-                  <div 
-                    key={student._id} 
-                    className={testsPerPage > 1 ? 'border-2 border-gray-300 p-3' : ''} 
-                    style={{ 
+                  <div
+                    key={student._id}
+                    className={`print-page-table ${testsPerPage > 1 ? 'border-2 border-gray-300 p-3' : ''}`}
+                    style={{
                       fontFamily,
                       lineHeight,
-                      backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
-                      backgroundSize: 'contain',
-                      backgroundPosition: 'center',
-                      backgroundRepeat: 'no-repeat',
                       position: 'relative'
                     }}
                   >
-                    {backgroundImage && (
-                      <div 
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: 'white',
-                          opacity: 1 - backgroundOpacity,
-                          pointerEvents: 'none'
-                        }}
-                      />
-                    )}
-                    
-                    <div style={{ position: 'relative', zIndex: 1 }}>
+                    {/* Academy Header — repeats on every printed page via table-header-group */}
+                    <div className="print-page-header">
+                      <div>
+                        <div className="flex items-center justify-between border-b-2 border-gray-800 pb-1 mb-1" style={{ fontFamily: 'Times New Roman, serif' }}>
+                          <div className="flex items-center gap-2">
+                            <img src="/logo.png" alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                          </div>
+                          <div className="text-center flex-1 px-2">
+                            <div className="font-bold tracking-wide" style={{ fontSize: '16px', color: '#1a1a6e' }}>MATH ACADEMY</div>
+                            <div className="font-bold" style={{ fontSize: '11px', color: '#444' }}>Xususiy maktabi</div>
+                          </div>
+                          <div className="text-right">
+                            <div style={{ fontSize: '10px', color: '#333', lineHeight: '1.3' }}>Sharqona ta'lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+                            <div className="font-bold" style={{ fontSize: '11px', color: '#1a1a6e' }}>&#9742; +91-333-66-22</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="print-page-body">
+                    <div>
                     <div className={`${spacingClasses.header}`}>
                       <div className={`flex items-center gap-3 ${testsPerPage > 1 ? 'text-sm' : ''}`}>
                         <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
@@ -629,38 +623,97 @@ export default function TestPrintPage() {
                     <hr className="border-t-2 border-gray-800 mb-3" />
 
                     <div className={columnsCount === 2 ? 'columns-2 gap-4' : ''}>
-                      <div className={spacingClasses.questions}>
-                        {questionsToRender?.map((question: any, index: number) => {
-                          const questionText = convertTiptapJsonToText(question.text);
+                      {isBlockTest && test.subjectTests?.length > 0 ? (() => {
+                        const subjectGroups = test.subjectTests.map((st: any) => ({
+                          name: st.subjectId?.nameUzb || 'Fan',
+                          count: st.questions?.length || 0,
+                        }));
+
+                        const totalExpected = subjectGroups.reduce((s: number, g: any) => s + g.count, 0);
+                        const shuffledMatch = variant?.shuffledQuestions?.length === totalExpected;
+                        const allQuestions = shuffledMatch
+                          ? variant.shuffledQuestions
+                          : test.subjectTests.flatMap((st: any) => st.questions || []);
+
+                        let offset = 0;
+                        let globalIndex = 0;
+
+                        return subjectGroups.map((sg: any, sgIndex: number) => {
+                          const subjectQuestions = allQuestions.slice(offset, offset + sg.count);
+                          offset += sg.count;
 
                           return (
-                            <div key={index} className={`page-break-inside-avoid ${spacingClasses.question}`}>
-                              <div className="mb-1">
-                                <span className="font-bold">{index + 1}. </span>
-                                <span><MathText text={questionText} /></span>
+                            <div key={sgIndex}>
+                              <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px` }}>
+                                {sg.name} — {sg.count} ta savol
                               </div>
-                              {question.imageUrl && (
-                                <div className="my-2 ml-6">
-                                  <img src={question.imageUrl} alt="Question" className="max-w-full h-auto" style={{ maxHeight: testsPerPage === 1 ? '200px' : '150px', objectFit: 'contain' }} />
-                                </div>
-                              )}
-                              <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
-                                {question.variants?.map((qVariant: any) => {
-                                  const variantText = convertTiptapJsonToText(qVariant.text);
+                              <div className={spacingClasses.questions}>
+                                {subjectQuestions.map((question: any, qi: number) => {
+                                  const currentIndex = globalIndex++;
+                                  const questionText = convertTiptapJsonToText(question.text);
                                   return (
-                                    <span key={qVariant.letter} className="mr-3">
-                                      <span className="font-semibold">{qVariant.letter}) </span>
-                                      <MathText text={variantText} />
-                                    </span>
+                                    <div key={qi} className={`page-break-inside-avoid ${spacingClasses.question}`}>
+                                      <div className="mb-1">
+                                        <span className="font-bold">{currentIndex + 1}. </span>
+                                        <span><MathText text={questionText} /></span>
+                                      </div>
+                                      {question.imageUrl && (
+                                        <div className="my-2 ml-6">
+                                          <img src={question.imageUrl} alt="Question" className="max-w-full h-auto" style={{ maxHeight: testsPerPage === 1 ? '200px' : '150px', objectFit: 'contain' }} />
+                                        </div>
+                                      )}
+                                      <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
+                                        {question.variants?.map((qVariant: any) => {
+                                          const variantText = convertTiptapJsonToText(qVariant.text);
+                                          return (
+                                            <span key={qVariant.letter} className="mr-3">
+                                              <span className="font-semibold">{qVariant.letter}) </span>
+                                              <MathText text={variantText} />
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
                                   );
                                 })}
                               </div>
                             </div>
                           );
-                        })}
-                      </div>
+                        });
+                      })() : (
+                        <div className={spacingClasses.questions}>
+                          {questionsToRender?.map((question: any, index: number) => {
+                            const questionText = convertTiptapJsonToText(question.text);
+                            return (
+                              <div key={index} className={`page-break-inside-avoid ${spacingClasses.question}`}>
+                                <div className="mb-1">
+                                  <span className="font-bold">{index + 1}. </span>
+                                  <span><MathText text={questionText} /></span>
+                                </div>
+                                {question.imageUrl && (
+                                  <div className="my-2 ml-6">
+                                    <img src={question.imageUrl} alt="Question" className="max-w-full h-auto" style={{ maxHeight: testsPerPage === 1 ? '200px' : '150px', objectFit: 'contain' }} />
+                                  </div>
+                                )}
+                                <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
+                                  {question.variants?.map((qVariant: any) => {
+                                    const variantText = convertTiptapJsonToText(qVariant.text);
+                                    return (
+                                      <span key={qVariant.letter} className="mr-3">
+                                        <span className="font-semibold">{qVariant.letter}) </span>
+                                        <MathText text={variantText} />
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    </div>
+                    </div>{/* close content wrapper */}
+                    </div>{/* close print-page-body */}
                   </div>
                 );
               })}
@@ -679,14 +732,28 @@ export default function TestPrintPage() {
     return (
       <div>
         {selectedStudents.map((student) => {
-          const variant = variants.find(v => v.studentId?._id === student._id);
+          const variant = variantsMap.get(student._id);
           const variantCode = variant?.variantCode || '';
           const questionsToRender = variant?.shuffledQuestions && variant.shuffledQuestions.length > 0
             ? variant.shuffledQuestions
-            : test.questions;
+            : (isBlockTest ? test.subjectTests?.flatMap((st: any) => st.questions || []) : test.questions);
 
           return (
             <div key={student._id} className="page-break mb-8">
+              {/* Academy Header */}
+              <div className="flex items-center justify-between border-b-2 border-gray-800 pb-1 mb-1" style={{ fontFamily: 'Times New Roman, serif' }}>
+                <div className="flex items-center gap-2">
+                  <img src="/logo.png" alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                </div>
+                <div className="text-center flex-1 px-2">
+                  <div className="font-bold tracking-wide" style={{ fontSize: '16px', color: '#1a1a6e' }}>MATH ACADEMY</div>
+                  <div className="font-bold" style={{ fontSize: '11px', color: '#444' }}>Xususiy maktabi</div>
+                </div>
+                <div className="text-right">
+                  <div style={{ fontSize: '10px', color: '#333', lineHeight: '1.3' }}>Sharqona ta&apos;lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+                  <div className="font-bold" style={{ fontSize: '11px', color: '#1a1a6e' }}>&#9742; +91-333-66-22</div>
+                </div>
+              </div>
               <div className="flex justify-between items-start mb-6">
                 <div className="text-center flex-1">
                   <h1 className="text-2xl font-bold mb-2">Javoblar kaliti</h1>
@@ -696,12 +763,50 @@ export default function TestPrintPage() {
               </div>
               <hr className="border-t-2 border-gray-800 mb-4" />
               <div>
-                {questionsToRender?.map((question: any, index: number) => (
-                  <div key={index} className="mb-1">
-                    <span className="font-bold">{index + 1}. </span>
-                    <span className="font-bold text-blue-600">{question.correctAnswer}</span>
-                  </div>
-                ))}
+                {isBlockTest && test.subjectTests?.length > 0 ? (() => {
+                  const subjectGroups = test.subjectTests.map((st: any) => ({
+                    name: st.subjectId?.nameUzb || 'Fan',
+                    count: st.questions?.length || 0,
+                  }));
+
+                  const totalExpected = subjectGroups.reduce((s: number, g: any) => s + g.count, 0);
+                  const shuffledMatch = variant?.shuffledQuestions?.length === totalExpected;
+                  const allQuestions = shuffledMatch
+                    ? variant.shuffledQuestions
+                    : test.subjectTests.flatMap((st: any) => st.questions || []);
+
+                  let offset = 0;
+                  let globalIndex = 0;
+
+                  return subjectGroups.map((sg: any, sgIndex: number) => {
+                    const subjectQuestions = allQuestions.slice(offset, offset + sg.count);
+                    offset += sg.count;
+
+                    return (
+                      <div key={sgIndex}>
+                        <div className="font-bold border-b border-gray-400 pb-1 mb-2 mt-3">
+                          {sg.name} — {sg.count} ta savol
+                        </div>
+                        {subjectQuestions.map((question: any, qi: number) => {
+                          const currentIndex = globalIndex++;
+                          return (
+                            <div key={qi} className="mb-1">
+                              <span className="font-bold">{currentIndex + 1}. </span>
+                              <span className="font-bold text-blue-600">{question.correctAnswer}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  });
+                })() : (
+                  questionsToRender?.map((question: any, index: number) => (
+                    <div key={index} className="mb-1">
+                      <span className="font-bold">{index + 1}. </span>
+                      <span className="font-bold text-blue-600">{question.correctAnswer}</span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           );
@@ -720,12 +825,11 @@ export default function TestPrintPage() {
       pages.push(selectedStudents.slice(i, i + sheetsPerPage));
     }
 
-    // Определяем количество вопросов для выбора layout
-    const firstVariant = variants.find(v => v.studentId?._id === selectedStudents[0]?._id);
-    const questionsToRender = firstVariant?.shuffledQuestions && firstVariant.shuffledQuestions.length > 0
-      ? firstVariant.shuffledQuestions
+    // Determine total questions for layout
+    const allRawQuestions = isBlockTest
+      ? test.subjectTests?.flatMap((st: any) => st.questions || [])
       : test.questions;
-    const totalQuestions = questionsToRender?.length || 0;
+    const totalQuestions = allRawQuestions?.length || 0;
     
     // Для 6 и 2 листов на странице: если вопросов <= 44, используем вертикальный layout, иначе горизонтальный
     const useVerticalLayout = (sheetsPerPage === 6 || sheetsPerPage === 2) && totalQuestions <= 44;
@@ -763,22 +867,29 @@ export default function TestPrintPage() {
             breakInside: 'avoid'
           }}>
             {studentsOnPage.map((student) => {
-              const variant = variants.find(v => v.studentId?._id === student._id);
+              const variant = variantsMap.get(student._id);
               const variantCode = variant?.variantCode || '';
-              const questionsToRender = variant?.shuffledQuestions && variant.shuffledQuestions.length > 0
-                ? variant.shuffledQuestions
+              const rawQuestions = isBlockTest
+                ? test.subjectTests?.flatMap((st: any) => st.questions || [])
                 : test.questions;
+              const totalRaw = rawQuestions?.length || 0;
+              const shuffledOk = variant?.shuffledQuestions?.length === totalRaw;
+              const questionsToRender = shuffledOk
+                ? variant.shuffledQuestions
+                : rawQuestions;
 
               return (
                 <div key={student._id} style={{
-                  width: sheetsPerPage === 1 ? '50%' : 
-                         (sheetsPerPage === 2 && useVerticalLayout) ? '50%' : 
+                  width: sheetsPerPage === 1 ? '100%' :
+                         (sheetsPerPage === 2 && useVerticalLayout) ? '50%' :
                          '100%',
                   height: '100%',
                   overflow: 'visible',
                   pageBreakInside: 'avoid',
                   breakInside: 'avoid',
-                  margin: (sheetsPerPage === 2 && useVerticalLayout) ? '0 auto' : '0'
+                  margin: sheetsPerPage === 1 ? '0 auto' : (sheetsPerPage === 2 && useVerticalLayout) ? '0 auto' : '0',
+                  display: 'flex',
+                  justifyContent: 'center'
                 }}>
                   <AnswerSheet
                     student={{
@@ -820,42 +931,42 @@ export default function TestPrintPage() {
             </Button>
 
             {/* Right: Action Buttons */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {/* Print Button */}
-              <Button size="lg" onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700">
-                <Printer className="w-5 h-5 mr-2" />
+              <Button size="sm" onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700">
+                <Printer className="w-4 h-4 mr-1" />
                 Chop etish
               </Button>
 
               {/* Export Buttons */}
-              <div className="flex items-center gap-2 border-l pl-3">
-                <Button 
-                  size="lg" 
-                  variant="outline" 
+              <div className="flex items-center gap-1.5 border-l pl-2">
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={type === 'sheets' ? handleDownloadAnswerKeyPDF : handleDownloadPDF}
                   disabled={exporting}
                   className="border-red-300 text-red-600 hover:bg-red-50"
                 >
-                  <FileDown className="w-5 h-5 mr-2" />
+                  <FileDown className="w-4 h-4 mr-1" />
                   {type === 'sheets' ? 'Titul PDF' : 'PDF'}
                 </Button>
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  onClick={type === 'sheets' ? handleDownloadAnswerKeyWord : handleDownloadWord} 
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={type === 'sheets' ? handleDownloadAnswerKeyWord : handleDownloadWord}
                   disabled={exporting}
                   className="border-blue-300 text-blue-600 hover:bg-blue-50"
                 >
-                  <FileText className="w-5 h-5 mr-2" />
+                  <FileText className="w-4 h-4 mr-1" />
                   {exporting ? `${exportProgress}%` : (type === 'sheets' ? 'Titul Word' : 'Word')}
                 </Button>
               </div>
 
               {/* Settings Button */}
               {(type === 'questions' || type === 'sheets') && (
-                <Button 
-                  size="lg" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => setShowSettingsPanel(!showSettingsPanel)}
                   className="border-gray-300"
                 >
@@ -885,217 +996,116 @@ export default function TestPrintPage() {
         </div>
       </div>
 
-      {/* Fixed Side Panel - Questions Settings */}
-      {showSettingsPanel && type === 'questions' && (
-        <div className="no-print fixed right-4 top-20 w-80 bg-white border shadow-lg rounded-lg p-4 max-h-[calc(100vh-100px)] overflow-y-auto z-50">
-          <h3 className="font-semibold text-gray-900 mb-4">Sozlamalar</h3>
-
-          <div className="space-y-4">
-              {/* Text Settings */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Shrift turi</label>
-                <select 
-                  value={fontFamily} 
-                  onChange={(e) => setFontFamily(e.target.value)}
-                  className="w-full p-2 border rounded text-sm"
-                  style={{ fontFamily }}
-                >
-                  <option value="Arial">Arial</option>
-                  <option value="Times New Roman">Times New Roman</option>
-                  <option value="Calibri">Calibri</option>
-                  <option value="Cambria">Cambria</option>
-                  <option value="Georgia">Georgia</option>
-                  <option value="Verdana">Verdana</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">O'lchami: {fontSize}px</label>
-                <input 
-                  type="range" 
-                  min="8" 
-                  max="18" 
-                  value={fontSize} 
-                  onChange={(e) => setFontSize(Number(e.target.value))} 
-                  className="w-full"
-                />
-              </div>
-
-      {/* Fixed Side Panel - Answer Sheets Settings */}
-      {showSettingsPanel && type === 'sheets' && (
-        <div className="no-print fixed right-4 top-20 w-80 bg-white border shadow-lg rounded-lg p-4 max-h-[calc(100vh-100px)] overflow-y-auto z-50">
-          <h3 className="font-semibold text-gray-900 mb-4">Javob varaqasi sozlamalari</h3>
-
-          <div className="space-y-4">
-              {/* Sheets Per Page */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Bir sahifada: {sheetsPerPage} ta
-                </label>
-                <select 
-                  value={sheetsPerPage} 
-                  onChange={(e) => setSheetsPerPage(Number(e.target.value))}
-                  className="w-full p-2 border rounded text-sm"
-                >
-                  <option value={1}>1 ta varoq</option>
-                  <option value={2}>2 ta varoq</option>
-                  <option value={4}>4 ta varoq</option>
-                </select>
-              </div>
-
-              {/* Font Settings */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Shrift turi</label>
-                <select 
-                  value={fontFamily} 
-                  onChange={(e) => setFontFamily(e.target.value)}
-                  className="w-full p-2 border rounded text-sm"
-                  style={{ fontFamily }}
-                >
-                  <option value="Arial">Arial</option>
-                  <option value="Times New Roman">Times New Roman</option>
-                  <option value="Calibri">Calibri</option>
-                  <option value="Cambria">Cambria</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">O'lchami: {fontSize}px</label>
-                <input 
-                  type="range" 
-                  min="6" 
-                  max="14" 
-                  value={fontSize} 
-                  onChange={(e) => setFontSize(Number(e.target.value))} 
-                  className="w-full"
-                />
-              </div>
-
-              {/* Background Settings */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Fon shaffoflik: {(backgroundOpacity * 100).toFixed(0)}%
-                </label>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="0.3" 
-                  step="0.01"
-                  value={backgroundOpacity} 
-                  onChange={(e) => setBackgroundOpacity(Number(e.target.value))} 
-                  className="w-full"
-                />
-              </div>
+      {/* Fixed Side Panel - Settings */}
+      {showSettingsPanel && (
+        <div className="no-print fixed right-4 top-20 w-72 bg-white border shadow-lg rounded-lg p-4 max-h-[calc(100vh-100px)] overflow-y-auto z-50">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-900 text-sm">Sozlamalar</h3>
+            <button onClick={() => setShowSettingsPanel(false)} className="text-gray-400 hover:text-gray-600">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-      )}
 
+          <div className="space-y-3">
+            {/* Sheets per page - faqat sheets uchun */}
+            {type === 'sheets' && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Qatorlar oralig'i</label>
-                <select 
-                  value={lineHeight} 
-                  onChange={(e) => setLineHeight(Number(e.target.value))}
-                  className="w-full p-2 border rounded text-sm"
-                >
+                <label className="block text-xs font-medium text-gray-700 mb-1">Bir sahifada</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {[1, 2, 4, 6].map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => setSheetsPerPage(count)}
+                      className={`py-1.5 rounded text-xs ${sheetsPerPage === count ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Font family */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Shrift</label>
+              <select
+                value={fontFamily}
+                onChange={(e) => setFontFamily(e.target.value)}
+                className="w-full p-1.5 border rounded text-sm"
+                style={{ fontFamily }}
+              >
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Calibri">Calibri</option>
+                <option value="Cambria">Cambria</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Verdana">Verdana</option>
+              </select>
+            </div>
+
+            {/* Font size */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">O'lcham: {fontSize}px</label>
+              <input type="range" min="7" max="18" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} className="w-full" />
+            </div>
+
+            {/* Line height - faqat questions uchun */}
+            {type === 'questions' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Qator oralig'i</label>
+                <select value={lineHeight} onChange={(e) => setLineHeight(Number(e.target.value))} className="w-full p-1.5 border rounded text-sm">
                   <option value={1}>1.0</option>
                   <option value={1.15}>1.15</option>
                   <option value={1.5}>1.5</option>
                   <option value={2}>2.0</option>
                 </select>
               </div>
+            )}
 
+            {/* Columns - faqat questions uchun */}
+            {type === 'questions' && (
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Ustunlar</label>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setColumnsCount(1)} 
-                    className={`flex-1 py-2 rounded text-sm ${columnsCount === 1 ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                  >
-                    1
-                  </button>
-                  <button 
-                    onClick={() => setColumnsCount(2)} 
-                    className={`flex-1 py-2 rounded text-sm ${columnsCount === 2 ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                  >
-                    2
-                  </button>
+                <div className="flex gap-1">
+                  {[1, 2].map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setColumnsCount(c)}
+                      className={`flex-1 py-1.5 rounded text-xs ${columnsCount === c ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                    >
+                      {c}
+                    </button>
+                  ))}
                 </div>
               </div>
+            )}
 
-              {/* Background Settings */}
-              <div className="border-t pt-4">
-                <label className="block text-xs font-medium text-gray-700 mb-2">Fon rasmi</label>
-                
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    id="background-upload"
-                  />
-                  <label
-                    htmlFor="background-upload"
-                    className="flex-1 px-3 py-1.5 bg-blue-500 text-white rounded cursor-pointer hover:bg-blue-600 text-xs text-center"
-                  >
-                    Yuklash
-                  </label>
-                  
-                  <button
-                    onClick={resetBackground}
-                    className="flex-1 px-3 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
-                  >
-                    Logo
-                  </button>
-                  
-                  {backgroundImage && (
-                    <button
-                      onClick={removeBackgroundImage}
-                      className="flex-1 px-3 py-1.5 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
-                    >
-                      O'chirish
-                    </button>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Shaffoflik: {Math.round(backgroundOpacity * 100)}%</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={backgroundOpacity}
-                    onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-                
+            {/* Background / Logo */}
+            <div className="border-t pt-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Fon rasmi / Logo</label>
+              <div className="flex gap-1 mb-2">
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="background-upload" />
+                <label htmlFor="background-upload" className="flex-1 px-2 py-1 bg-blue-500 text-white rounded cursor-pointer hover:bg-blue-600 text-xs text-center">
+                  Yuklash
+                </label>
+                <button onClick={resetBackground} className="flex-1 px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs">
+                  Logo
+                </button>
                 {backgroundImage && (
-                  <div className="mt-2 p-2 bg-gray-50 rounded border">
-                    <img src={backgroundImage} alt="Preview" className="h-16 mx-auto object-contain" />
-                  </div>
+                  <button onClick={removeBackgroundImage} className="flex-1 px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs">
+                    O'chirish
+                  </button>
                 )}
               </div>
-            </div>
-        </div>
-      )}
-
-      {showSettingsPanel && type === 'sheets' && (
-        <div className="no-print fixed right-4 top-20 w-80 bg-white border shadow-lg rounded-lg p-4 z-50">
-          <div className="mb-4">
-            <h3 className="font-semibold text-gray-900 mb-3">Sozlamalar</h3>
-            <label className="block text-sm font-medium mb-2 text-gray-700">Bir sahifada varaqlar</label>
-            <div className="grid grid-cols-4 gap-2">
-              {[1, 2, 4, 6].map((count) => (
-                <button 
-                  key={count}
-                  onClick={() => setSheetsPerPage(count)} 
-                  className={`py-2 rounded border ${sheetsPerPage === count ? 'bg-blue-500 text-white border-blue-500' : 'bg-white border-gray-300 hover:bg-gray-50'}`}
-                >
-                  {count}
-                </button>
-              ))}
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Shaffoflik: {Math.round(backgroundOpacity * 100)}%</label>
+                <input type="range" min="0" max="0.5" step="0.01" value={backgroundOpacity} onChange={(e) => setBackgroundOpacity(Number(e.target.value))} className="w-full" />
+              </div>
+              {backgroundImage && (
+                <div className="mt-1 p-1 bg-gray-50 rounded border">
+                  <img src={backgroundImage} alt="Preview" className="h-12 mx-auto object-contain" />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1107,46 +1117,37 @@ export default function TestPrintPage() {
 
       <style>{`
         @media print {
-          html, body { 
-            margin: 0 !important; 
-            padding: 0 !important; 
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          
-          /* Настройки страницы без отступов */
-          @page { 
-            size: A4 portrait; 
-            margin: 0;
+
+          @page {
+            size: A4 portrait;
+            margin: 10mm 12mm;
           }
-          
-          /* Каждая печатная страница без рамки */
+
           .print-page {
             position: relative;
             width: 100%;
             padding: 0;
             box-sizing: border-box;
             page-break-after: always;
-            page-break-inside: avoid;
             break-after: page;
-            break-inside: avoid;
           }
-          
-          .print-page::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 400px;
-            height: 400px;
-            background-image: url('/logo.png');
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center;
-            opacity: 0.1;
-            z-index: -1;
-            pointer-events: none;
+
+          /* Table trick: header repeats on every printed page */
+          .print-page-table {
+            display: table;
+            width: 100%;
           }
-          
+          .print-page-header {
+            display: table-header-group;
+          }
+          .print-page-body {
+            display: table-row-group;
+          }
+
           .print-page:last-child {
             page-break-after: auto;
             break-after: auto;
@@ -1180,6 +1181,15 @@ export default function TestPrintPage() {
             border: 1px dashed #ccc;
             margin-bottom: 2rem;
             padding: 1rem;
+          }
+          .print-page-table {
+            display: block;
+          }
+          .print-page-header {
+            display: block;
+          }
+          .print-page-body {
+            display: block;
           }
         }
         

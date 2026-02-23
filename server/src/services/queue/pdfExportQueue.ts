@@ -23,6 +23,14 @@ export interface PDFExportJobData {
   studentIds: string[];
   userId: string;
   isBlockTest?: boolean;
+  settings?: {
+    fontSize?: number;
+    fontFamily?: string;
+    lineHeight?: number;
+    columnsCount?: number;
+    backgroundOpacity?: number;
+    backgroundImage?: string;
+  };
 }
 
 // Job result interface
@@ -132,12 +140,13 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     
     const testData = {
       title: test.name || 'Test',
-      className: test.groupId 
-        ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` 
+      className: test.groupId
+        ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`
         : '',
       subjectName: (test.subjectId as any)?.nameUzb || '',
-      questions: [], // Empty array for compatibility
-      students
+      questions: [],
+      students,
+      settings: job.data.settings
     };
     
     console.log(`✅ [PDF Worker ${process.pid}] Test data prepared: ${students.length} students`);

@@ -30,6 +30,9 @@ export class LiteratureParser extends BaseParser {
       // Extract images (adabiyotda kam, lekin bo'lishi mumkin)
       await this.extractImagesFromDocx(filePath);
       
+      // Extract tables (adabiyotda jadvallar ham bo'lishi mumkin)
+      await this.extractTablesFromDocx(filePath);
+      
       // Convert to Markdown using BaseParser method
       const markdown = await this.extractTextWithPandoc(filePath);
       
@@ -37,6 +40,12 @@ export class LiteratureParser extends BaseParser {
       
       // Parse with literature-specific rules
       const questions = this.parseMarkdown(markdown);
+      
+      // Media qo'shish (jadval va rasmlar)
+      console.log(`🔗 [LITERATURE] Attaching media to ${questions.length} questions...`);
+      for (const question of questions) {
+        this.attachMediaToQuestion(question);
+      }
       
       const duration = Date.now() - startTime;
       console.log(`✅ [LITERATURE] Parsed ${questions.length} questions in ${duration}ms`);
@@ -66,6 +75,12 @@ export class LiteratureParser extends BaseParser {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
+
+      // Rasm marker qatorlarini savol matniga qo'shish
+      if (line.includes('___IMAGE_') && current) {
+        current.text = (current.text || '') + ' ' + line;
+        continue;
+      }
 
       // Check if line is a single option (A), B), C), or D))
       const singleOptionMatch = line.match(/^([A-D])\\?\)\s*(.+)/i);

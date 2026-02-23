@@ -38,6 +38,8 @@ interface ParsedQuestion {
   points: number;
   image?: string; // Локальный путь (загруженный вручную)
   imageUrl?: string; // URL из Word документа
+  imageWidth?: number; // Word dagi original kenglik (px)
+  imageHeight?: number; // Word dagi original balandlik (px)
 }
 
 /**
@@ -696,7 +698,11 @@ export default function TestImportPage() {
                             <img
                               src={q.imageUrl || q.image}
                               alt="Question"
-                              className="max-w-xs max-h-48 rounded-lg border-2 border-gray-200"
+                              className="rounded-lg border-2 border-gray-200"
+                              style={{
+                                maxWidth: q.imageWidth ? `${q.imageWidth}px` : '20rem',
+                                maxHeight: q.imageHeight ? `${q.imageHeight}px` : '12rem',
+                              }}
                             />
                             <button
                               type="button"
