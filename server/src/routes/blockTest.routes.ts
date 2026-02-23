@@ -1540,24 +1540,25 @@ router.get('/:id/export-answer-key-pdf', authenticate, async (req: AuthRequest, 
     
     // Title
     doc.fontSize(16).font('Helvetica-Bold').text(`Block Test ${blockTest.classNumber}-sinf - Titul varoq`, { align: 'center' });
-    doc.fontSize(12).font('Helvetica').text((blockTest.subjectId as any)?.nameUzb || '', { align: 'center' });
+    doc.fontSize(12).font('Helvetica').text(((blockTest as Record<string, unknown>).subjectId as Record<string, unknown>)?.nameUzb as string || '', { align: 'center' });
     doc.moveDown(2);
-    
+
     // Answer key table
     variants.forEach((variant, vIdx) => {
       if (vIdx > 0 && vIdx % 2 === 0) {
         doc.addPage();
       }
-      
+
       doc.fontSize(12).font('Helvetica-Bold').text(`Variant ${variant.variantCode} - ${variant.studentId ? `${(variant.studentId as any).firstName} ${(variant.studentId as any).lastName}` : ''}`);
       doc.moveDown(0.5);
-      
+
       // Answers in grid format (10 per row)
       const answersPerRow = 10;
       let currentRow = '';
-      variant.shuffledQuestions?.forEach((q: any, idx: number) => {
+      const questions = variant.shuffledQuestions || [];
+      questions.forEach((q: any, idx: number) => {
         currentRow += `${idx + 1}.${q.correctAnswer || ''}  `;
-        if ((idx + 1) % answersPerRow === 0 || idx === variant.shuffledQuestions.length - 1) {
+        if ((idx + 1) % answersPerRow === 0 || idx === questions.length - 1) {
           doc.fontSize(10).font('Helvetica').text(currentRow);
           currentRow = '';
         }
@@ -1616,15 +1617,15 @@ router.get('/:id/export-answer-key-docx', authenticate, async (req: AuthRequest,
             alignment: AlignmentType.CENTER,
           }),
           new Paragraph({
-            text: (blockTest.subjectId as any)?.nameUzb || '',
+            text: ((blockTest as Record<string, unknown>).subjectId as Record<string, unknown>)?.nameUzb as string || '',
             alignment: AlignmentType.CENTER,
           }),
           new Paragraph({ text: '' }),
-          
+
           // Answer key
           ...variants.flatMap((variant) => {
             const rows: any[] = [];
-            
+
             // Variant header
             rows.push(
               new Paragraph({
@@ -1636,13 +1637,14 @@ router.get('/:id/export-answer-key-docx', authenticate, async (req: AuthRequest,
                 ]
               })
             );
-            
+
             // Answers (10 per row)
             const answersPerRow = 10;
             let currentRow = '';
-            variant.shuffledQuestions?.forEach((q: any, idx: number) => {
+            const questions = variant.shuffledQuestions || [];
+            questions.forEach((q: any, idx: number) => {
               currentRow += `${idx + 1}.${q.correctAnswer || ''}  `;
-              if ((idx + 1) % answersPerRow === 0 || idx === variant.shuffledQuestions.length - 1) {
+              if ((idx + 1) % answersPerRow === 0 || idx === questions.length - 1) {
                 rows.push(new Paragraph({ text: currentRow }));
                 currentRow = '';
               }
@@ -1680,14 +1682,14 @@ router.get('/variants/:variantCode/answer-sheet', authenticate, async (req: Auth
     // Find variant
     const variant = await StudentVariant.findOne({ variantCode })
       .populate('studentId', 'firstName lastName')
-      .populate('blockTestId')
+      .populate('testId')
       .lean();
-    
+
     if (!variant) {
       return res.status(404).json({ message: 'Variant topilmadi' });
     }
-    
-    const blockTest = variant.blockTestId as any;
+
+    const blockTest = (variant as Record<string, unknown>).testId as any;
     const student = variant.studentId as any;
     
     // Read HTML template
