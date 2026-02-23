@@ -945,7 +945,7 @@ export class PDFGeneratorService {
       }
 
       return `
-      <div class="sheet" style="width:210mm;position:relative;background:white;padding:10mm;font-family:Arial,sans-serif;color:black;box-sizing:border-box;page-break-after:always">
+      <div class="sheet" style="width:210mm;height:297mm;position:relative;background:white;padding:10mm;font-family:Arial,sans-serif;color:black;box-sizing:border-box;overflow:hidden">
         <!-- Academy Header -->
         <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:2mm;margin-bottom:2mm;padding:0 5mm;font-family:'Times New Roman',serif">
           <div style="display:flex;align-items:center;gap:2mm">
@@ -1005,6 +1005,7 @@ export class PDFGeneratorService {
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page { size: A4 portrait; margin: 0; }
   body { margin: 0; padding: 0; }
+  .sheet { page-break-after: always; }
   .sheet:last-child { page-break-after: auto; }
 </style>
 </head><body>${sheetsHtml}</body></html>`;
