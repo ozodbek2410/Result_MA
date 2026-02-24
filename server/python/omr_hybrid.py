@@ -153,43 +153,43 @@ class HybridOMR:
     
     def find_all_circles(self, image):
         """Barcha doirachalarni topish - yaxshilangan"""
-        self.log("🔍 Doirachalarni topish...")
-        
+        self.log("Doirachalarni topish...")
+
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
+
         # Gaussian blur
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        
+
         # Adaptive threshold
         thresh = cv2.adaptiveThreshold(
-            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV, 11, 2
         )
-        
+
         # Morphological operations
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-        
+
         # Konturlarni topish
         cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+
         circles = []
-        
+
         for c in cnts:
             (x, y, w, h) = cv2.boundingRect(c)
             area = cv2.contourArea(c)
             ar = w / float(h) if h > 0 else 0
-            
+
             # Doiracha filtri - kengaytirilgan
-            if (12 <= w <= 70 and 12 <= h <= 70 and 
-                0.65 <= ar <= 1.35 and 
+            if (12 <= w <= 70 and 12 <= h <= 70 and
+                0.65 <= ar <= 1.35 and
                 150 <= area <= 4000):
-                
+
                 # Circularity
                 perimeter = cv2.arcLength(c, True)
                 if perimeter > 0:
                     circularity = 4 * np.pi * area / (perimeter * perimeter)
-                    
+
                     if circularity > 0.45:
                         cx = x + w // 2
                         cy = y + h // 2
@@ -201,9 +201,151 @@ class HybridOMR:
                             'bbox': (x, y, w, h),
                             'circularity': circularity
                         })
-        
-        self.log(f"✅ {len(circles)} ta doiracha topildi")
+
+        self.log(f"{len(circles)} ta doiracha topildi")
         return circles
+
+    def build_template_grid(self, image, circles):
+        """Template-based grid - aniqlangan doirachalardan grid pozitsiyalarini hisoblash.
+        To'ldirilgan doirachalar kontur deteksiyada birlashib ketganda ishlatiladi."""
+        self.log("Template-based grid yaratish...")
+
+        if len(circles) < 4:
+            return {}
+
+        h_img, w_img = image.shape[:2]
+
+        # 1. X pozitsiyalarini klasterlash
+        all_x = sorted([c['x'] for c in circles])
+        x_clusters = []
+        current_cluster = [all_x[0]]
+        for i in range(1, len(all_x)):
+            if all_x[i] - all_x[i-1] < 15:
+                current_cluster.append(all_x[i])
+            else:
+                x_clusters.append(int(np.mean(current_cluster)))
+                current_cluster = [all_x[i]]
+        x_clusters.append(int(np.mean(current_cluster)))
+
+        self.log(f"  X klasterlar: {x_clusters}")
+
+        # 8 ta X pozitsiya kerak (2 ustun x 4 variant)
+        # Agar 8 dan kam bo'lsa, oraliqdan hisoblash
+        if len(x_clusters) >= 6:
+            # Chap va o'ng ustunlarni ajratish
+            mid_x = w_img // 2
+            left_xs = [x for x in x_clusters if x < mid_x]
+            right_xs = [x for x in x_clusters if x >= mid_x]
+
+            # Har bir ustunda 4 ta pozitsiya bo'lishi kerak
+            left_xs = self._interpolate_positions(left_xs, 4)
+            right_xs = self._interpolate_positions(right_xs, 4)
+
+            x_positions = left_xs + right_xs
+        elif len(x_clusters) >= 4:
+            # Faqat bitta ustun aniqlangan - 4 pozitsiya
+            x_positions = self._interpolate_positions(x_clusters[:4], 4)
+            # Ikkinchi ustunni hisoblash
+            if len(x_clusters) > 4:
+                right_xs = self._interpolate_positions(x_clusters[4:], 4)
+                x_positions = x_positions + right_xs
+        else:
+            self.log("  X pozitsiyalar yetarli emas")
+            return {}
+
+        self.log(f"  X pozitsiyalar: {x_positions}")
+
+        # 2. Y pozitsiyalarini aniqlash
+        all_y = sorted([c['y'] for c in circles])
+        y_clusters = []
+        current_cluster = [all_y[0]]
+        for i in range(1, len(all_y)):
+            if all_y[i] - all_y[i-1] < 12:
+                current_cluster.append(all_y[i])
+            else:
+                y_clusters.append(int(np.mean(current_cluster)))
+                current_cluster = [all_y[i]]
+        y_clusters.append(int(np.mean(current_cluster)))
+
+        self.log(f"  Y klasterlar ({len(y_clusters)} ta): {y_clusters}")
+
+        # 15 qator kerak (yoki TOTAL_QUESTIONS / 2)
+        rows_needed = 15
+        if self.TOTAL_QUESTIONS:
+            columns = len(x_positions) // 4
+            if columns > 0:
+                rows_needed = (self.TOTAL_QUESTIONS + columns - 1) // columns
+
+        y_positions = self._interpolate_positions(y_clusters, rows_needed)
+        self.log(f"  Y pozitsiyalar ({len(y_positions)} ta): {y_positions}")
+
+        # 3. Average bubble size
+        avg_w = int(np.mean([c['w'] for c in circles]))
+        avg_h = int(np.mean([c['h'] for c in circles]))
+        self.log(f"  Doiracha o'lchami: {avg_w}x{avg_h}")
+
+        # 4. Grid yaratish
+        grid = {}
+        columns = len(x_positions) // 4
+        letters = ['A', 'B', 'C', 'D']
+
+        for col in range(columns):
+            col_x = x_positions[col * 4 : col * 4 + 4]
+
+            for row_idx, y_pos in enumerate(y_positions):
+                question_num = row_idx + (col * len(y_positions)) + 1
+
+                if self.TOTAL_QUESTIONS and question_num > self.TOTAL_QUESTIONS:
+                    break
+
+                grid[question_num] = {}
+                for letter_idx, letter in enumerate(letters):
+                    x_pos = col_x[letter_idx]
+                    grid[question_num][letter] = {
+                        'x': x_pos,
+                        'y': y_pos,
+                        'w': avg_w,
+                        'h': avg_h,
+                        'bbox': (x_pos - avg_w // 2, y_pos - avg_h // 2, avg_w, avg_h)
+                    }
+
+        self.log(f"  Template grid yaratildi: {len(grid)} ta savol")
+        return grid
+
+    def _interpolate_positions(self, positions, target_count):
+        """Pozitsiyalar orasini to'ldirish va target_count ga yetkazish"""
+        if len(positions) == 0:
+            return []
+        if len(positions) == 1:
+            return positions
+        if len(positions) >= target_count:
+            # Eng yaqin target_count ta pozitsiyani tanlash
+            return sorted(positions[:target_count])
+
+        # Mavjud pozitsiyalardan oraliqni hisoblash
+        positions = sorted(positions)
+        diffs = [positions[i+1] - positions[i] for i in range(len(positions) - 1)]
+        avg_step = np.mean(diffs)
+
+        # Boshlang'ich va oxirgi pozitsiyalardan interpolatsiya
+        result = list(positions)
+
+        # Oldin qo'shish kerakmi?
+        while len(result) < target_count:
+            # Boshiga qo'shish
+            new_start = result[0] - avg_step
+            if new_start > 0:
+                result.insert(0, int(new_start))
+                if len(result) >= target_count:
+                    break
+
+            # Oxiriga qo'shish
+            new_end = result[-1] + avg_step
+            result.append(int(new_end))
+            if len(result) >= target_count:
+                break
+
+        return sorted(result[:target_count])
     
     def group_circles_into_grid(self, circles):
         """Doirachalarni grid ga guruhlash - 2-5 ustun qo'llab-quvvatlanadi"""
@@ -346,122 +488,120 @@ class HybridOMR:
         corners = self.find_corner_marks(image)
         
         if corners:
-            # REJIM 1: Corner marks bilan (95-98% aniqlik)
+            # REJIM 1: Corner marks bilan
             self.log("")
-            self.log("✅ REJIM: Corner marks bilan (95-98% aniqlik)")
+            self.log("REJIM: Corner marks bilan")
             self.current_threshold = self.FILL_THRESHOLD_WITH_CORNERS
             self.log(f"   Fill threshold: {self.current_threshold}%")
             self.log("")
-            
+
             # Perspective transform
             warped = self.four_point_transform(image, corners)
             self.log("")
-            
+
             # Doirachalarni topish
             circles = self.find_all_circles(warped)
             if not circles:
                 return {"success": False, "error": "Doirachalar topilmadi"}
-            
+
             self.log("")
-            
-            # Grid yaratish
+
+            # Grid yaratish - avval oddiy usul
             grid = self.group_circles_into_grid(circles)
+
+            # Agar grid kam savol topsa, template-based usulga o'tish
+            expected_questions = self.TOTAL_QUESTIONS or 30
+            if len(grid) < expected_questions * 0.6:
+                self.log(f"  Oddiy grid kam topdi ({len(grid)}/{expected_questions}), template-based usulga o'tilmoqda...")
+                grid = self.build_template_grid(warped, circles)
+
             if not grid:
                 return {"success": False, "error": "Grid yaratib bo'lmadi"}
-            
+
             working_image = warped
             mode = "corner_marks"
         else:
-            # REJIM 2: Marker-free (80-90% aniqlik)
+            # REJIM 2: Marker-free
             self.log("")
-            self.log("⚠️ REJIM: Marker-free (80-90% aniqlik)")
+            self.log("REJIM: Marker-free")
             self.current_threshold = self.FILL_THRESHOLD_WITHOUT_CORNERS
             self.log(f"   Fill threshold: {self.current_threshold}%")
             self.log("")
-            
+
             # Doirachalarni topish
             circles = self.find_all_circles(image)
             if not circles:
                 return {"success": False, "error": "Doirachalar topilmadi"}
-            
+
             self.log("")
-            
-            # Grid yaratish
+
+            # Grid yaratish - avval oddiy usul
             grid = self.group_circles_into_grid(circles)
+
+            # Agar grid kam savol topsa, template-based usulga o'tish
+            expected_questions = self.TOTAL_QUESTIONS or 30
+            if len(grid) < expected_questions * 0.6:
+                self.log(f"  Oddiy grid kam topdi ({len(grid)}/{expected_questions}), template-based usulga o'tilmoqda...")
+                grid = self.build_template_grid(image, circles)
+
             if not grid:
                 return {"success": False, "error": "Grid yaratib bo'lmadi"}
-            
+
             working_image = image
             mode = "marker_free"
         
         self.log("")
         
         # 3. Javoblarni aniqlash
-        self.log("🔍 Javoblarni aniqlash...")
+        self.log("Javoblarni aniqlash...")
         self.log("")
-        
+
         detected_answers = {}
-        
+        DELTA_THRESHOLD = 15.0  # Max va ikkinchi o'rtasida min farq (%)
+
         for question_num in sorted(grid.keys()):
             max_fill = 0.0
             selected_answer = None
             fill_data = {}
-            
+
             for letter in ['A', 'B', 'C', 'D']:
                 if letter not in grid[question_num]:
                     continue
-                
+
                 circle = grid[question_num][letter]
                 is_filled, fill_pct = self.check_bubble_filled(working_image, circle)
-                
+
                 fill_data[letter] = fill_pct
-                
+
                 if fill_pct > max_fill:
                     max_fill = fill_pct
                     selected_answer = letter
-            
-            # DEBUG: Q2 uchun batafsil ma'lumot
-            if question_num == 2:
-                self.log(f"\n🔍 DEBUG Q2 - Batafsil tahlil:")
-                for letter in ['A', 'B', 'C', 'D']:
-                    if letter in fill_data:
-                        status_icon = "✅" if fill_data[letter] >= self.current_threshold else "⚠️" if fill_data[letter] >= 40.0 else "❌"
-                        self.log(f"    {letter}: {fill_data[letter]:.1f}% {status_icon}")
-                self.log(f"  Threshold: {self.current_threshold}%")
-                self.log(f"  Max fill: {max_fill:.1f}% ({selected_answer})")
-                self.log("")
-            
-            # VALIDATION: Bir nechta javob to'ldirilganligini tekshirish
-            # Threshold dan yuqori
+
+            # DELTA-BASED VALIDATION
+            # Max fill va ikkinchi eng katta fill orasidagi farqni tekshirish
+            sorted_fills = sorted(fill_data.values(), reverse=True)
+            delta = sorted_fills[0] - sorted_fills[1] if len(sorted_fills) >= 2 else sorted_fills[0]
+
+            # Threshold dan yuqori nechta javob bor
             filled_count = sum(1 for pct in fill_data.values() if pct >= self.current_threshold)
-            
-            # Threshold dan pastda ham to'ldirilgan bo'lishi mumkin (chala)
-            # Agar bitta javob 55% dan yuqori, ikkinchisi 40-55% orasida bo'lsa - bu ham XATO
-            partially_filled = sum(1 for pct in fill_data.values() if 40.0 <= pct < self.current_threshold)
-            
-            # Agar threshold dan yuqori 1 ta, pastda ham 1+ ta bo'lsa - XATO
-            if filled_count >= 1 and partially_filled >= 1:
-                filled_letters = [letter for letter, pct in fill_data.items() if pct >= 40.0]
-                self.log(f"  Q{question_num}: ❌ XATO - {len(filled_letters)} ta javob to'ldirilgan ({', '.join(filled_letters)})")
-                # Bu savolni hisoblamaymiz
-            elif filled_count == 0:
-                # Hech qaysi javob to'ldirilmagan
-                self.log(f"  Q{question_num}: Javob yo'q (max fill: {max_fill:.1f}%)")
-            elif filled_count == 1:
-                # Faqat bitta javob to'ldirilgan - TO'G'RI
+
+            if filled_count >= 2 and delta < DELTA_THRESHOLD:
+                # Haqiqiy ko'p javob: 2+ ta threshold dan yuqori VA ular yaqin
+                filled_letters = [letter for letter, pct in fill_data.items() if pct >= self.current_threshold]
+                self.log(f"  Q{question_num}: XATO - {len(filled_letters)} ta javob ({', '.join(filled_letters)}, delta={delta:.1f}%)")
+            elif max_fill < self.current_threshold and delta < DELTA_THRESHOLD:
+                # Hech qaysi javob aniq to'ldirilmagan
+                self.log(f"  Q{question_num}: Javob yo'q (max={max_fill:.1f}%, delta={delta:.1f}%)")
+            else:
+                # Bitta aniq javob: max fill yetarlicha yuqori YOKI delta yetarli katta
                 detected_answers[str(question_num)] = selected_answer
-                
+
                 if correct_answers and str(question_num) in correct_answers:
                     correct_ans = correct_answers[str(question_num)]
-                    status = "✅" if selected_answer == correct_ans else "❌"
-                    self.log(f"  Q{question_num}: {selected_answer} {status} (fill: {max_fill:.1f}%)")
+                    status = "+" if selected_answer == correct_ans else "-"
+                    self.log(f"  Q{question_num}: {selected_answer} {status} (fill: {max_fill:.1f}%, delta: {delta:.1f}%)")
                 else:
-                    self.log(f"  Q{question_num}: {selected_answer} (fill: {max_fill:.1f}%)")
-            else:
-                # Bir nechta javob to'ldirilgan - XATO
-                filled_letters = [letter for letter, pct in fill_data.items() if pct >= self.current_threshold]
-                self.log(f"  Q{question_num}: ❌ XATO - {filled_count} ta javob to'ldirilgan ({', '.join(filled_letters)})")
-                # Bu savolni hisoblamaymiz
+                    self.log(f"  Q{question_num}: {selected_answer} (fill: {max_fill:.1f}%, delta: {delta:.1f}%)")
         
         self.log("")
         self.log(f"📊 Aniqlangan javoblar: {len(detected_answers)} ta")
