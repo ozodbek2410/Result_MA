@@ -1,291 +1,157 @@
-1-Variant
+1. Vaqt o'tishi bilan jismning fazodagi vaziyatini boshqa jismlarga nisbatan o'zgarishiga ... dеyiladi.
 
-1. bu yerda $\lbrack a\rbrack - a\ sonining\ butun\ qismi$
+A)ilgarlanma harakat B)trayеktoriya C)mexanik harakat D)ko'chish
 
-$$\left\lbrack - \sqrt{20} \right\rbrack + \left\lbrack - \sqrt{21} \right\rbrack + \left\lbrack - \sqrt{22} \right\rbrack + \ldots + \left\lbrack - \sqrt{40} \right\rbrack$$
+2. Sanoq sistеmasini nimalar tashkil etadi?
 
-**A) −124** B) −105 C) −62 D) −50
+A)sanoq jismi va koordinatalar sistеmasi
 
-2. $\frac{2 + \sqrt{3}}{\sqrt{2} + \sqrt{2 + \sqrt{3}}} + \frac{2 - \sqrt{3}}{\sqrt{2} - \sqrt{2 - \sqrt{3}}} =$
+B) sanoq jismi, unga bog'langan koordinatalar sistеmasi va vaqtni
 
-A) 2 **B)** $\sqrt{\mathbf{2}}$ C) $\frac{\sqrt{2}}{2}$ D) $\frac{\sqrt{6}}{3}$
+o'lchaydigan asbob
 
-3. 4+2$\sqrt{2}$ soniga teskari sonni toping.
+C)koordinatalar sistеmasi va vaqtni o'lchaydigan asbob
 
-A) 4−2$\sqrt{2}$ B) −4−2$\sqrt{2}$ **C) 0,5−0,25**$\sqrt{\mathbf{2}}$ D) $\frac{1}{4 - 2\sqrt{2}}$
+D) sanoq jismi va vaqtni o'lchaydigan asbob
 
-4. Hisoblang:
+3. Harakati o'rganilayotgan jismning o'lchami va shakli kuzatilayotgan sharoitda hеch qanday ahamiyatga ega bo'lmasa, bunday jism ... dеb aytiladi.
 
-$$\frac{\sqrt{7} + \sqrt{5}}{\sqrt{28} + \sqrt{21} + \sqrt{20} + \sqrt{15}} - \frac{\sqrt{3} + \sqrt{5}}{\sqrt{20} - \sqrt{15} + \sqrt{12} - 3}$$
+A)qattiq jism B)moddiy nuqta
 
-A) 2 B) −2 C) 2$\sqrt{3}$ **D) −2**$\sqrt{\mathbf{3}}$
+C)elastik jism D)qo'zg'almas jism
 
-5. ikki sonning yig\`indisi $\sqrt{6}\ ga,$ ayirmasi $\sqrt{10}$ ga teng. ularning ko\`paytmasi ikkidan qanchaga kam? A) 1 B) 2 **C) 3** D) 4
+4. Samolyot avval shimol tomonga 40 km, so'ngra sharq tomonga 30 km masofaga parvoz qildi. Uning ko'chishini toping (km).
 
-6. x=$\sqrt{2}$ va y=$\sqrt{5}$ bo\`lsa,
+A)30 B)40 C)50 D)70
 
-$$\sqrt{9x^{2} + 12xy + 4y^{2}} - \sqrt{9x^{2} - 12xy + 4y^{2}} = ?$$
+5. Havo shari qandaydir balandlikka vеrtikal ko'tarilgach, shamol uni gorizontal yo'nalishda 600 m masofaga uchirib kеtdi. Havo sharining ko'chishi 1 km bo'lsa, havo sharining o'tgan yo'lini
 
-A) $- 6\sqrt{2}\ \ \ \ B)\ 4\sqrt{5}\ \ \ \ \ C) - 4\sqrt{5}\ \ \ \ \mathbf{D)\ 6}\sqrt{\mathbf{2}}$
+aniqlang (m).
 
-7. Hisoblang: $\frac{\sqrt{5 - 3\sqrt{2,(6)}}}{\sqrt{2}} + \frac{\sqrt{5 + 3\sqrt{2,(6)}}}{\sqrt{2}}$
+A)600 B)800 C) 1400 D)1600
 
-A) 2 **B)** $\sqrt{\mathbf{6}}$ C) 2$\sqrt{3}$ D) 2$\sqrt{2}$
+6. 5 cm radiusli charxtosh chеtidagi nuqta ma'lum vaqt ichida 100 marta to'liq aylandi. Nuqtaning yo'li va ko'chishini toping (cm).$\pi = 3$
 
-8. x= n+$\sqrt{n^{2} - 16};\ \ \ y = n - \sqrt{n^{2} - 16}$ va y=2 bo\`lsa, x va y ning o\`rta arifmetigini toping.
+A)314; 0 B)314; 314
 
-A) 3 B) 4 **C) 5** D) 8
+C)30; 0 D)62,8; 62,8
 
-9. Hisoblang: $\sqrt{\frac{13 - 6\sqrt{4,(6)}}{3 + 6\sqrt{0,(22)}}} - \sqrt{\frac{13 + 6\sqrt{4,(6)}}{3 - 6\sqrt{0,(22)}}}$
+7. Jism koordinatlari (0;5) bo'lgan nuqtadan koordinatlari (4;3) nuqtaga ko'chgan. Jismning ko'chish moduli nimaga tеng (m).
 
-A) 2$\sqrt{7}$ B) 2(2$\sqrt{3} - \sqrt{7})$ **C) −2(**$\sqrt{\mathbf{7}}\mathbf{+ 2}\sqrt{\mathbf{3}}\mathbf{)}$ D) 2$\sqrt{14}$
+A)5 B)4 C)$\sqrt{30}$ D)2$\sqrt{5}$
 
-10. Soddalashtiring:
+8. Egrilik radiusi 100 m bo'lgan yo'l qismida 72 km/h tеzlik bilan harakatlanayotgan poyezdning markazga intilma tеzlanishini toping (m/$s^{2}$)?
 
-$$\frac{x\sqrt{y} - 3y\sqrt{x} - 4y\sqrt{y}}{x\sqrt{x} + 4x\sqrt{y} + 3y\sqrt{x}}:\frac{y\sqrt{y} - x\sqrt{y}}{x\sqrt{x} + 2x\sqrt{y} - 3y\sqrt{x}}$$
+A)4 B)2,5 C)2 D)5
 
-A) $\frac{3\sqrt{y} + \sqrt{x}}{\sqrt{y} - \sqrt{x}}$ B) $\frac{\sqrt{y} - 3\sqrt{x}}{\sqrt{y} + \sqrt{x}}$ C) $\frac{\sqrt{y} + \sqrt{x}}{\sqrt{y} - \sqrt{x}}$ **D)** $\frac{\mathbf{4}\sqrt{\mathbf{y}}\mathbf{-}\sqrt{\mathbf{x}}}{\sqrt{\mathbf{y}}\mathbf{+}\sqrt{\mathbf{x}}}$
+9. Tеnnis koptogi 3 m balandlikdan yеrga tushdi va yеrdan qaytib ko'tarilayotganda, 70 cm balandlikda tutib olindi. Koptokning yo'li va ko'chishini toping (m).
 
-11. $a = \pi - e,$ bo\`lsa ifodani soddalashtiring. $\sqrt{a^{2}\left( a^{2} - a + 1 \right) + a^{2}(a + 1) + 1}$−$- \sqrt{a^{2}\left( a^{2} + a - 1 \right) - a^{2}(a + 1) + 1}$
+A)3; 0,7 B)3,7; 2,3
 
-A) $2 - 2a^{2}\ \ \mathbf{B)\ 2}\mathbf{a}^{\mathbf{2}}\ \ \ C)\ 2\ \ \ D)\ \sqrt{a^{4} + 1} - \sqrt{a^{4} - 1}$
+C)3,07; 2,03 D)3; 2,3
 
-12. Hisodblang:
+10. 43.2 km/h tеzlik nеcha ? m/s ga tеng?
 
-$$\sqrt{11} \bullet (\frac{1}{1 + \sqrt{2}} + \frac{1}{\sqrt{2} + \sqrt{3}} + \ldots + \frac{1}{\sqrt{98} + \sqrt{99}} + 1)$$
+A)8 B)12 C)10 D)14
 
-A) 11 B) 22 **C) 33** D) 44
+11. Yengil avtomobil egrilik radiusi 16 m bo'lgan burilishda 12 m/s tеzlikda harakatlanmoqda. Markazga intilma tеzlanishni toping (m/$s^{2}$ ).
 
-13. $\sqrt[3]{4\sqrt{2\sqrt[3]{4\sqrt{2\ldots}}}} + \sqrt{30 + \sqrt{30 + \sqrt{30 + \ldots}} = ?}$
+A)10 B)9 C)6 D)12
 
-A) 6 B) 7 **C) 8** D) 9
 
-14. $\frac{\sqrt{10 + \sqrt{1}} + \sqrt{10 + \sqrt{2}} + \ldots + \sqrt{10 + \sqrt{99}}}{\sqrt{10 - \sqrt{1}} + \sqrt{10 - \sqrt{2}} + \ldots + \sqrt{10 - \sqrt{99}}}$ ni hisoblang.
+___IMAGE_1___
+12. Jismning K nuqtadan O nuqtaga harakat trayektoriyasi koʻrsatilgan. Uning yoʻlini toping.(m)
 
-A) 1 B) 2 C) $\sqrt{2} - 1$ **D)** $\sqrt{\mathbf{2}}\mathbf{+ 1}$
+A) 6 B) 8
 
-15. $\sqrt{8 + 2\sqrt{10 + 2\sqrt{5}}} + \sqrt{8 - 2\sqrt{10 + 2\sqrt{5}}} = ?$
+C) 12 D) 14
 
-A) $\sqrt{2} + \sqrt{5}$ B) $\sqrt{2} + \sqrt{3}$ **C)** $\sqrt{\mathbf{2}}\mathbf{+}\sqrt{\mathbf{10}}$ D) $\sqrt{2} + 1$
+13. Aylanayotgan jismning tangеnsial tеzlanishi 6 m/$s^{2}$, markazga intilma tеzlanishi 8 m/$s^{2}$ ga tеng bo'lsa, uning natijaviy tеzlanishini toping (m/$s^{2}$).
 
-16. $\frac{\sqrt{0,5}}{\sqrt{2,4}} \bullet (\sqrt{\frac{1,2 - 0,7}{1,2 + 0,7}} + \sqrt{\frac{2,4 + 1,4}{2,4 - 1,4}}$ )∙$\frac{\sqrt{1,5 + 0,4}}{\sqrt{0,9 + 1,5}}$ =?
+A)14 B)2 C)7 D)10
 
-**A) 1** B) 2 C) $\sqrt{24}$ D) 5
 
-17. $\sqrt{\frac{n^{4} + 2n^{3} + 2n^{2} + 2n + 1}{n^{2}{(n + 1)}^{2}}}$ ni soddalashtiring
+___IMAGE_2___
+14. Moddiy nuqta A nuqtadan harakat boshlab D nuqtaga yetib kelganida, bosib oʻtgan yoʻli koʻchishidan necha metrga farq qiladi?
 
-**A) 1+**$\frac{\mathbf{1}}{\mathbf{n}}\mathbf{-}\frac{\mathbf{1}}{\mathbf{n + 1}}$ B) 1+$\frac{1}{n} + \frac{1}{n + 1}$
+A) 120 B) 100 C) 50
 
-C) 1 $- \frac{1}{n} - \frac{1}{n + 1}$ D) 1$- \frac{1}{n} + \frac{1}{n + 1}$
+D) 220
 
-18. Hisoblang: $\sqrt[3]{5 + 2\sqrt{13}} + \sqrt[3]{5 - 2\sqrt{13}}$
+15. 1 m/s tеzlik kattami yoki 1 km/h tezlikmi? To'g'ri javobni aniqlang.
 
-A) $\sqrt[3]{2}$ B) 0,25$\sqrt[3]{65}$ **C) 1** D) 1,5
+A)birinchisi 3,6 marta katta
 
-19. $x^{2} + y^{2} + z^{2} = 6x + 8y + 10z - 50$ bo\`lsa, x ni toping.
+B)ikkalasi tеng
 
-A) 27 B) cheksiz ko\`p C) 1 **D) 3**
+C)ikkinchisi 3,6 marta katta
 
-20. Agar $\sqrt{4\sqrt{2} + 2\sqrt{6}} = \sqrt[4]{a} + \sqrt[4]{b}$ bo\`lsa, a+b ni toping.
+D)ikkinchisi 1000 marta katta
 
-**A) 20** B) 18 C) 16 D) 10
+16. Oʻzgarmas tezlik bilan harakatlanayotgan K va L jismlar M nuqtada uchrashgan boʻlsa, KL masofa necha metr?
 
-21. Bunda x=8 va y= 2$\sqrt{2}$
+A) 90 B) 120 C) 180 D) 270
 
-$\frac{x + y}{\sqrt[3]{x^{2}} - \sqrt[3]{xy} + \sqrt[3]{y^{2}}} \bullet (x^{\frac{1}{3}} - y^{\frac{1}{3}}) \bullet \frac{x - y}{\sqrt[3]{x^{2}} + \sqrt[3]{xy} + \sqrt[3]{y^{2}}} \bullet (x^{\frac{1}{3}} + y^{\frac{1}{3}})$=?
+17. Jism yo'lning birinchi yarmini 4 m/s, qolgan yarmini $v_{2}$ tеzlik bilan bosib o'tdi. Agar o'rtacha tеzlik 4,8 m/s bo'lsa, $v_{2}$ tezlikni hisoblang (m/s).
 
-**A) 4** B) 5 C) 6 D) 8
+A)5 B)4 C)6 D)7
 
-22. Hisoblang:
+18. Aftomobil 3 daqiqa ichida 36 km/h tezlik bilan, keyin 5 daqiqa davomida 54 km/h tezlik bilan, 10 daqiqa ichida 72 km/h tezlik bilan harakatlandi .Aftomo- bilning o'rtacha tezligini toping (km/h).
 
-$$\frac{3}{2\sqrt[3]{2} + 2\sqrt[3]{4}} - \frac{3}{2\sqrt[3]{2} - 2\sqrt[3]{4}} + \sqrt[3]{4}$$
+A)61 B)60 C)62 D)54
 
-A) $\sqrt[3]{4}$ B) $\sqrt[3]{16} + 1$
+19. Jism yo'lning birinchi yarmini 6 m/s tеzlik bilan, ikkinchi yarmini 2 marta tеzroq o'tgan bo'lsa, jismning butun harakat davomidagi o'rtacha tеzligi qanday bo'ladi (m/s)?
 
-**C)** ${\mathbf{(}\sqrt[\mathbf{3}]{\mathbf{4}}\mathbf{+ 1)}}^{\mathbf{2}}$ D) ${- (\sqrt[3]{4} + 1)}^{2}$
+A)4 B)8 C)12 D)9
 
-23. $\sqrt{22 - 30\sqrt{4 - 2\sqrt{3}}} + 5 + 3\sqrt{3}$
+20. Bir daqiqada 120 marta aylanayotgan vеntilyator parragining aylanish davrini toping (s). A)5 B)0,5 C)0,05 D)20
 
-A) 10 **B)** $\mathbf{6}\sqrt{\mathbf{3}}$ C) 12 D) 5−3$\sqrt{3}$
+21. Uzunligi 150 m va tеzligi 36 km/h bo'lgan poyezd 300 m uzunlikdagi tunnеlni qancha vaqtda bosib o'tadi (s)?
 
-24. $\frac{\sqrt{1} \bullet \sqrt{2} \bullet \sqrt{3} \bullet \ldots \bullet \sqrt{10}}{\sqrt{x}}$ kasr ratsional son bo\`lishi uchun x quyidagilarning qaysi biriga teng.
+A)45 B)20 C)10 D)30
 
-**A) 7** B) 5 C) 3 D) 2
+22. Uzunligi 480 m bo'lgan poyеzd tеkis harakatlanib, 240 m uzunlikdagi ko'prikdan 2 daqiqada o'tdi. Poyezdning tеzligi qanday bo'ladi (m/s)?
 
-25. $\sqrt{\sqrt{241 + 44\sqrt{30}}} - {(\sqrt{6} - \sqrt{5})}^{- 1}$
+A)4 B)6 C)10 D)36
 
-**A) 0** B) 1 C) $\sqrt{30}$ D) 11
+23. 20 m/s tеzlik bilan harakatlanayotgan avtomobil tormozlanish natijasida 2 s da to'xtadi. Avtomobil tеzlanishining modulini toping (m/$s^{2}$)?
 
-26. Agar a=39$- \sqrt{432}$ bo\`lsa, $\sqrt{a} + \sqrt{3}$ ifodaning qiymatini toping.
+A)20 B)10 C)5 D)4
 
-**A) 6** B) 3 C) 6+$\sqrt{3}$ D) 6$\sqrt{3}$
+24. Tеkis tеzlanuvchan harakatlanayotgan jism 2,5 s davomida tеzligini 30 cm/s ga oshirdi. Jism tеzlanishi qanchaga tеng bo'ladi (m/$s^{2}$)?
 
-27. Hisoblang:
+A)0,24 B)24 C)0,12 D)12
 
-($\frac{10}{\sqrt{6} + 1} + \frac{2}{\sqrt{6} - 2} - \frac{6}{3 - \sqrt{6}}) \bullet (\sqrt{96} + \sqrt{\left( \frac{1}{24} \right)^{- 2}})$
 
-A) −480 B) −240 **C) −120** D) −60
+___IMAGE_3___
+25. Avtomobil haydovchisi uzunligi 3,8 km boʻlgan yoʻlni 3 minutda bir tekisda bosib
 
-28. Soddalashtiring:
 
-$$\frac{(a + 2\sqrt{a} + 1)(\sqrt{a} + \sqrt{b})(\sqrt{a} - \sqrt{b})}{(a - b)({\sqrt{a} + 1)}^{2}} + 2$$
+___IMAGE_4___
+oʻtgan boʻlsa yoʻl qoidasini buzadimi?
 
-A) 0 B) 1 C) -1 **D) 3**
+A) aniqlab boʻlmaydi B) bunday qoida yoʻq C) qoidani buzmaydi D) qoidani buzadi
 
-29. Hisoblang:
+26. 9 m uzunlikdagi ip boshidan jo'nagan chumoli ip oxiriga kеlguncha 5 daqiqa o'tdi. Chumoli tеzligini toping (cm/s).
 
-$${(5^{5\sqrt{5}} \bullet \sqrt{5^{5 - 10\sqrt{5}}})}^{{(\frac{\sqrt{5}}{2})}^{- 2}}$$
+A)3 B)3,5 C)1,8 D)2,9
 
-A) 1 B) $\sqrt{4}$ C) 5 **D) 25**
+27. G'ildirak 0,5 daqiqada 120 marta aylandi. Aylanish chastotasini toping (Hz).
 
-30. A= $\sqrt{2} - \sqrt[3]{2},\ \ \ B = \sqrt[3]{2} + \sqrt[6]{2} + 1$ va $C = \ \sqrt{2} - 1$ bo\`lsa, $\frac{AB}{C}$ ning qiymatini toping.
+A)2 B)3 C)1,5 D)4
 
-A) $\sqrt[6]{2}$ **B)** $\sqrt[\mathbf{3}]{\mathbf{2}}\$ C) $\sqrt{2}$ D) 2
+28. Harbiy reaktiv samolyot 10 s da tezligini 540 dan 900 km/h gacha oshirdi.
 
-![C:\\Users\\User\\Desktop\\blanka\\30 TALIK 2 ta variant.jpg](media/image1.jpeg){width="4.441860236220473in" height="6.130424321959755in"}
+Tezlanishni aniqlang (m/$s^{2}$).
 
-O\`quvchilarim mazza qilsin: 
+A) 12,5 B) 13 C) 10 D) 15
 
-2-Variant
+29. Avtomashina 20 sekundda oʻz tezligini 10 m/s dan 180 km/h gacha oshirsa, uning
 
-31. x= n+$\sqrt{n^{2} - 16};\ \ \ y = n - \sqrt{n^{2} - 16}$ va y=2 bo\`lsa, x va y ning o\`rta arifmetigini toping.
+tezlanishini toping (m/$s^{2}$).
 
-A) 3 B) 4 **C) 5** D) 8
+A) 4 B) 2 C) 3 D) 1
 
-32. Hisoblang: $\sqrt{\frac{13 - 6\sqrt{4,(6)}}{3 + 6\sqrt{0,(22)}}} - \sqrt{\frac{13 + 6\sqrt{4,(6)}}{3 - 6\sqrt{0,(22)}}}$
+30. Jism tekis tezlanuvchan harakatlanib, 6 s davomida oʻz tezligini 10 cm/s dan 40 cm/s gacha oshirdi. Jism necha m/$s^{2}$ tezlanish bilan harakatlangan?
 
-A) 2$\sqrt{7}$ B) 2(2$\sqrt{3} - \sqrt{7})$ **C) −2(**$\sqrt{\mathbf{7}}\mathbf{+ 2}\sqrt{\mathbf{3}}\mathbf{)}$ D) 2$\sqrt{14}$
-
-33. Soddalashtiring:
-
-$$\frac{x\sqrt{y} - 3y\sqrt{x} - 4y\sqrt{y}}{x\sqrt{x} + 4x\sqrt{y} + 3y\sqrt{x}}:\frac{y\sqrt{y} - x\sqrt{y}}{x\sqrt{x} + 2x\sqrt{y} - 3y\sqrt{x}}$$
-
-A) $\frac{3\sqrt{y} + \sqrt{x}}{\sqrt{y} - \sqrt{x}}$ B) $\frac{\sqrt{y} - 3\sqrt{x}}{\sqrt{y} + \sqrt{x}}$ C) $\frac{\sqrt{y} + \sqrt{x}}{\sqrt{y} - \sqrt{x}}$ **D)** $\frac{\mathbf{4}\sqrt{\mathbf{y}}\mathbf{-}\sqrt{\mathbf{x}}}{\sqrt{\mathbf{y}}\mathbf{+}\sqrt{\mathbf{x}}}$
-
-34. x=$\sqrt{2}$ va y=$\sqrt{5}$ bo\`lsa,
-
-$$\sqrt{9x^{2} + 12xy + 4y^{2}} - \sqrt{9x^{2} - 12xy + 4y^{2}} = ?$$
-
-A) $- 6\sqrt{2}\ \ \ \ B)\ 4\sqrt{5}\ \ \ \ \ C) - 4\sqrt{5}\ \ \ \ \mathbf{D)\ 6}\sqrt{\mathbf{2}}$
-
-35. Hisoblang: $\frac{\sqrt{5 - 3\sqrt{2,(6)}}}{\sqrt{2}} + \frac{\sqrt{5 + 3\sqrt{2,(6)}}}{\sqrt{2}}$
-
-A) 2 **B)** $\sqrt{\mathbf{6}}$ C) 2$\sqrt{3}$ D) 2$\sqrt{2}$
-
-36. $\frac{\sqrt{0,5}}{\sqrt{2,4}} \bullet (\sqrt{\frac{1,2 - 0,7}{1,2 + 0,7}} + \sqrt{\frac{2,4 + 1,4}{2,4 - 1,4}}$ )∙$\frac{\sqrt{1,5 + 0,4}}{\sqrt{0,9 + 1,5}}$ =?
-
-**A) 1** B) 2 C) $\sqrt{24}$ D) 5
-
-37. $\sqrt{\frac{n^{4} + 2n^{3} + 2n^{2} + 2n + 1}{n^{2}{(n + 31)}^{2}}}$ ni soddalashtiring
-
-**A) 1+**$\frac{\mathbf{1}}{\mathbf{n}}\mathbf{-}\frac{\mathbf{1}}{\mathbf{n + 1}}$ B) 1+$\frac{1}{n} + \frac{1}{n + 1}$
-
-C) 1 $- \frac{1}{n} - \frac{1}{n + 1}$ D) 1$- \frac{1}{n} + \frac{1}{n + 1}$
-
-38. Hisoblang: $\sqrt[3]{5 + 2\sqrt{13}} + \sqrt[3]{5 - 2\sqrt{13}}$
-
-A) $\sqrt[3]{2}$ B) 0,25$\sqrt[3]{65}$ **C) 1** D) 1,5
-
-39. $x^{2} + y^{2} + z^{2} = 6x + 8y + 10z - 50$ bo\`lsa, x ni toping.
-
-A) 27 B) cheksiz ko\`p C) 1 **D) 3**
-
-40. Agar $\sqrt{4\sqrt{2} + 2\sqrt{6}} = \sqrt[4]{a} + \sqrt[4]{b}$ bo\`lsa, a+b ni toping.
-
-**A) 20** B) 18 C) 16 D) 10
-
-41. 4+2$\sqrt{2}$ somiga teskari sonni toping.
-
-A) 4−2$\sqrt{2}$ B) −4−2$\sqrt{2}$ **C) 0,5−0,25**$\sqrt{\mathbf{2}}$ D) $\frac{1}{4 - 2\sqrt{2}}$
-
-42. Hisoblang:
-
-$$\frac{\sqrt{7} + \sqrt{5}}{\sqrt{28} + \sqrt{21} + \sqrt{20} + \sqrt{15}} - \frac{\sqrt{3} + \sqrt{5}}{\sqrt{20} - \sqrt{15} + \sqrt{12} - 3}$$
-
-A) 2 B) −2 C) 2$\sqrt{3}$ **D) −2**$\sqrt{\mathbf{3}}$
-
-43. ikki sonning yig\`indisi $\sqrt{6}\ ga,$ ayirmasi $\sqrt{10}$ ga teng. ularning ko\`paytmasi ikkidan qanchaga kam? A) 1 B) 2 **C) 3** D) 4
-
-44. bu yerda $\lbrack a\rbrack - a\ sonining\ butun\ qismi$
-
-$$\left\lbrack - \sqrt{20} \right\rbrack + \left\lbrack - \sqrt{21} \right\rbrack + \left\lbrack - \sqrt{22} \right\rbrack + \ldots + \left\lbrack - \sqrt{40} \right\rbrack$$
-
-**A) −124** B) −105 C) −62 D) −50
-
-45. $\frac{2 + \sqrt{3}}{\sqrt{2} + \sqrt{2 + \sqrt{3}}} + \frac{2 - \sqrt{3}}{\sqrt{2} - \sqrt{2 - \sqrt{3}}} =$
-
-A) 2 **B)** $\sqrt{\mathbf{2}}$ C) $\frac{\sqrt{2}}{2}$ D) $\frac{\sqrt{6}}{3}$
-
-46. Agar a=39$- \sqrt{432}$ bo\`lsa, $\sqrt{a} + \sqrt{3}$ ifodaning qiymatini toping.
-
-**A) 6** B) 3 C) 6+$\sqrt{3}$ D) 6$\sqrt{3}$
-
-47. Hisoblang:
-
-($\frac{10}{\sqrt{6} + 1} + \frac{2}{\sqrt{6} - 2} - \frac{6}{3 - \sqrt{6}}) \bullet (\sqrt{96} + \sqrt{\left( \frac{1}{24} \right)^{- 2}})$
-
-A) −480 B) −240 **C) −120** D) −60
-
-48. Soddalashtiring:
-
-$$\frac{(a + 2\sqrt{a} + 31)(\sqrt{a} + \sqrt{b})(\sqrt{a} - \sqrt{b})}{(a - b)({\sqrt{a} + 31)}^{2}} + 2$$
-
-A) 0 B) 1 C) 1 **D) 3**
-
-49. A= $\sqrt{2} - \sqrt[3]{2},\ \ \ B = \sqrt[3]{2} + \sqrt[6]{2} + 1$ va $C = \ \sqrt{2} - 1$ bo\`lsa, $\frac{AB}{C}$ ning qiymatini toping.
-
-A) $\sqrt[6]{2}$ **B)** $\sqrt[\mathbf{3}]{\mathbf{2}}\$ C) $\sqrt{2}$ D) 2
-
-50. Hisoblang:
-
-$${(5^{5\sqrt{5}} \bullet \sqrt{5^{5 - 10\sqrt{5}}})}^{{(\frac{\sqrt{5}}{2})}^{- 2}}$$
-
-A) 1 B) $\sqrt{4}$ C) 5 **D) 25**
-
-51. $\sqrt{22 - 30\sqrt{4 - 2\sqrt{3}}} + 5 + 3\sqrt{3}$
-
-A) 10 **B)** $\mathbf{6}\sqrt{\mathbf{3}}$ C) 12 D) 5−3$\sqrt{3}$
-
-52. $\frac{\sqrt{1} \bullet \sqrt{2} \bullet \sqrt{3} \bullet \ldots \bullet \sqrt{10}}{\sqrt{x}}$ kasr ratsional son bo\`lishi uchun x quyidagilarning qaysi biriga teng.
-
-**A) 7** B) 5 C) 3 D) 2
-
-53. Bunda x=8 va y= 2$\sqrt{2}$
-
-![C:\\Users\\User\\Desktop\\blanka\\30 TALIK 2 ta variant.jpg](media/image1.jpeg){width="4.441860236220473in" height="6.130424321959755in"} $\frac{x + y}{\sqrt[3]{x^{2}} - \sqrt[3]{xy} + \sqrt[3]{y^{2}}} \bullet (x^{\frac{1}{3}} - y^{\frac{1}{3}}) \bullet \frac{x - y}{\sqrt[3]{x^{2}} + \sqrt[3]{xy} + \sqrt[3]{y^{2}}} \bullet (x^{\frac{1}{3}} + y^{\frac{1}{3}})$=?
-
-**A) 4** B) 5 C) 6 D) 8
-
-54. Hisoblang:
-
-$$\frac{3}{2\sqrt[3]{2} + 2\sqrt[3]{4}} - \frac{3}{2\sqrt[3]{2} - 2\sqrt[3]{4}} + \sqrt[3]{4}$$
-
-A) $\sqrt[3]{4}$ B) $\sqrt[3]{16} + 1$
-
-**C)** ${\mathbf{(}\sqrt[\mathbf{3}]{\mathbf{4}}\mathbf{+ 31)}}^{\mathbf{2}}$ D) ${- (\sqrt[3]{4} + 31)}^{2}$
-
-55. $a = \pi - e,$ bo\`lsa ifodani soddalashtiring. $\sqrt{a^{2}\left( a^{2} - a + 1 \right) + a^{2}(a + 31) + 1}$−$- \sqrt{a^{2}\left( a^{2} + a - 1 \right) - a^{2}(a + 31) + 1}$
-
-A) $2 - 2a^{2}\ \ \mathbf{B)\ 2}\mathbf{a}^{\mathbf{2}}\ \ \ C)\ 2\ \ \ D)\ \sqrt{a^{4} + 1} - \sqrt{a^{4} - 1}$
-
-56. Hisodblang:
-
-$$\sqrt{11} \bullet (\frac{1}{1 + \sqrt{2}} + \frac{1}{\sqrt{2} + \sqrt{3}} + \ldots + \frac{1}{\sqrt{98} + \sqrt{99}} + 31)$$
-
-A) 11 B) 22 **C) 33** D) 44
-
-57. $\sqrt{\sqrt{241 + 44\sqrt{30}}} - {(\sqrt{6} - \sqrt{5})}^{- 1}$
-
-**A) 0** B) 1 C) $\sqrt{30}$ D) 11
-
-58. $\sqrt[3]{4\sqrt{2\sqrt[3]{4\sqrt{2\ldots}}}} + \sqrt{30 + \sqrt{30 + \sqrt{30 + \ldots}} = ?}$
-
-A) 6 B) 7 **C) 8** D) 9
-
-59. $\frac{\sqrt{10 + \sqrt{1}} + \sqrt{10 + \sqrt{2}} + \ldots + \sqrt{10 + \sqrt{99}}}{\sqrt{10 - \sqrt{1}} + \sqrt{10 - \sqrt{2}} + \ldots + \sqrt{10 - \sqrt{99}}}$ ni hisoblang.
-
-A) 1 B) 2 C) $\sqrt{2} - 1$ **D)** $\sqrt{\mathbf{2}}\mathbf{+ 1}$
-
-60. $\sqrt{8 + 2\sqrt{10 + 2\sqrt{5}}} + \sqrt{8 - 2\sqrt{10 + 2\sqrt{5}}} = ?$
-
-A) $\sqrt{2} + \sqrt{5}$ B) $\sqrt{2} + \sqrt{3}$ **C)** $\sqrt{\mathbf{2}}\mathbf{+}\sqrt{\mathbf{10}}$ D) $\sqrt{2} + 1$
+A) 0,5 B) 5 C) 0,05 D) 0,005

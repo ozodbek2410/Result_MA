@@ -1,0 +1,109 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build output
+dist/
+*/dist/
+build/
+*/build/
+client/dist/
+
+# Package locks
+package-lock.json
+*/package-lock.json
+
+# Environment (maxfiy)
+.env
+.env.local
+server/.env
+
+# Uploads va temp
+server/uploads/
+server/temp/
+server/exports/
+server/generated_answer_sheets/
+
+# Python cache
+__pycache__/
+*.pyc
+server/python/__pycache__/
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+test-results.json
+
+# Debug/temp fayllar (root)
+*.jpg
+*.png
+*.docx
+*.pdf
+*.json
+!package.json
+!tsconfig.json
+!tsconfig.node.json
+!test-results.json
+!.eslintrc.json
+!.prettierrc.json
+!playwright.config.ts
+!tailwind.config.js
+
+# Keraksiz MD fayllar (root dagi vaqtinchalik)
+DTM_STYLE_OMR_EXPLANATION.md
+FINAL_*.md
+HYBRID_*.md
+PROFESSIONAL_*.md
+*_IMPLEMENTATION*.md
+*_SUMMARY*.md
+*_GUIDE*.md
+*_RESULTS*.md
+*_FIX*.md
+*_COMPLETE*.md
+CHEMISTRY_*.md
+LOCALHOST_*.md
+OMR_*.md
+TEMPLATE_*.md
+TABLE_*.md
+PRINT_*.md
+GENERATE_*.md
+PERFECT_SOLUTION.md
+SUBJECT_SPECIFIC_PARSERS.md
+SIMPLE_2_TERMINAL_SETUP.md
+VPS_SETUP_WITHOUT_DOCKER.md
+IMPLEMENTATION_SUMMARY.md
+
+# Debug scriptlar (root)
+*.bat
+*.sh
+!test_professional_omr.sh
+debug_*.py
+debug_*.js
+debug_*.txt
+test_*.py
+check_image.py
+perfect_100_parser.js
+professional_parser.js
+
+# Misc
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.log
+.cache/
+.temp/
+.vscode/
+
+# Beads (eski?)
+beads/
+
+# K6 stress test
+k6-report.html
+k6-stress-test.js
+
+# Large/binary files
+*.so
+*.pem
+server/server@1.0.0

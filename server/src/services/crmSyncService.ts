@@ -1,4 +1,4 @@
-import { logger } from '../config/logger';
+﻿import { logger } from '../config/logger';
 import { CrmApiService, CrmStudent, CrmTeacher, CrmGroup, CrmSpecialty } from './crmApiService';
 import Branch from '../models/Branch';
 import Subject from '../models/Subject';
@@ -569,13 +569,13 @@ class CrmSyncServiceClass {
 
       if (existing) {
         // Remove undefined values to avoid overwriting existing fields with undefined
-        const cleanData = Object.fromEntries(Object.entries(studentData).filter(([, v]) => v !== undefined));
+        const cleanData = Object.fromEntries(Object.entries(studentData).filter(([, v]) => v !== undefined && v !== null && !(v instanceof Date && isNaN(v.getTime()))));
         await Student.updateOne({ _id: existing._id }, { $set: cleanData });
         studentDoc = existing;
         stats.updated++;
       } else {
         const profileToken = crypto.randomBytes(16).toString('hex');
-        const cleanCreateData = Object.fromEntries(Object.entries(studentData).filter(([, v]) => v !== undefined));
+        const cleanCreateData = Object.fromEntries(Object.entries(studentData).filter(([, v]) => v !== undefined && v !== null && !(v instanceof Date && isNaN(v.getTime()))));
         studentDoc = await Student.create({
           crmId: s.id,
           profileToken,
