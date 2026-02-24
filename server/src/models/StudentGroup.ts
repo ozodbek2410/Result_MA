@@ -10,7 +10,7 @@ export interface IStudentGroup extends Document {
 const StudentGroupSchema = new Schema<IStudentGroup>({
   studentId: { type: Schema.Types.ObjectId, ref: 'Student', required: true },
   groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
-  subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
+  subjectId: { type: Schema.Types.ObjectId, ref: 'Subject' },
   createdAt: { type: Date, default: Date.now }
 });
 

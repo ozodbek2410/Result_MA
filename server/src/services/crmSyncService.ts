@@ -596,12 +596,10 @@ class CrmSyncServiceClass {
 
         const existingJunction = await StudentGroup.findOne({ studentId, groupId });
         if (!existingJunction) {
-          await StudentGroup.create({
-            studentId,
-            groupId,
-            subjectId: group.subjectId || undefined,
-          }).catch(() => {
-            // Ignore duplicate key errors
+          await StudentGroup.create({ studentId, groupId }).catch((err: Error) => {
+            if (!err.message?.includes('duplicate key')) {
+              logger.warn(`Junction create failed: ${err.message}`, 'CRM_SYNC');
+            }
           });
           junctionsCreated++;
         }
