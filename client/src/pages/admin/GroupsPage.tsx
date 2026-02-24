@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Loading } from '@/components/ui/Loading';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Users, Search, GraduationCap, BookOpen, User } from 'lucide-react';
+import { Users, Search, GraduationCap, User } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
 interface GroupItem {
@@ -85,7 +85,6 @@ export default function GroupsPage() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Guruh</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fan</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">O'qituvchi</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Filial</th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">O'quvchilar</th>
@@ -109,16 +108,6 @@ export default function GroupsPage() {
                           <p className="text-xs text-gray-400">{group.classNumber}-sinf, {group.letter}</p>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {group.subjectId ? (
-                        <div className="flex items-center gap-1.5 text-sm text-gray-700">
-                          <BookOpen className="w-3.5 h-3.5 text-gray-400" />
-                          {group.subjectId.nameUzb}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
                     </td>
                     <td className="px-4 py-3">
                       {group.teacherId ? (
