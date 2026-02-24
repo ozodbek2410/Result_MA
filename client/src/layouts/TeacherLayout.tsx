@@ -19,6 +19,7 @@ import {
   BookMarked,
   Compass,
   BarChart3,
+  GraduationCap,
 } from 'lucide-react';
 import { Loading } from '../components/ui/Loading';
 
@@ -53,6 +54,7 @@ const AdminUsersPage = lazy(() => import('../pages/admin/UsersPage'));
 const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'));
 const SubjectsPage = lazy(() => import('../pages/admin/SubjectsPage'));
 const DirectionsPage = lazy(() => import('../pages/admin/DirectionsPage'));
+const AdminGroupsPage = lazy(() => import('../pages/admin/GroupsPage'));
 
 interface MenuItem {
   path: string;
@@ -69,6 +71,7 @@ const adminMenuDef: MenuItem[] = [
   { path: '/teacher/admin/users', label: 'Foydalanuvchilar', icon: UserCog },
   { path: '/teacher/admin/subjects', label: 'Fanlar', icon: BookMarked },
   { path: '/teacher/admin/directions', label: 'Yo\'nalishlar', icon: Compass },
+  { path: '/teacher/admin/groups', label: 'Guruhlar', icon: GraduationCap },
 ];
 
 // Teacher menu — teaching features only
@@ -353,6 +356,7 @@ export default function TeacherLayout() {
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/subjects" element={<SubjectsPage />} />
               <Route path="/admin/directions" element={<DirectionsPage />} />
+              <Route path="/admin/groups" element={<AdminGroupsPage />} />
             </Routes>
           </Suspense>
         </div>
