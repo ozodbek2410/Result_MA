@@ -46,6 +46,7 @@ function getParserKeyFromSubject(subjectName: string): string {
   if (lower.includes('kimyo')) return 'chemistry';
   if (lower.includes('biologiya') || lower.includes('tibbiyot')) return 'biology';
   if (lower.includes('ona tili') || lower.includes('adabiyot')) return 'literature';
+  if (lower.includes('tarix')) return 'history';
   return 'math';
 }
 
