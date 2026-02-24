@@ -526,6 +526,9 @@ class CrmSyncServiceClass {
     const stats: EntitySyncStats = { created: 0, updated: 0, deactivated: 0 };
     const now = new Date();
     const crmIds = new Set<number>();
+    let studentsWithGroup = 0;
+    let groupsFound = 0;
+    let junctionsCreated = 0;
 
     for (const s of students) {
       crmIds.add(s.id);
@@ -543,9 +546,11 @@ class CrmSyncServiceClass {
         : null;
 
       // Resolve group
+      if (s.group) studentsWithGroup++;
       const group = s.group
         ? await Group.findOne({ crmId: s.group.id })
         : null;
+      if (group) groupsFound++;
 
       const existing = await Student.findOne({ crmId: s.id });
 
@@ -598,9 +603,12 @@ class CrmSyncServiceClass {
           }).catch(() => {
             // Ignore duplicate key errors
           });
+          junctionsCreated++;
         }
       }
     }
+
+    logger.info(`Students junction stats: withGroup=${studentsWithGroup} groupFound=${groupsFound} junctionsCreated=${junctionsCreated}`, 'CRM_SYNC');
 
     // Deactivate students not in CRM
     if (crmIds.size > 0) {
