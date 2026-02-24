@@ -83,7 +83,7 @@ export class PandocDocxService {
       const hasReference = await fs.access(this.REFERENCE_DOCX).then(() => true).catch(() => false);
       
       // Конвертируем через Pandoc с reference.docx (watermark уже внутри)
-      const fromFmt = 'markdown+raw_html+pipe_tables+implicit_figures+link_attributes';
+      const fromFmt = 'markdown+raw_html+raw_tex+pipe_tables+implicit_figures+link_attributes';
       const pandocCmd = hasReference
         ? `pandoc "${markdownPath}" -o "${docxPath}" --from ${fromFmt} --to docx --columns=200 --reference-doc="${this.REFERENCE_DOCX}"`
         : `pandoc "${markdownPath}" -o "${docxPath}" --from ${fromFmt} --to docx --columns=200`;
@@ -209,11 +209,30 @@ export class PandocDocxService {
 
         const headerXml = this.generateHeaderXml(logoRelId);
 
-        // Insert header before every Heading1 paragraph (student name)
+        // Section break paragraphs for column control
+        // startBreak: ends whatever came before (2-col), then header starts a new section
+        const startBreak = `<w:p><w:pPr><w:sectPr><w:cols w:num="2" w:equalWidth="1" w:space="720"/><w:type w:val="continuous"/></w:sectPr></w:pPr></w:p>`;
+        // endBreak: ends the header's 1-col section, questions continue in 2-col (from final body sectPr)
+        const endBreak = `<w:p><w:pPr><w:sectPr><w:cols w:num="1" w:equalWidth="1"/><w:type w:val="continuous"/></w:sectPr></w:pPr></w:p>`;
+
+        // Match full Heading1 paragraph (student name) and wrap with section breaks
         docXml = docXml.replace(
-          /(<w:p(?:\s[^>]*)?>)\s*(<w:pPr>)\s*(<w:pStyle w:val="Heading1"\s*\/>)/g,
-          `${headerXml}$1$2$3`
+          /(<w:p(?:\s[^>]*)?>)(<w:pPr>)(<w:pStyle w:val="Heading1"\s*\/>)([\s\S]*?)(<\/w:p>)/g,
+          `${startBreak}${headerXml}$1$2$3$4$5${endBreak}`
         );
+
+        // Ensure final body sectPr has 2-column layout for questions section
+        const lastSectPrIdx = docXml.lastIndexOf('<w:sectPr');
+        if (lastSectPrIdx !== -1) {
+          const closingTagIdx = docXml.indexOf('</w:sectPr>', lastSectPrIdx);
+          const sectContent = docXml.substring(lastSectPrIdx, closingTagIdx);
+          if (!sectContent.includes('<w:cols')) {
+            const insertPos = docXml.indexOf('>', lastSectPrIdx) + 1;
+            docXml = docXml.substring(0, insertPos) +
+              '<w:cols w:num="2" w:equalWidth="1" w:space="720"/>' +
+              docXml.substring(insertPos);
+          }
+        }
 
         zip.file('word/document.xml', docXml);
         console.log('✅ Injected academy header into Word document');
@@ -487,17 +506,10 @@ export class PandocDocxService {
     if (testData.students && testData.students.length > 0) {
       testData.students.forEach((student, index) => {
         if (index > 0) {
-          md += '\n\\newpage\n\n';
+          md += '\n\n```{=openxml}\n<w:p><w:r><w:br w:type="page"/></w:r></w:p>\n```\n\n';
         }
 
-        md += `# ${student.studentName}\n\n`;
-        md += `**Variant: ${student.variantCode}**`;
-
-        if (testData.className) {
-          md += ` | **${testData.className}**`;
-        }
-
-        md += '\n\n---\n\n';
+        md += `# ${student.studentName} | Variant: ${student.variantCode}${testData.className ? ` | ${testData.className}` : ''}\n\n`;
 
         student.questions.forEach(q => {
           md += `**${q.number}.** ${q.text}\n\n`;
@@ -506,14 +518,13 @@ export class PandocDocxService {
           md += this.getQuestionImages(q);
 
           if (q.options && q.options.length > 0) {
-            const optionsLine = q.options
-              .map((opt, idx) => {
-                const letter = String.fromCharCode(65 + idx);
-                return `**${letter})** ${opt}`;
-              })
-              .join('   ');
-
-            md += `${optionsLine}\n\n`;
+            const opts = q.options.map((opt, idx) => {
+              const letter = String.fromCharCode(65 + idx);
+              return `**${letter})** ${opt}`;
+            });
+            const row1 = opts.slice(0, 2).join('   ');
+            const row2 = opts.slice(2).join('   ');
+            md += row2 ? `${row1}\n\n${row2}\n\n` : `${row1}\n\n`;
           }
         });
       });
@@ -536,18 +547,84 @@ export class PandocDocxService {
       md += this.getQuestionImages(q);
 
       if (q.options && q.options.length > 0) {
-        const optionsLine = q.options
-          .map((opt, idx) => {
-            const letter = String.fromCharCode(65 + idx);
-            return `**${letter})** ${opt}`;
-          })
-          .join('   ');
-
-        md += `${optionsLine}\n\n`;
+        const opts = q.options.map((opt, idx) => {
+          const letter = String.fromCharCode(65 + idx);
+          return `**${letter})** ${opt}`;
+        });
+        const row1 = opts.slice(0, 2).join('   ');
+        const row2 = opts.slice(2).join('   ');
+        md += row2 ? `${row1}\n\n${row2}\n\n` : `${row1}\n\n`;
       }
     });
 
     return md;
+  }
+
+  /**
+   * Generate answer sheet DOCX for multiple students
+   */
+  static async generateAnswerSheetDocx(data: {
+    students: Array<{ fullName: string; variantCode: string }>;
+    test: { classNumber: number; groupLetter: string; subjectName?: string };
+    totalQuestions: number;
+    className?: string;
+  }): Promise<Buffer> {
+    const { students, test, totalQuestions } = data;
+    const qPerCol = Math.ceil(totalQuestions / 2);
+
+    let md = '';
+    students.forEach((student, idx) => {
+      if (idx > 0) md += '\n\n```{=openxml}\n<w:p><w:r><w:br w:type="page"/></w:r></w:p>\n```\n\n';
+
+      const className = data.className || `${test.classNumber}-${test.groupLetter}`;
+      md += `# ${student.fullName} | Variant: ${student.variantCode} | ${className}\n\n`;
+
+      if (test.subjectName) {
+        md += `**Fan:** ${test.subjectName} &nbsp;&nbsp; **Savollar soni:** ${totalQuestions}\n\n`;
+      }
+
+      // Build 2-column answer table
+      const header = '| # | A | B | C | D |   | # | A | B | C | D |';
+      const separator = '|---|---|---|---|---|---|---|---|---|---|---|';
+      md += `${header}\n${separator}\n`;
+
+      for (let row = 0; row < qPerCol; row++) {
+        const q1 = row + 1;
+        const q2 = row + qPerCol + 1;
+        const right = q2 <= totalQuestions
+          ? `| ${q2}. | ○ | ○ | ○ | ○ |`
+          : '|   |   |   |   |   |';
+        md += `| ${q1}. | ○ | ○ | ○ | ○ |   ${right}\n`;
+      }
+      md += '\n';
+    });
+
+    return this.generateFromMarkdown(md);
+  }
+
+  /**
+   * Generate DOCX from raw markdown string
+   */
+  static async generateFromMarkdown(markdown: string): Promise<Buffer> {
+    await fs.mkdir(this.TEMP_DIR, { recursive: true });
+    const tempId = uuidv4();
+    const markdownPath = path.join(this.TEMP_DIR, `${tempId}.md`);
+    const docxPath = path.join(this.TEMP_DIR, `${tempId}.docx`);
+
+    try {
+      await fs.writeFile(markdownPath, markdown, 'utf-8');
+      const hasReference = await fs.access(this.REFERENCE_DOCX).then(() => true).catch(() => false);
+      const fromFmt = 'markdown+pipe_tables+raw_html+raw_tex';
+      const pandocCmd = hasReference
+        ? `pandoc "${markdownPath}" -o "${docxPath}" --from ${fromFmt} --to docx --reference-doc="${this.REFERENCE_DOCX}"`
+        : `pandoc "${markdownPath}" -o "${docxPath}" --from ${fromFmt} --to docx`;
+      await execAsync(pandocCmd);
+      const buffer = await fs.readFile(docxPath) as Buffer;
+      return buffer;
+    } finally {
+      await fs.unlink(markdownPath).catch(() => {});
+      await fs.unlink(docxPath).catch(() => {});
+    }
   }
 
   /**
