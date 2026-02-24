@@ -288,7 +288,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
         await StudentGroup.insertMany(studentGroups);
         
         // Update student's subjectIds
-        const uniqueSubjectIds = [...new Set(classGroups.map(g => g.subjectId.toString()))];
+        const uniqueSubjectIds = [...new Set(classGroups.map(g => g.subjectId!.toString()))];
         student.subjectIds = uniqueSubjectIds as any;
         await student.save();
         
@@ -335,12 +335,12 @@ router.put('/:id', authenticate, async (req, res) => {
     // Обновляем группы студента
     if (groups && Array.isArray(groups)) {
       // Удаляем старые связи
-      await StudentGroup.deleteMany({ studentId: student._id });
-      
+      await StudentGroup.deleteMany({ studentId: student!._id });
+
       // Добавляем новые
       if (groups.length > 0) {
         const studentGroups = groups.map((g: any) => ({
-          studentId: student._id,
+          studentId: student!._id,
           groupId: g.groupId,
           subjectId: g.subjectId
         }));
@@ -512,7 +512,7 @@ router.get('/download-template/:directionId', authenticate, async (req: AuthRequ
     
     // Collect all subjects for this direction
     const subjectIds = new Set<string>();
-    direction.subjects.forEach((subjectChoice: any) => {
+    direction!.subjects.forEach((subjectChoice: any) => {
       subjectChoice.subjectIds.forEach((subjectId: any) => {
         subjectIds.add(subjectId._id.toString());
       });
@@ -617,7 +617,7 @@ router.post('/bulk-import', authenticate, async (req: AuthRequest, res) => {
     
     // Collect all subjects for this direction
     const subjectIds = new Set<string>();
-    direction.subjects.forEach((subjectChoice: any) => {
+    direction!.subjects.forEach((subjectChoice: any) => {
       subjectChoice.subjectIds.forEach((subjectId: any) => {
         subjectIds.add(subjectId._id.toString());
       });
@@ -770,7 +770,7 @@ router.post('/bulk-import', authenticate, async (req: AuthRequest, res) => {
             
             if (!group) {
               // Create new group
-              const groupName = `${studentFields.classNumber}-${assignment.letter} ${subject.nameUzb}`;
+              const groupName = `${studentFields.classNumber}-${assignment.letter} ${subject?.nameUzb ?? ''}`;
               group = new Group({
                 branchId: req.user?.branchId,
                 name: groupName,

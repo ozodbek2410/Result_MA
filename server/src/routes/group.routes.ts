@@ -233,14 +233,15 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     }
     
     console.log('✅ Группа обновлена (raw):', {
-      id: updatedGroup._id,
-      name: updatedGroup.name,
-      teacherId: updatedGroup.teacherId || 'null'
+      id: updatedGroup!._id,
+      name: updatedGroup!.name,
+      teacherId: updatedGroup!.teacherId || 'null'
     });
-    
+
     // Если изменилась буква группы, обновляем конфигурации студентов
-    if (oldGroup && oldGroup.letter !== updatedGroup.letter) {
-      console.log(`🔄 Group letter changed: ${oldGroup.letter} → ${updatedGroup.letter}`);
+    if (oldGroup !== null && (oldGroup as NonNullable<typeof oldGroup>).letter !== updatedGroup!.letter) {
+      const og = oldGroup as NonNullable<typeof oldGroup>;
+      console.log(`🔄 Group letter changed: ${og.letter} → ${updatedGroup!.letter}`);
       
       // Находим всех студентов этой группы
       const StudentGroup = require('../models/StudentGroup').default;
@@ -260,9 +261,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
           
           // Обновляем groupLetter для всех предметов, которые имели старую букву
           config.subjects = config.subjects.map((s: any) => {
-            if (s.groupLetter === oldGroup.letter) {
+            if (s.groupLetter === og.letter) {
               updated = true;
-              return { ...s, groupLetter: updatedGroup.letter };
+              return { ...s, groupLetter: updatedGroup!.letter };
             }
             return s;
           });
@@ -277,7 +278,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     }
     
     // Теперь загружаем с populate
-    const group = await Group.findById(updatedGroup._id)
+    const group = await Group.findById(updatedGroup!._id)
       .populate('subjectId')
       .populate('teacherId')
       .exec();
