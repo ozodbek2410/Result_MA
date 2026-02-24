@@ -545,6 +545,7 @@ export default function TestImportPage() {
                 <option value="physics">⚡ Fizika (formulalar, birliklar)</option>
                 <option value="chemistry">🧪 Kimyo (molekulalar, reaksiyalar)</option>
                 <option value="literature">📚 Ona tili va Adabiyot (matn tahlili)</option>
+                <option value="history">📜 Tarix</option>
               </select>
               <p className="text-xs text-blue-700 mt-2">
                 💡 Har bir fan uchun maxsus parsing algoritmi ishlatiladi

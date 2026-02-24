@@ -36,6 +36,7 @@ const PARSERS = [
   { value: 'chemistry', label: 'Kimyo' },
   { value: 'biology', label: 'Biologiya' },
   { value: 'literature', label: 'Ona tili va Adabiyot' },
+  { value: 'history', label: 'Tarix' },
 ];
 
 function getParserKeyFromSubject(subjectName: string): string {
