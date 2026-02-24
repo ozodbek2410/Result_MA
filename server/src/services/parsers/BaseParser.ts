@@ -79,7 +79,7 @@ export abstract class BaseParser {
       const zip = new AdmZip(filePath);
       const zipEntries = zip.getEntries();
       
-      const uploadDir = path.join(process.cwd(), 'uploads', 'test-images');
+      const uploadDir = path.join(__dirname, '../../../uploads', 'test-images');
       if (!fsSync.existsSync(uploadDir)) {
         fsSync.mkdirSync(uploadDir, { recursive: true });
       }

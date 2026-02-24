@@ -12,7 +12,8 @@ export class TableRenderer {
   private uploadDir: string;
 
   constructor() {
-    this.uploadDir = path.join(process.cwd(), 'uploads', 'test-images');
+    // __dirname: server/dist/services/parsers → go up 3 levels to server/, then into uploads
+    this.uploadDir = path.join(__dirname, '../../../uploads', 'test-images');
     
     // Upload papkani yaratish
     if (!fsSync.existsSync(this.uploadDir)) {
