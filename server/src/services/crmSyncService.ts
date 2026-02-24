@@ -421,21 +421,24 @@ class CrmSyncServiceClass {
         const username = this.generateUsername(t.full_name, t.id);
         const hashedPassword = await bcrypt.hash('teacher123', 10);
 
-        await User.create({
-          crmId: t.id,
-          username,
-          password: hashedPassword,
+        const newTeacherData = Object.fromEntries(Object.entries({
           fullName: t.full_name,
           phone: t.phone || undefined,
           phone2: t.phone2 || undefined,
           birthDate: parseDate(t.birth_date),
           gender: t.gender,
-          role: UserRole.TEACHER,
           branchId: branch?._id,
           teacherSubjects: teacherSubjectIds,
           tgChatId: t.tg_chat_id || undefined,
           isActive: t.is_active,
           lastSyncedAt: now,
+        }).filter(([, v]) => v !== undefined));
+        await User.create({
+          crmId: t.id,
+          username,
+          password: hashedPassword,
+          role: UserRole.TEACHER,
+          ...newTeacherData,
         });
         stats.created++;
       }
@@ -572,10 +575,11 @@ class CrmSyncServiceClass {
         stats.updated++;
       } else {
         const profileToken = crypto.randomBytes(16).toString('hex');
+        const cleanCreateData = Object.fromEntries(Object.entries(studentData).filter(([, v]) => v !== undefined));
         studentDoc = await Student.create({
           crmId: s.id,
           profileToken,
-          ...studentData,
+          ...cleanCreateData,
         });
         stats.created++;
       }
