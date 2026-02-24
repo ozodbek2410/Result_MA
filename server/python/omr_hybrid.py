@@ -81,29 +81,38 @@ class HybridOMR:
         # QR kodni filtrash (juda katta kvadratlar)
         # Corner marks: 30-70px, QR kod: 80+ px
         corners = [c for c in corners if c['w'] < 75 and c['h'] < 75]
-        
+
         if len(corners) < 4:
-            self.log(f"⚠️ QR kod filtrlangandan keyin faqat {len(corners)} ta corner mark qoldi")
+            self.log(f"QR kod filtrlangandan keyin faqat {len(corners)} ta corner mark qoldi")
             return None
-        
-        # 4 ta eng katta corner marklarni olish (QR kodsiz)
-        corners = sorted(corners, key=lambda c: c['area'], reverse=True)[:4]
-        
-        # Burchaklarni to'g'ri saralash
-        # 1. Y koordinata bo'yicha 2 guruhga bo'lish (yuqori va pastki)
-        y_sorted = sorted(corners, key=lambda c: c['y'])
-        top_two = y_sorted[:2]  # Eng yuqoridagi 2 ta
-        bottom_two = y_sorted[2:]  # Eng pastdagi 2 ta
-        
-        # 2. Har bir guruhni X bo'yicha saralash
-        top_corners = sorted(top_two, key=lambda c: c['x'])  # Chap, o'ng
-        bottom_corners = sorted(bottom_two, key=lambda c: c['x'])  # Chap, o'ng
-        
+
+        # 4 ta eng chekkadagi corner marklarni tanlash (geometric approach)
+        # TL: min(x+y), TR: max(x-y), BL: max(y-x), BR: max(x+y)
+        tl = min(corners, key=lambda c: c['x'] + c['y'])
+        tr = max(corners, key=lambda c: c['x'] - c['y'])
+        bl = max(corners, key=lambda c: c['y'] - c['x'])
+        br = max(corners, key=lambda c: c['x'] + c['y'])
+
+        # Validatsiya: to'rtburchak shaklini tekshirish
+        # TL va TR bir xil Y da, BL va BR bir xil Y da bo'lishi kerak
+        # TL va BL bir xil X da, TR va BR bir xil X da bo'lishi kerak
+        img_h, img_w = image.shape[:2]
+        min_side = min(img_w, img_h) * 0.3  # Minimal to'rtburchak tomoni
+
+        width_top = abs(tr['x'] - tl['x'])
+        width_bot = abs(br['x'] - bl['x'])
+        height_left = abs(bl['y'] - tl['y'])
+        height_right = abs(br['y'] - tr['y'])
+
+        if width_top < min_side or width_bot < min_side or height_left < min_side or height_right < min_side:
+            self.log(f"Corner marks to'rtburchak hosil qilmayapti (w_top={width_top}, w_bot={width_bot}, h_left={height_left}, h_right={height_right})")
+            return None
+
         corner_marks = {
-            'top_left': top_corners[0],
-            'top_right': top_corners[1],
-            'bottom_left': bottom_corners[0],
-            'bottom_right': bottom_corners[1]
+            'top_left': tl,
+            'top_right': tr,
+            'bottom_left': bl,
+            'bottom_right': br
         }
         
         self.log(f"✅ 4 ta corner mark topildi")
