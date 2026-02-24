@@ -13,7 +13,6 @@ import StudentQRCode from '@/components/StudentQRCode';
 import { 
   ArrowLeft,
   Users, 
-  BookOpen, 
   GraduationCap,
   Calendar,
   MapPin,
@@ -298,23 +297,7 @@ export default function GroupDetailPage() {
       </Dialog>
 
       {/* Group Info Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Card className="border-0 shadow-soft bg-gradient-to-br from-purple-50 to-purple-100/50">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Fan</p>
-                <p className="text-base sm:text-xl font-bold text-gray-900 mt-0.5 sm:mt-1 truncate">
-                  {group.subjectId?.nameUzb || 'N/A'}
-                </p>
-              </div>
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-soft flex-shrink-0">
-                <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <Card className="border-0 shadow-soft bg-gradient-to-br from-blue-50 to-blue-100/50">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
@@ -375,16 +358,6 @@ export default function GroupDetailPage() {
                 <div>
                   <p className="text-sm text-gray-600">Guruh nomi</p>
                   <p className="font-semibold text-gray-900">{group.name}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Fan</p>
-                  <p className="font-semibold text-gray-900">{group.subjectId?.nameUzb}</p>
                 </div>
               </div>
 
