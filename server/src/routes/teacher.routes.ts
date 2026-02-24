@@ -1,83 +1,71 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import User, { UserRole } from '../models/User';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { invalidateCache } from '../middleware/cache';
 import { cacheService, CacheTTL, CacheInvalidation } from '../utils/cache';
 
+const CRM_MSG = 'Bu ma\'lumot CRM orqali boshqariladi';
+
 const router = express.Router();
 
-// Получить всех учителей (фильтруем пользователей с ролью TEACHER)
+// Get all teachers
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
-    console.log('=== ПОЛУЧЕНИЕ УЧИТЕЛЕЙ ===');
-    console.log('Пользователь:', { id: req.user?.id, role: req.user?.role, branchId: req.user?.branchId });
-    
-    const filter: any = { role: UserRole.TEACHER, isActive: true };
-    
-    // Филиал админ видит только учителей своего филиала
+    const filter: Record<string, unknown> = { role: UserRole.TEACHER, isActive: true };
+
     if (req.user?.role !== UserRole.SUPER_ADMIN) {
       filter.branchId = req.user?.branchId;
     }
-    
-    console.log('Фильтр:', filter);
-    
-    // Check cache
+
     const cacheKey = `teachers:${req.user?.branchId || 'all'}`;
     const cached = cacheService.get(cacheKey);
     if (cached) {
       return res.json(cached);
     }
-    
+
     const teachers = await User.find(filter)
       .select('-password')
       .populate('branchId')
+      .populate('teacherSubjects')
       .sort({ createdAt: -1 })
       .lean();
-    
-    console.log(`✅ Найдено учителей: ${teachers.length}`);
-    if (teachers.length > 0) {
-      teachers.forEach((t, i) => {
-        const branch = t.branchId as any;
-        console.log(`Учитель ${i + 1}:`, { 
-          id: t._id, 
-          name: t.fullName || t.username,
-          branchId: branch?._id || t.branchId,
-          branchName: branch?.name || 'N/A'
-        });
-      });
-    }
-    
-    // Cache the result
+
     cacheService.set(cacheKey, teachers, CacheTTL.LIST);
-    
     res.json(teachers);
-  } catch (error: any) {
-    console.error('❌ Ошибка получения учителей:', error);
-    res.status(500).json({ message: 'Server xatosi', error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message: 'Server xatosi', error: msg });
   }
 });
 
-// Создать учителя
-router.post('/', authenticate, async (req: AuthRequest, res) => {
+// Create local teacher (admin only)
+router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMIN), async (req: AuthRequest, res) => {
   try {
-    console.log('=== СОЗДАНИЕ УЧИТЕЛЯ ===');
-    console.log('Данные:', { ...req.body, password: '***' });
-    console.log('Пользователь:', { id: req.user?.id, role: req.user?.role, branchId: req.user?.branchId });
-    
-    const { username, password, fullName, phone } = req.body;
-    
+    const { username, password, fullName, phone, branchId, teacherSubjects } = req.body;
+
     if (!username || !password || !fullName) {
-      return res.status(400).json({ message: 'Barcha maydonlar majburiy' });
+      return res.status(400).json({ message: 'Login, parol va F.I.Sh majburiy' });
     }
-    
-    // Проверка существующего логина
+
+    if (password.length < 4) {
+      return res.status(400).json({ message: 'Parol kamida 4 belgidan iborat bo\'lishi kerak' });
+    }
+
     const existingUser = await User.findOne({ username });
     if (existingUser) {
-      console.log('❌ Логин занят:', username);
       return res.status(400).json({ message: 'Bu login band' });
     }
-    
+
+    // FIL_ADMIN can only create for own branch
+    const effectiveBranchId = req.user?.role === UserRole.FIL_ADMIN
+      ? req.user.branchId
+      : branchId;
+
+    if (!effectiveBranchId) {
+      return res.status(400).json({ message: 'Filial majburiy' });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const teacher = new User({
       username,
@@ -85,119 +73,86 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       fullName,
       phone,
       role: UserRole.TEACHER,
-      branchId: req.user?.branchId,
-      isActive: true
+      branchId: effectiveBranchId,
+      teacherSubjects: teacherSubjects || [],
+      isActive: true,
     });
-    
+
     await teacher.save();
-    console.log('✅ Учитель создан:', { id: teacher._id, branchId: teacher.branchId });
-    
+
     const populatedTeacher = await User.findById(teacher._id)
       .select('-password')
-      .populate('branchId');
-    
-    // Инвалидируем кэш учителей
+      .populate('branchId')
+      .populate('teacherSubjects');
+
     CacheInvalidation.onTeacherChange();
     await invalidateCache('/api/teachers');
-    
+
     res.status(201).json(populatedTeacher);
-  } catch (error: any) {
-    console.error('❌ Ошибка создания учителя:', error);
-    res.status(500).json({ message: 'Server xatosi', error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message: 'Server xatosi', error: msg });
   }
 });
 
-// Обновить учителя
-router.put('/:id', authenticate, async (req: AuthRequest, res) => {
+// Assign credentials to CRM teacher
+router.patch('/:id/credentials', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMIN), async (req: AuthRequest, res) => {
   try {
-    console.log('=== ОБНОВЛЕНИЕ УЧИТЕЛЯ ===');
-    console.log('Teacher ID:', req.params.id);
-    console.log('Данные:', { ...req.body, password: req.body.password ? '***' : undefined });
-    
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Login va parol majburiy' });
+    }
+
+    if (password.length < 4) {
+      return res.status(400).json({ message: 'Parol kamida 4 belgidan iborat bo\'lishi kerak' });
+    }
+
     const teacher = await User.findOne({ _id: req.params.id, role: UserRole.TEACHER });
     if (!teacher) {
-      console.log('❌ Учитель не найден');
       return res.status(404).json({ message: 'O\'qituvchi topilmadi' });
     }
-    
-    const { username, password, fullName, phone } = req.body;
-    
-    // Проверяем уникальность логина
-    if (username && username !== teacher.username) {
-      const existingUser = await User.findOne({ 
-        username, 
-        _id: { $ne: teacher._id } 
-      });
-      if (existingUser) {
-        console.log('❌ Логин занят:', username);
+
+    // FIL_ADMIN can only modify teachers in own branch
+    if (req.user?.role === UserRole.FIL_ADMIN && teacher.branchId?.toString() !== req.user.branchId) {
+      return res.status(403).json({ message: 'Faqat o\'z filialingiz o\'qituvchilarini o\'zgartira olasiz' });
+    }
+
+    // Check username uniqueness
+    if (username !== teacher.username) {
+      const existing = await User.findOne({ username, _id: { $ne: teacher._id } });
+      if (existing) {
         return res.status(400).json({ message: 'Bu login band' });
       }
-      teacher.username = username;
     }
-    
-    if (password) {
-      teacher.password = await bcrypt.hash(password, 10);
-    }
-    if (fullName) teacher.fullName = fullName;
-    if (phone !== undefined) teacher.phone = phone;
-    
+
+    teacher.username = username;
+    teacher.password = await bcrypt.hash(password, 10);
     await teacher.save();
-    console.log('✅ Учитель обновлен');
-    
-    const updatedTeacher = await User.findById(teacher._id)
+
+    const updated = await User.findById(teacher._id)
       .select('-password')
-      .populate('branchId');
-    
-    // Инвалидируем кэш учителей
+      .populate('branchId')
+      .populate('teacherSubjects');
+
     CacheInvalidation.onTeacherChange();
     await invalidateCache('/api/teachers');
-    
-    res.json(updatedTeacher);
-  } catch (error: any) {
-    console.error('❌ Error updating teacher:', error);
-    res.status(500).json({ message: 'Server xatosi', error: error.message });
+
+    res.json(updated);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ message: 'Server xatosi', error: msg });
   }
 });
 
-// Удалить учителя
-router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
-  try {
-    console.log('=== УДАЛЕНИЕ УЧИТЕЛЯ ===');
-    console.log('Teacher ID:', req.params.id);
-    
-    const teacher = await User.findOne({ _id: req.params.id, role: UserRole.TEACHER });
-    if (!teacher) {
-      console.log('❌ Учитель не найден');
-      return res.status(404).json({ message: 'O\'qituvchi topilmadi' });
-    }
-    
-    console.log('Найден учитель:', { id: teacher._id, name: teacher.fullName || teacher.username });
-    
-    // Обнуляем teacherId во всех группах этого учителя
-    const Group = require('../models/Group').default;
-    const updateResult = await Group.updateMany(
-      { teacherId: req.params.id },
-      { $unset: { teacherId: '' } }
-    );
-    
-    console.log(`✅ Обновлено групп: ${updateResult.modifiedCount}`);
-    
-    // Полностью удаляем учителя
-    await User.findByIdAndDelete(req.params.id);
-    console.log('✅ Учитель удален из БД');
-    
-    // Инвалидируем кэш учителей и групп
-    CacheInvalidation.onTeacherChange();
-    await Promise.all([
-      invalidateCache('/api/teachers'),
-      invalidateCache('/api/groups')
-    ]);
-    
-    res.json({ message: 'O\'qituvchi o\'chirildi' });
-  } catch (error: any) {
-    console.error('❌ Error deleting teacher:', error);
-    res.status(500).json({ message: 'Server xatosi', error: error.message });
-  }
+// CRM-managed: full update disabled
+router.put('/:id', authenticate, async (_req: AuthRequest, res) => {
+  return res.status(403).json({ message: CRM_MSG });
+});
+
+// CRM-managed: delete disabled
+router.delete('/:id', authenticate, async (_req: AuthRequest, res) => {
+  return res.status(403).json({ message: CRM_MSG });
 });
 
 export default router;

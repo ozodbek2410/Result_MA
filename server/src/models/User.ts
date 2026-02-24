@@ -9,33 +9,45 @@ export enum UserRole {
 }
 
 export interface IUser extends Document {
+  crmId?: number;
   username: string;
   password: string;
-  fullName?: string; // Полное имя (для учителей и других пользователей)
+  fullName?: string;
   phone?: string;
-  parentPhone?: string; // Для студентов - телефон родителя
-  role: string; // Изменено на string для поддержки кастомных ролей
+  phone2?: string;
+  parentPhone?: string;
+  birthDate?: Date;
+  gender?: 'male' | 'female';
+  role: string;
   branchId?: mongoose.Types.ObjectId;
   customRoleId?: mongoose.Types.ObjectId;
+  teacherSubjects?: mongoose.Types.ObjectId[];
+  tgChatId?: string;
   isActive: boolean;
+  lastSyncedAt?: Date;
   createdAt: Date;
 }
 
 const UserSchema = new Schema<IUser>({
+  crmId: { type: Number, sparse: true, unique: true },
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  fullName: String, // Полное имя
+  fullName: String,
   phone: String,
-  parentPhone: String, // Для студентов
+  phone2: String,
+  parentPhone: String,
+  birthDate: Date,
+  gender: { type: String, enum: ['male', 'female'] },
   role: { type: String, required: true },
   branchId: { type: Schema.Types.ObjectId, ref: 'Branch' },
   customRoleId: { type: Schema.Types.ObjectId, ref: 'CustomRole' },
+  teacherSubjects: [{ type: Schema.Types.ObjectId, ref: 'Subject' }],
+  tgChatId: String,
   isActive: { type: Boolean, default: true },
+  lastSyncedAt: Date,
   createdAt: { type: Date, default: Date.now }
 });
 
-// Add indexes for faster queries
-// username уже имеет unique index из схемы, не дублируем
 UserSchema.index({ branchId: 1 });
 UserSchema.index({ role: 1 });
 UserSchema.index({ isActive: 1 });

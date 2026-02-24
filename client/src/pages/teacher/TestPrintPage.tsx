@@ -943,7 +943,9 @@ export default function TestPrintPage() {
                     }}
                     test={{
                       name: test.name || 'Test',
-                      subjectName: isBlockTest ? undefined : (test.subjectId?.nameUzb || 'Test'),
+                      subjectName: isBlockTest
+                        ? (test.subjectTests?.map((st: { subjectId?: { nameUzb?: string } }) => st.subjectId?.nameUzb).filter(Boolean).join(', ') || 'Blok test')
+                        : (test.subjectId?.nameUzb || 'Test'),
                       classNumber: test.classNumber || 10,
                       groupLetter: test.groupId?.nameUzb?.charAt(0) || 'A',
                       groupName: test.groupId?.nameUzb,
@@ -1181,6 +1183,24 @@ export default function TestPrintPage() {
             break-after: page;
           }
 
+          /* Background watermark logo on every page */
+          .print-page::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            background-image: var(--print-bg-image, url(/logo.png));
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: var(--print-bg-opacity, 0.05);
+            z-index: 0;
+            pointer-events: none;
+          }
+
           /* Table trick: header repeats on every printed page */
           .print-page-table {
             display: table;
@@ -1223,9 +1243,26 @@ export default function TestPrintPage() {
         /* Стили для экрана - показываем рамку в превью */
         @media screen {
           .print-page {
+            position: relative;
             border: 1px dashed #ccc;
             margin-bottom: 2rem;
             padding: 1rem;
+          }
+          .print-page::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            background-image: var(--print-bg-image, url(/logo.png));
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: var(--print-bg-opacity, 0.05);
+            z-index: 0;
+            pointer-events: none;
           }
           .print-page-table {
             display: block;

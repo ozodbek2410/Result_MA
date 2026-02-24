@@ -6,9 +6,11 @@ export interface ISubjectChoice {
 }
 
 export interface IDirection extends Document {
+  crmId?: number;
   nameUzb: string;
   subjects: ISubjectChoice[];
   isActive: boolean;
+  lastSyncedAt?: Date;
   createdAt: Date;
 }
 
@@ -18,13 +20,14 @@ const SubjectChoiceSchema = new Schema<ISubjectChoice>({
 }, { _id: false });
 
 const DirectionSchema = new Schema<IDirection>({
+  crmId: { type: Number, sparse: true, unique: true },
   nameUzb: { type: String, required: true },
   subjects: [SubjectChoiceSchema],
   isActive: { type: Boolean, default: true },
+  lastSyncedAt: Date,
   createdAt: { type: Date, default: Date.now }
 });
 
-// Add indexes for faster queries
 DirectionSchema.index({ isActive: 1 });
 DirectionSchema.index({ nameUzb: 1 });
 

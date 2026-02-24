@@ -13,6 +13,7 @@ export default function CreateTestPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [groups, setGroups] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<Array<{ _id: string; nameUzb: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -31,6 +32,7 @@ export default function CreateTestPage() {
 
   useEffect(() => {
     fetchGroups();
+    fetchSubjects();
     if (id) {
       fetchTest(id);
     }
@@ -42,6 +44,15 @@ export default function CreateTestPage() {
       setGroups(data);
     } catch (err) {
       console.error('Error fetching groups');
+    }
+  };
+
+  const fetchSubjects = async () => {
+    try {
+      const { data } = await api.get('/subjects');
+      setSubjects(data);
+    } catch (err) {
+      console.error('Error fetching subjects');
     }
   };
 
@@ -65,8 +76,8 @@ export default function CreateTestPage() {
     e.preventDefault();
     e.stopPropagation();
     
-    if (!formData.groupId || !formData.name) {
-      error('Guruh va test nomini kiriting');
+    if (!formData.groupId || !formData.name || !formData.subjectId) {
+      error('Guruh, fan va test nomini kiriting');
       return;
     }
 
@@ -93,7 +104,7 @@ export default function CreateTestPage() {
       const testData = {
         groupId: formData.groupId,
         name: formData.name,
-        subjectId: group.subjectId._id,
+        subjectId: formData.subjectId,
         classNumber: group.classNumber,
         questions: formData.questions
       };
@@ -135,8 +146,8 @@ export default function CreateTestPage() {
 
   const handleNextStep = () => {
     if (step === 1) {
-      if (!formData.groupId || !formData.name) {
-        error('Guruh va test nomini kiriting');
+      if (!formData.groupId || !formData.name || !formData.subjectId) {
+        error('Guruh, fan va test nomini kiriting');
         return;
       }
       setStep(2);
@@ -196,7 +207,15 @@ export default function CreateTestPage() {
                   <Select
                     label="Guruh"
                     value={formData.groupId}
-                    onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
+                    onChange={(e) => {
+                      const selectedGroup = groups.find(g => g._id === e.target.value);
+                      setFormData({
+                        ...formData,
+                        groupId: e.target.value,
+                        subjectId: selectedGroup?.subjectId?._id || formData.subjectId,
+                        classNumber: selectedGroup?.classNumber || formData.classNumber
+                      });
+                    }}
                     required
                     className="text-base sm:text-lg"
                   >
@@ -204,6 +223,21 @@ export default function CreateTestPage() {
                     {groups.map((g) => (
                       <option key={g._id} value={g._id}>
                         {g.classNumber}-{g.name} - {g.subjectId?.nameUzb || "Fan ko'rsatilmagan"}
+                      </option>
+                    ))}
+                  </Select>
+
+                  <Select
+                    label="Fan"
+                    value={formData.subjectId}
+                    onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
+                    required
+                    className="text-base sm:text-lg"
+                  >
+                    <option value="">Fanni tanlang</option>
+                    {subjects.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.nameUzb}
                       </option>
                     ))}
                   </Select>

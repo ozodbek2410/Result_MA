@@ -1,8 +1,12 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables BEFORE any other imports (CRM service reads env in constructor)
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
-import dotenv from 'dotenv';
-import path from 'path';
 import { connectDB } from './config/database';
 import { connectRedis } from './config/redis';
 import { validateEnv } from './config/env';
@@ -31,6 +35,7 @@ import './models/StudentActivityLog';
 import './models/Upload';
 import './models/Role';
 import './models/Application';
+import './models/SyncLog';
 
 import authRoutes from './routes/auth.routes';
 import branchRoutes from './routes/branch.routes';
@@ -58,9 +63,7 @@ import testResultRoutes from './routes/testResult.routes';
 import studentActivityLogRoutes from './routes/studentActivityLog.routes';
 import healthRoutes from './routes/health.routes';
 import applicationRoutes from './routes/application.routes';
-
-// Load environment variables from server/.env
-dotenv.config({ path: path.join(__dirname, '../.env') });
+import crmRoutes from './routes/crm.routes';
 
 // Validate environment variables
 const env = validateEnv();
@@ -139,6 +142,7 @@ app.use('/api/health', healthRoutes);
 // Routes with specific rate limiters
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/applications', applicationRoutes);
+app.use('/api/crm', crmRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/directions', directionRoutes);

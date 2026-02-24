@@ -35,7 +35,7 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res) => {
     
     // Check access for teacher
     if (req.user?.role === UserRole.TEACHER) {
-      if (!group.teacherId || group.teacherId.toString() !== req.user.teacherId) {
+      if (!group.teacherId || group.teacherId.toString() !== req.user.id) {
         return res.status(403).json({ message: 'Sizda bu guruh o\'quvchilariga kirish huquqi yo\'q' });
       }
     } else if (req.user?.role === UserRole.FIL_ADMIN) {
@@ -43,7 +43,7 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res) => {
         return res.status(403).json({ message: 'Sizda bu guruh o\'quvchilariga kirish huquqi yo\'q' });
       }
     }
-    
+
     // ОПТИМИЗАЦИЯ: Минимальная загрузка - только имя и ID
     const studentGroups = await StudentGroup.find({ groupId })
       .populate({
@@ -104,10 +104,10 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
           console.log('Group has no teacher assigned');
           return res.status(403).json({ message: 'Bu guruhga o\'qituvchi tayinlanmagan' });
         }
-        if (group.teacherId.toString() !== req.user.teacherId) {
+        if (group.teacherId.toString() !== req.user.id) {
           console.log('Teacher access denied - teacherId mismatch:', {
             groupTeacherId: group.teacherId.toString(),
-            userTeacherId: req.user.teacherId
+            userTeacherId: req.user.id
           });
           return res.status(403).json({ message: 'Sizda bu guruh o\'quvchilariga kirish huquqi yo\'q' });
         }
@@ -219,7 +219,11 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// CRM-managed: student CRUD disabled
+const CRM_MSG = 'Bu ma\'lumot CRM orqali boshqariladi';
+
 router.post('/', authenticate, async (req: AuthRequest, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     console.log('Creating student:', req.body);
     const { fullName, classNumber, phone, directionId, subjectIds, groups, isYoungStudent } = req.body;
@@ -316,6 +320,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 });
 
 router.put('/:id', authenticate, async (req, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     const { groups, ...updateData } = req.body;
     
@@ -448,6 +453,7 @@ router.get('/:id/profile', authenticate, async (req: AuthRequest, res) => {
 });
 
 router.delete('/:id', authenticate, async (req, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     const student = await Student.findById(req.params.id);
     if (!student) {
@@ -593,8 +599,9 @@ function normalizePhone(phone: string | undefined): string | undefined {
   return '+998' + cleaned;
 }
 
-// Bulk import students from Excel
+// Bulk import students from Excel (CRM-managed)
 router.post('/bulk-import', authenticate, async (req: AuthRequest, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     const { directionId, fileData } = req.body;
     

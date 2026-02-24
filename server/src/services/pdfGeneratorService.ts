@@ -170,7 +170,7 @@ export class PDFGeneratorService {
         await page.waitForTimeout(1000);
 
         // Генерируем PDF
-        const pdfBuffer = await page.pdf({
+        const pdfResult = await page.pdf({
           format: 'A4',
           printBackground: true,
           margin: {
@@ -181,7 +181,8 @@ export class PDFGeneratorService {
           }
         });
 
-        return pdfBuffer;
+        // Playwright may return Uint8Array instead of Buffer
+        return Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult);
       } finally {
         await page.close();
       }
@@ -238,6 +239,7 @@ export class PDFGeneratorService {
       const studentsHTML = testData.students.map((student, index) => `
         ${index > 0 ? '<div style="page-break-before: always;"></div>' : ''}
         <div class="student-page">
+          ${logoBase64 ? `<img src="${logoBase64}" class="bg-watermark" />` : ''}
           <div class="content-wrapper">
             <div class="academy-header">
               <img src="${logoBase64 || '/logo.png'}" class="academy-logo" alt="Logo" />
@@ -322,7 +324,7 @@ export class PDFGeneratorService {
       margin-bottom: 20px;
     }
     .bg-watermark {
-      position: fixed;
+      position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
@@ -333,18 +335,7 @@ export class PDFGeneratorService {
       z-index: 0;
       pointer-events: none;
     }
-    
-    .background-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(255, 255, 255, ${1 - bgOpacity});
-      pointer-events: none;
-      z-index: 0;
-    }
-    
+
     .content-wrapper {
       position: relative;
       z-index: 1;
@@ -495,7 +486,6 @@ export class PDFGeneratorService {
   </style>
 </head>
 <body>
-  ${logoBase64 ? `<img src="${logoBase64}" class="bg-watermark" />` : ''}
   <div class="container">
     ${studentsHTML}
   </div>
@@ -555,10 +545,9 @@ export class PDFGeneratorService {
       max-width: 100%;
       margin: 0 auto;
       position: relative;
-      min-height: 100vh;
     }
     .bg-watermark {
-      position: absolute;
+      position: fixed;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
@@ -568,17 +557,6 @@ export class PDFGeneratorService {
       opacity: ${bgOpacity};
       z-index: 0;
       pointer-events: none;
-    }
-    
-    .background-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(255, 255, 255, ${1 - bgOpacity});
-      pointer-events: none;
-      z-index: 0;
     }
     
     .content-wrapper {
@@ -877,15 +855,18 @@ export class PDFGeneratorService {
 
       try {
         const html = await this.generateAnswerSheetsHTML(data);
-        await page.setContent(html, { waitUntil: 'networkidle', timeout: 60000 });
-        await page.waitForTimeout(500);
+        await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
+        await page.waitForTimeout(300);
 
-        const pdfBuffer = await page.pdf({
+        const pdfResult = await page.pdf({
           format: 'A4',
           printBackground: true,
           margin: { top: '0', right: '0', bottom: '0', left: '0' }
         });
 
+        // Playwright may return Uint8Array instead of Buffer
+        const pdfBuffer = Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult);
+        console.log(`Answer sheets PDF generated: ${(pdfBuffer.length / 1024).toFixed(1)} KB, ${data.students.length} students`);
         return pdfBuffer;
       } finally {
         await page.close();
@@ -916,13 +897,19 @@ export class PDFGeneratorService {
 
     // Read logo as base64
     let logoBase64 = '';
-    try {
-      const logoPath = path.join(process.cwd(), '..', 'client', 'public', 'logo.png');
-      if (fs.existsSync(logoPath)) {
-        const logoBuffer = fs.readFileSync(logoPath);
-        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
-      }
-    } catch {}
+    const logoPaths = [
+      path.join(process.cwd(), '..', 'client', 'public', 'logo.png'),
+      path.join(process.cwd(), 'client', 'public', 'logo.png'),
+      path.join(__dirname, '../../../client/public/logo.png'),
+    ];
+    for (const lp of logoPaths) {
+      try {
+        if (fs.existsSync(lp)) {
+          logoBase64 = `data:image/png;base64,${fs.readFileSync(lp).toString('base64')}`;
+          break;
+        }
+      } catch { /* skip */ }
+    }
 
     // Generate QR codes for all students
     const qrCodeMap = new Map<string, string>();
@@ -949,14 +936,14 @@ export class PDFGeneratorService {
       for (let col = 0; col < layout.columns; col++) {
         const start = col * questionsPerColumn + 1;
         const count = Math.min(questionsPerColumn, totalQuestions - col * questionsPerColumn);
-        let colHtml = `<div style="flex:1">`;
+        let colHtml = `<div class="grid-col">`;
         for (let i = 0; i < count; i++) {
           const qNum = start + i;
-          colHtml += `<div style="display:flex;align-items:center;margin:${layout.rowMargin}mm 0">`;
-          colHtml += `<div style="width:${layout.numberWidth}mm;font-weight:bold;font-size:${layout.fontSize}pt;text-align:left">${qNum}.</div>`;
-          colHtml += `<div style="display:flex;gap:${layout.bubbleGap}mm;flex:1">`;
+          colHtml += `<div class="q-row">`;
+          colHtml += `<div class="q-num">${qNum}.</div>`;
+          colHtml += `<div class="q-bubbles">`;
           for (const letter of ['A','B','C','D']) {
-            colHtml += `<div style="width:${layout.bubbleSize}mm;height:${layout.bubbleSize}mm;border:${layout.borderWidth}px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:${layout.bubbleFontSize}pt;font-weight:bold;box-sizing:border-box">${letter}</div>`;
+            colHtml += `<div class="bubble">${letter}</div>`;
           }
           colHtml += `</div></div>`;
         }
@@ -965,59 +952,56 @@ export class PDFGeneratorService {
       }
 
       return `
-      <div class="sheet" style="width:210mm;height:297mm;position:relative;background:white;padding:10mm;font-family:Arial,sans-serif;color:black;box-sizing:border-box;overflow:hidden">
+      <div class="sheet">
+        <!-- Corner Marks for OMR -->
+        <div class="corner-mark" style="top:1mm;left:1mm"></div>
+        <div class="corner-mark" style="top:1mm;right:1mm"></div>
+        <div class="corner-mark" style="bottom:1mm;left:1mm"></div>
+        <div class="corner-mark" style="bottom:1mm;right:1mm"></div>
+
         <!-- Academy Header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:2mm;margin-bottom:2mm;padding:0 5mm;font-family:'Times New Roman',serif">
-          <div style="display:flex;align-items:center;gap:2mm">
-            ${logoBase64 ? `<img src="${logoBase64}" style="width:12mm;height:12mm;object-fit:contain"/>` : ''}
+        <div class="academy-header">
+          ${logoBase64 ? `<img src="${logoBase64}" class="academy-logo"/>` : '<div></div>'}
+          <div class="academy-center">
+            <div class="academy-name">MATH ACADEMY</div>
+            <div class="academy-sub">Xususiy maktabi</div>
           </div>
-          <div style="text-align:center;flex:1;padding:0 2mm">
-            <div style="font-weight:bold;color:#1a1a6e;font-size:14pt;letter-spacing:0.5px">MATH ACADEMY</div>
-            <div style="font-weight:bold;color:#444;font-size:9pt">Xususiy maktabi</div>
-          </div>
-          <div style="text-align:right">
-            <div style="color:#333;font-size:8pt;line-height:1.3">Sharqona ta'lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
-            <div style="font-weight:bold;color:#1a1a6e;font-size:9pt">&#9742; +91-333-66-22</div>
+          <div class="academy-right">
+            <div class="academy-slogan">Sharqona ta&#39;lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+            <div class="academy-phone">&#9742; +91-333-66-22</div>
           </div>
         </div>
 
-        <!-- Corner Marks -->
-        <div style="position:absolute;top:1mm;left:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
-        <div style="position:absolute;top:1mm;right:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
-        <div style="position:absolute;bottom:1mm;left:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
-        <div style="position:absolute;bottom:1mm;right:1mm;width:12mm;height:12mm;background:black;border:6mm solid black;box-sizing:border-box"></div>
-
-        <!-- Header -->
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3mm;padding:0 5mm">
-          <div style="flex:1">
-            <h1 style="font-size:16pt;font-weight:bold;margin:0 0 2mm 0">JAVOB VARAQASI</h1>
-            <div style="font-size:10pt">
-              <div style="margin:1mm 0"><span style="font-weight:600">O'quvchi:</span> ${student.fullName}</div>
-              ${test.subjectName ? `<div style="margin:1mm 0"><span style="font-weight:600">Fan:</span> ${test.subjectName}</div>` : ''}
-              ${periodText ? `<div style="margin:1mm 0"><span style="font-weight:600">Davr:</span> ${periodText}</div>` : ''}
-              <div style="margin:1mm 0"><span style="font-weight:600">Variant:</span> <b>${student.variantCode}</b></div>
-              <div style="margin:1mm 0"><span style="font-weight:600">Sinf:</span> ${test.classNumber}-${test.groupLetter}
-                <span style="margin-left:5mm;font-weight:600">Savollar soni: ${totalQuestions}</span>
-              </div>
-            </div>
+        <!-- Title & Info -->
+        <div class="info-section">
+          <div class="info-left">
+            <div class="sheet-title">JAVOB VARAQASI</div>
+            <table class="info-table">
+              <tr><td class="info-label">O&#39;quvchi:</td><td class="info-value">${student.fullName}</td></tr>
+              ${test.subjectName ? `<tr><td class="info-label">Fan:</td><td class="info-value">${test.subjectName}</td></tr>` : ''}
+              ${periodText ? `<tr><td class="info-label">Davr:</td><td class="info-value">${periodText}</td></tr>` : ''}
+              <tr><td class="info-label">Variant:</td><td class="info-value" style="font-weight:bold">${student.variantCode}</td></tr>
+              <tr><td class="info-label">Sinf:</td><td class="info-value">${test.classNumber}-${test.groupLetter} &nbsp;&nbsp; <span class="info-label">Savollar:</span> ${totalQuestions}</td></tr>
+            </table>
           </div>
-          ${qrDataUrl ? `<div style="width:30mm;height:30mm;display:flex;align-items:center;justify-content:center">
-            <img src="${qrDataUrl}" style="width:28mm;height:28mm" />
-          </div>` : ''}
+          ${qrDataUrl ? `<div class="qr-box"><img src="${qrDataUrl}" class="qr-img"/></div>` : ''}
         </div>
 
         <!-- Instructions -->
-        <div style="background:#f0f0f0;padding:2mm;margin-bottom:3mm;border:1px solid #ccc;font-size:8pt">
-          <h3 style="font-size:9pt;font-weight:bold;margin:0 0 1.5mm 0">Ko'rsatmalar:</h3>
-          <ul style="margin:0;padding-left:5mm">
-            <li style="margin:0.5mm 0">Qora yoki ko'k ruchka ishlatiladi. Doirachani to'liq to'ldiring.</li>
-            <li style="margin:0.5mm 0">Bir savolga faqat bitta javob belgilang. O'chirish yoki tuzatish mumkin emas.</li>
-          </ul>
+        <div class="instructions">
+          <strong>Ko&#39;rsatmalar:</strong>
+          Qora yoki ko&#39;k ruchka ishlatiladi. Doirachani to&#39;liq to&#39;ldiring. Bir savolga faqat bitta javob belgilang.
         </div>
 
         <!-- Answer Grid -->
-        <div style="display:flex;gap:${layout.columnGap}mm;padding:0 5mm">
+        <div class="answer-grid">
           ${gridHtml}
+        </div>
+
+        <!-- Footer -->
+        <div class="sheet-footer">
+          <div>Imzo: ___________________</div>
+          <div>Sana: ____/____/________</div>
         </div>
       </div>`;
     }).join('\n');
@@ -1025,11 +1009,99 @@ export class PDFGeneratorService {
     return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
   @page { size: A4 portrait; margin: 0; }
-  body { margin: 0; padding: 0; }
-  .sheet { page-break-after: always; }
+  body { margin: 0; padding: 0; background: white; }
+
+  .sheet {
+    width: 210mm; min-height: 297mm; position: relative;
+    background: white; padding: 14mm 12mm 10mm 12mm;
+    font-family: Arial, Helvetica, sans-serif; color: #000;
+    box-sizing: border-box; page-break-after: always;
+  }
   .sheet:last-child { page-break-after: auto; }
+
+  /* Corner marks */
+  .corner-mark {
+    position: absolute; width: 10mm; height: 10mm;
+    background: #000; box-sizing: border-box;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  /* Academy header */
+  .academy-header {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 2.5px solid #1a1a6e; padding-bottom: 2mm; margin-bottom: 3mm;
+    font-family: 'Times New Roman', Georgia, serif;
+  }
+  .academy-logo { width: 13mm; height: 13mm; object-fit: contain; }
+  .academy-center { text-align: center; flex: 1; padding: 0 3mm; }
+  .academy-name { font-weight: bold; color: #1a1a6e; font-size: 15pt; letter-spacing: 1px; }
+  .academy-sub { font-weight: bold; color: #555; font-size: 9pt; margin-top: 0.5mm; }
+  .academy-right { text-align: right; }
+  .academy-slogan { color: #444; font-size: 7.5pt; line-height: 1.3; }
+  .academy-phone { font-weight: bold; color: #1a1a6e; font-size: 9pt; margin-top: 1mm; }
+
+  /* Info section */
+  .info-section {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 3mm; padding: 2mm 0;
+  }
+  .info-left { flex: 1; }
+  .sheet-title {
+    font-size: 16pt; font-weight: bold; color: #1a1a6e;
+    margin-bottom: 2mm; letter-spacing: 0.5px;
+    border-bottom: 1px solid #ddd; padding-bottom: 1.5mm;
+  }
+  .info-table { font-size: 10pt; border-collapse: collapse; }
+  .info-table td { padding: 0.8mm 0; vertical-align: top; }
+  .info-label { font-weight: 600; color: #333; padding-right: 3mm; white-space: nowrap; }
+  .info-value { color: #000; }
+
+  /* QR Code */
+  .qr-box {
+    width: 30mm; height: 30mm; border: 1.5px solid #333;
+    display: flex; align-items: center; justify-content: center;
+    margin-left: 3mm; flex-shrink: 0;
+  }
+  .qr-img { width: 27mm; height: 27mm; }
+
+  /* Instructions */
+  .instructions {
+    background: #f5f5f5; border: 1px solid #ccc; border-radius: 1mm;
+    padding: 2mm 3mm; margin-bottom: 4mm; font-size: 8pt; color: #333;
+    line-height: 1.4;
+  }
+
+  /* Answer grid */
+  .answer-grid {
+    display: flex; gap: ${layout.columnGap}mm; padding: 0 2mm;
+  }
+  .grid-col { flex: 1; }
+  .q-row {
+    display: flex; align-items: center; margin: ${layout.rowMargin}mm 0;
+  }
+  .q-num {
+    width: ${layout.numberWidth}mm; font-weight: bold;
+    font-size: ${layout.fontSize}pt; text-align: right; padding-right: 1.5mm;
+    color: #333;
+  }
+  .q-bubbles { display: flex; gap: ${layout.bubbleGap}mm; }
+  .bubble {
+    width: ${layout.bubbleSize}mm; height: ${layout.bubbleSize}mm;
+    border: ${layout.borderWidth}px solid #000; border-radius: 50%;
+    background: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: ${layout.bubbleFontSize}pt; font-weight: bold;
+    box-sizing: border-box; color: #222;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  /* Footer */
+  .sheet-footer {
+    position: absolute; bottom: 14mm; left: 12mm; right: 12mm;
+    display: flex; justify-content: space-between;
+    font-size: 9pt; color: #555; border-top: 1px solid #ddd; padding-top: 2mm;
+  }
 </style>
 </head><body>${sheetsHtml}</body></html>`;
   }

@@ -29,49 +29,49 @@ router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMI
     console.log('=== СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ ===');
     console.log('Данные:', { ...req.body, password: '***' });
     
-    const { username, password, role, branchId, phone, fullName, parentPhone } = req.body;
-    
-    // Запрет на создание супер-админов
+    const { username, password, role, branchId, phone, fullName, parentPhone, teacherSubjects } = req.body;
+
     if (role === UserRole.SUPER_ADMIN) {
-      console.log('❌ Попытка создать супер-админа');
       return res.status(403).json({ message: 'Super Admin yaratish mumkin emas!' });
     }
-    
-    // Validation
+
     if (!username || !password) {
       return res.status(400).json({ message: 'Login va parol majburiy' });
     }
-    
+
     if (!role) {
       return res.status(400).json({ message: 'Rol majburiy' });
     }
-    
-    if (!branchId && role !== UserRole.SUPER_ADMIN) {
+
+    // FIL_ADMIN creates for own branch only
+    const effectiveBranchId = req.user?.role === UserRole.FIL_ADMIN
+      ? req.user.branchId
+      : branchId;
+
+    if (!effectiveBranchId && role !== UserRole.SUPER_ADMIN) {
       return res.status(400).json({ message: 'Filial majburiy' });
     }
-    
-    // Для учителя и студента нужно имя
+
     if ((role === UserRole.TEACHER || role === UserRole.STUDENT) && !fullName) {
       return res.status(400).json({ message: 'F.I.Sh majburiy' });
     }
-    
-    // Check if username already exists
+
     const existingUser = await User.findOne({ username });
     if (existingUser) {
-      console.log('❌ Логин занят:', username);
       return res.status(400).json({ message: 'Bu login band' });
     }
-    
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({
       username,
       password: hashedPassword,
-      fullName, // Добавляем fullName
+      fullName,
       role,
-      branchId: branchId || undefined,
+      branchId: effectiveBranchId || undefined,
       phone,
-      parentPhone, // Для студентов
-      isActive: true
+      parentPhone,
+      teacherSubjects: role === UserRole.TEACHER ? (teacherSubjects || []) : undefined,
+      isActive: true,
     });
     
     await user.save();
@@ -109,11 +109,21 @@ router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.FIL_AD
     }
     
     const { password, ...updateData } = req.body;
-    
+
+    // CRM users: only credentials and teacherSubjects can be changed
+    if (targetUser.crmId) {
+      const allowed: Record<string, unknown> = {};
+      if (updateData.username) allowed.username = updateData.username;
+      if (updateData.teacherSubjects) allowed.teacherSubjects = updateData.teacherSubjects;
+      if (password) allowed.password = await bcrypt.hash(password, 10);
+      const user = await User.findByIdAndUpdate(req.params.id, allowed, { new: true }).select('-password');
+      return res.json(user);
+    }
+
     if (password) {
       updateData.password = await bcrypt.hash(password, 10);
     }
-    
+
     const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true }).select('-password');
     
     res.json(user);
