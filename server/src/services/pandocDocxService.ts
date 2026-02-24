@@ -162,40 +162,8 @@ export class PandocDocxService {
       console.log('✅ Applied font settings:', settings.fontSize, settings.fontFamily, settings.lineHeight);
     }
 
-    // Обновляем watermark opacity если нужно (reference.docx default: 50000 = 50%)
-    if (settings.backgroundOpacity !== undefined && settings.backgroundOpacity !== 0.05) {
-      const headerFile = zip.file('word/header1.xml');
-      if (headerFile) {
-        let headerXml = await headerFile.async('text');
-        
-        // Конвертируем opacity (0-1) в Word format (0-100000)
-        const wordOpacity = Math.round(settings.backgroundOpacity * 100000);
-        
-        // Обновляем alphaModFix
-        headerXml = headerXml.replace(
-          /<a:alphaModFix amt="\d+"/g,
-          `<a:alphaModFix amt="${wordOpacity}"`
-        );
-        
-        zip.file('word/header1.xml', headerXml);
-        console.log('✅ Applied watermark opacity:', settings.backgroundOpacity);
-      }
-    }
-
-    // Если есть кастомное изображение watermark
-    if (settings.backgroundImage && settings.backgroundImage.startsWith('data:image')) {
-      try {
-        // Извлекаем base64 данные
-        const base64Data = settings.backgroundImage.split(',')[1];
-        const imageBuffer = Buffer.from(base64Data, 'base64');
-        
-        // Заменяем watermark.png
-        zip.file('word/media/watermark.png', imageBuffer);
-        console.log('✅ Applied custom watermark image');
-      } catch (error) {
-        console.warn('⚠️ Failed to apply custom watermark:', error);
-      }
-    }
+    // Inject watermark logo into header (works without reference.docx)
+    await this.injectWatermarkHeader(zip, settings.backgroundOpacity ?? 0.08);
 
     // Inject academy header table before each student's heading
     try {
@@ -257,6 +225,124 @@ export class PandocDocxService {
     // Генерируем обновленный DOCX
     const updatedBuffer = await zip.generateAsync({ type: 'nodebuffer' });
     return updatedBuffer;
+  }
+
+  /**
+   * Inject watermark logo into Word header so it appears on every page behind text.
+   */
+  private static async injectWatermarkHeader(zip: JSZip, opacity: number): Promise<void> {
+    const logoPath = await this.findLogoPath();
+    if (!logoPath) return;
+
+    const logoBuffer = fsSync.readFileSync(logoPath);
+    zip.file('word/media/watermark.png', logoBuffer);
+
+    // Word opacity: 0-100000 scale
+    const wordOpacity = Math.round(opacity * 100000);
+
+    // Create or replace header1.xml with watermark image
+    const header1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+       xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+       xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+       xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <w:p>
+    <w:r>
+      <w:drawing>
+        <wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0"
+                   relativeHeight="0" behindDoc="1" locked="1"
+                   layoutInCell="1" allowOverlap="1">
+          <wp:simplePos x="0" y="0"/>
+          <wp:positionH relativeFrom="page"><wp:align>center</wp:align></wp:positionH>
+          <wp:positionV relativeFrom="page"><wp:align>center</wp:align></wp:positionV>
+          <wp:extent cx="3600000" cy="3600000"/>
+          <wp:effectExtent l="0" t="0" r="0" b="0"/>
+          <wp:wrapNone/>
+          <wp:docPr id="99" name="Watermark"/>
+          <a:graphic>
+            <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+              <pic:pic>
+                <pic:nvPicPr>
+                  <pic:cNvPr id="99" name="watermark.png"/>
+                  <pic:cNvPicPr/>
+                </pic:nvPicPr>
+                <pic:blipFill>
+                  <a:blip r:embed="rIdWatermark">
+                    <a:alphaModFix amt="${wordOpacity}"/>
+                  </a:blip>
+                  <a:stretch><a:fillRect/></a:stretch>
+                </pic:blipFill>
+                <pic:spPr>
+                  <a:xfrm>
+                    <a:off x="0" y="0"/>
+                    <a:ext cx="3600000" cy="3600000"/>
+                  </a:xfrm>
+                  <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                </pic:spPr>
+              </pic:pic>
+            </a:graphicData>
+          </a:graphic>
+        </wp:anchor>
+      </w:drawing>
+    </w:r>
+  </w:p>
+</w:hdr>`;
+    zip.file('word/header1.xml', header1Xml);
+
+    // Header rels — link watermark image
+    const headerRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdWatermark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/watermark.png"/>
+</Relationships>`;
+    zip.file('word/_rels/header1.xml.rels', headerRels);
+
+    // Add header relationship to document.xml.rels
+    const docRelsFile = zip.file('word/_rels/document.xml.rels');
+    if (docRelsFile) {
+      let relsXml = await docRelsFile.async('text');
+      const headerRelId = 'rIdHeader1';
+      if (!relsXml.includes(headerRelId)) {
+        relsXml = relsXml.replace(
+          '</Relationships>',
+          `<Relationship Id="${headerRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>`
+        );
+        zip.file('word/_rels/document.xml.rels', relsXml);
+      }
+    }
+
+    // Reference header in document.xml section properties
+    const docFile = zip.file('word/document.xml');
+    if (docFile) {
+      let docXml = await docFile.async('text');
+      if (!docXml.includes('w:headerReference')) {
+        if (docXml.includes('<w:sectPr')) {
+          docXml = docXml.replace(
+            /<w:sectPr([^>]*)>/,
+            `<w:sectPr$1><w:headerReference w:type="default" r:id="rIdHeader1"/>`
+          );
+        } else {
+          docXml = docXml.replace(
+            '</w:body>',
+            `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader1"/></w:sectPr></w:body>`
+          );
+        }
+        zip.file('word/document.xml', docXml);
+      }
+    }
+
+    // Update [Content_Types].xml
+    const ctFile = zip.file('[Content_Types].xml');
+    if (ctFile) {
+      let ctXml = await ctFile.async('text');
+      if (!ctXml.includes('header1.xml')) {
+        ctXml = ctXml.replace(
+          '</Types>',
+          `<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>`
+        );
+        zip.file('[Content_Types].xml', ctXml);
+      }
+    }
   }
 
   /**

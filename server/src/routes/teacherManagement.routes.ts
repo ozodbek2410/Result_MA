@@ -22,7 +22,7 @@ router.get('/my-groups', authenticate, async (req: AuthRequest, res) => {
       return res.status(403).json({ message: 'Faqat o\'qituvchilar uchun' });
     }
 
-    const groups = await Group.find({ teacherId: req.user.id })
+    const groups = await Group.find({ teacherId: req.user.id, isActive: { $ne: false } })
       .populate('branchId', 'name location')
       .populate('subjectId', 'nameUzb')
       .sort({ name: 1 })

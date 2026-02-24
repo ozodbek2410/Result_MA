@@ -1,6 +1,8 @@
 import cron from 'node-cron';
 import Student from './models/Student';
 import { PandocDocxService } from './services/pandocDocxService';
+import { CrmSyncService } from './services/crmSyncService';
+import { CrmApiService } from './services/crmApiService';
 
 /**
  * Автоматический планировщик для повышения класса учеников
@@ -74,24 +76,47 @@ async function cleanupTempFiles() {
  * Формат cron: секунда минута час день месяц день_недели
  * '0 0 1 9 *' = каждое 1 сентября в 00:00
  */
+async function runCrmSync() {
+  if (!CrmApiService.isConfigured()) return;
+  if (CrmSyncService.isSyncRunning()) {
+    console.log('[SCHEDULER] CRM sync skipped - already running');
+    return;
+  }
+
+  try {
+    console.log('[SCHEDULER] Starting scheduled CRM sync...');
+    await CrmSyncService.syncAll(undefined, 'scheduled');
+    console.log('[SCHEDULER] CRM sync completed');
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[SCHEDULER] CRM sync failed:', msg);
+  }
+}
+
 export function initScheduler() {
-  // Запуск каждое 1 сентября в 00:00
   cron.schedule('0 0 1 9 *', promoteStudentsAuto, {
     timezone: 'Asia/Tashkent'
   });
 
-  // Очистка временных файлов каждый час
   cron.schedule('0 * * * *', cleanupTempFiles, {
     timezone: 'Asia/Tashkent'
   });
 
-  console.log('📅 [SCHEDULER] Планировщик запущен');
-  console.log('   → Автоматическое повышение класса: каждое 1 сентября в 00:00 (Asia/Tashkent)');
-  console.log('   → Очистка временных файлов: каждый час');
-  
-  // Для тестирования: раскомментируйте строку ниже, чтобы запускать каждую минуту
-  // cron.schedule('* * * * *', promoteStudentsAuto, { timezone: 'Asia/Tashkent' });
-  // console.log('   ⚠️ ТЕСТОВЫЙ РЕЖИМ: Запуск каждую минуту!');
+  // CRM sync — cleanup stale logs on startup
+  CrmSyncService.cleanupStaleSyncs().catch(() => {});
+
+  const syncEnabled = process.env.CRM_SYNC_ENABLED === 'true';
+  const syncInterval = process.env.CRM_SYNC_INTERVAL || '*/5 * * * *';
+
+  if (syncEnabled && CrmApiService.isConfigured()) {
+    cron.schedule(syncInterval, runCrmSync, { timezone: 'Asia/Tashkent' });
+    console.log(`[SCHEDULER] CRM sync enabled: ${syncInterval}`);
+    setTimeout(runCrmSync, 10000);
+  } else {
+    console.log('[SCHEDULER] CRM sync disabled');
+  }
+
+  console.log('[SCHEDULER] Scheduler started');
 }
 
 export default initScheduler;

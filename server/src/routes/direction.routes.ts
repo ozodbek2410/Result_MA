@@ -5,6 +5,7 @@ import { authenticate, authorize } from '../middleware/auth';
 import { UserRole } from '../models/User';
 
 const router = express.Router();
+const CRM_MSG = 'Bu ma\'lumot CRM orqali boshqariladi';
 
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -20,6 +21,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     console.log('Creating direction:', req.body);
     
@@ -53,6 +55,7 @@ router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res)
 });
 
 router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     console.log('Updating direction:', req.params.id);
     console.log('Update data:', JSON.stringify(req.body, null, 2));
@@ -92,6 +95,7 @@ router.put('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, re
 });
 
 router.delete('/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     const direction = await Direction.findByIdAndUpdate(req.params.id, { isActive: false });
     if (!direction) {

@@ -9,14 +9,11 @@ import { Select } from '@/components/ui/Select';
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@/components/ui/Dialog';
 import { PageNavbar } from '@/components/ui/PageNavbar';
 import { useToast } from '@/hooks/useToast';
-import { 
-  Users, 
-  BookOpen, 
-  Search, 
-  ArrowRight, 
+import {
+  Users,
+  BookOpen,
+  ArrowRight,
   GraduationCap,
-  Sparkles,
-  Plus,
   Edit2,
   Trash2
 } from 'lucide-react';
@@ -65,7 +62,7 @@ export default function MyGroupsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name || !formData.subjectId) {
       error('Barcha majburiy maydonlarni to\'ldiring');
       return;
@@ -101,7 +98,7 @@ export default function MyGroupsPage() {
 
   const handleDelete = async (groupId: string) => {
     if (!confirm('Guruhni o\'chirmoqchimisiz? Barcha o\'quvchilar guruhdan chiqariladi.')) return;
-    
+
     try {
       await api.delete(`/teacher/groups/${groupId}`);
       success('Guruh o\'chirildi!');
@@ -149,9 +146,7 @@ export default function MyGroupsPage() {
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
         searchPlaceholder="Guruh yoki fan bo'yicha qidirish..."
-        showAddButton={true}
-        addButtonText="Guruh qo'shish"
-        onAddClick={() => setShowForm(true)}
+        showAddButton={false}
         gradient={true}
       />
 
@@ -172,7 +167,7 @@ export default function MyGroupsPage() {
               required
               placeholder="7-A Matematika"
             />
-            
+
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Sinf"
@@ -226,7 +221,7 @@ export default function MyGroupsPage() {
                 style={{ animationDelay: `${index * 100}ms` }}
                 className="group animate-slide-in"
               >
-                <Card 
+                <Card
                   className="h-full border-2 border-slate-200/50 hover:border-indigo-300 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-2 cursor-pointer overflow-hidden"
                   onClick={() => navigate(`/teacher/groups/${group._id}`)}
                 >
@@ -237,27 +232,25 @@ export default function MyGroupsPage() {
                         <Users className="w-7 h-7 text-white" />
                       </div>
                       <div className="flex gap-1">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(group);
-                          }}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Tahrirlash"
-                        >
-                          <Edit2 className="w-4 h-4 text-gray-600" />
-                        </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(group._id);
-                          }}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                          title="O'chirish"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </button>
-                        <button 
+                        {!group.crmId && (
+                          <>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEdit(group); }}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Tahrirlash"
+                            >
+                              <Edit2 className="w-4 h-4 text-gray-600" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDelete(group._id); }}
+                              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              title="O'chirish"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-600" />
+                            </button>
+                          </>
+                        )}
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             navigate(`/teacher/groups/${group._id}`);
@@ -316,7 +309,7 @@ export default function MyGroupsPage() {
                 style={{ animationDelay: `${index * 50}ms` }}
                 className="animate-slide-in"
               >
-                <Card 
+                <Card
                   className="border-2 border-slate-200/50 hover:border-indigo-300 transition-all duration-200 active:scale-98 cursor-pointer overflow-hidden"
                   onClick={() => navigate(`/teacher/groups/${group._id}`)}
                 >
@@ -332,7 +325,7 @@ export default function MyGroupsPage() {
                         <h3 className="text-base font-bold text-slate-900 mb-1 truncate">
                           {group.name}
                         </h3>
-                        
+
                         <div className="flex flex-wrap gap-1.5 mb-2">
                           <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs px-2 py-0.5">
                             {group.classNumber}-sinf
@@ -356,28 +349,24 @@ export default function MyGroupsPage() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex flex-col gap-1 flex-shrink-0">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(group);
-                          }}
-                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Tahrirlash"
-                        >
-                          <Edit2 className="w-4 h-4 text-gray-600" />
-                        </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(group._id);
-                          }}
-                          className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                          title="O'chirish"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </button>
-                      </div>
+                      {!group.crmId && (
+                        <div className="flex flex-col gap-1 flex-shrink-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleEdit(group); }}
+                            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Tahrirlash"
+                          >
+                            <Edit2 className="w-4 h-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDelete(group._id); }}
+                            className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                            title="O'chirish"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -395,7 +384,7 @@ export default function MyGroupsPage() {
               {searchQuery ? 'Guruhlar topilmadi' : 'Sizga guruh biriktirilmagan'}
             </h3>
             <p className="text-slate-600 max-w-md mx-auto">
-              {searchQuery 
+              {searchQuery
                 ? 'Qidiruv bo\'yicha hech narsa topilmadi. Boshqa so\'z bilan qidiring.'
                 : 'Filial administratori sizga guruh biriktirishi kerak.'
               }

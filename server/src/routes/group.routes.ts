@@ -5,6 +5,8 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
 import { invalidateCache } from '../middleware/cache';
 
+const CRM_MSG = 'Bu ma\'lumot CRM orqali boshqariladi';
+
 const router = express.Router();
 
 router.get('/', authenticate, async (req: AuthRequest, res) => {
@@ -13,7 +15,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     
     // Фильтрация по роли
     if (req.user?.role === UserRole.TEACHER) {
-      filter.teacherId = req.user?.teacherId;
+      filter.teacherId = req.user?.id;
     } else if (req.user?.role !== UserRole.SUPER_ADMIN) {
       filter.branchId = req.user?.branchId;
     }
@@ -27,13 +29,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       .exec();
     
     // Дополнительная фильтрация для учителя
-    let filteredGroups = groups;
-    if (req.user?.role === UserRole.TEACHER) {
-      filteredGroups = groups.filter(group => 
-        group.teacherId && 
-        group.teacherId._id.toString() === req.user?.teacherId
-      );
-    }
+    const filteredGroups = groups;
     
     // Получаем количество учеников одним запросом
     const groupIds = filteredGroups.map(g => g._id);
@@ -78,7 +74,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
     // Проверка доступа для учителя
     if (req.user?.role === UserRole.TEACHER) {
       // Учитель может видеть только свои группы
-      if (!group.teacherId || group.teacherId._id.toString() !== req.user.teacherId) {
+      if (!group.teacherId || group.teacherId._id.toString() !== req.user.id) {
         return res.status(403).json({ message: 'Sizda bu guruhga kirish huquqi yo\'q' });
       }
     } else if (req.user?.role === UserRole.FIL_ADMIN) {
@@ -111,7 +107,7 @@ router.get('/:id/students', authenticate, async (req: AuthRequest, res) => {
     
     // Проверяем доступ к филиалу
     if (req.user?.role === UserRole.TEACHER) {
-      if (!group.teacherId || group.teacherId.toString() !== req.user.teacherId) {
+      if (!group.teacherId || group.teacherId.toString() !== req.user.id) {
         console.log('Teacher access denied for group:', groupId);
         return res.status(403).json({ message: 'Sizda bu guruhga kirish huquqi yo\'q' });
       }
@@ -170,6 +166,7 @@ router.get('/:id/students', authenticate, async (req: AuthRequest, res) => {
 });
 
 router.post('/', authenticate, async (req: AuthRequest, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     console.log('Creating group:', req.body);
     const { name, classNumber, subjectId, letter, teacherId } = req.body;
@@ -205,6 +202,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 });
 
 router.put('/:id', authenticate, async (req: AuthRequest, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     console.log('=== ОБНОВЛЕНИЕ ГРУППЫ ===');
     console.log('Group ID:', req.params.id);
@@ -302,6 +300,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
 });
 
 router.delete('/:id', authenticate, async (req, res) => {
+  return res.status(403).json({ message: CRM_MSG });
   try {
     const group = await Group.findById(req.params.id);
     if (!group) {

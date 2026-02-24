@@ -464,7 +464,7 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     }
 
     const format = req.body.format as 'word' | 'image';
-    const subjectId = req.body.subjectId || 'math'; // NEW: Get subject ID from request, default to math
+    const subjectId = req.body.subjectId;
     
     if (!format) {
       return res.status(400).json({ message: 'Format ko\'rsatilmagan' });
