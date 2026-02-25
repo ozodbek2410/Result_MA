@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/useToast';
 
 interface ParsedQuestion {
   text: string;
-  variants: { letter: string; text: string }[];
+  variants: { letter: string; text: string; imageUrl?: string }[];
   correctAnswer: string;
   points: number;
   image?: string; // Локальный путь (загруженный вручную)
@@ -57,7 +57,7 @@ export default function TestImportPage() {
 
   // Common state
   const [file, setFile] = useState<File | null>(null);
-  const [selectedSubject, setSelectedSubject] = useState<string>('math'); // NEW: Subject selection
+  const [detectedType, setDetectedType] = useState<string>('generic');
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
   const [error, setError] = useState<string>('');
@@ -87,14 +87,8 @@ export default function TestImportPage() {
       const ext = file.name.split('.').pop()?.toLowerCase();
       const format = ['jpg', 'jpeg', 'png'].includes(ext || '') ? 'image' : 'word';
       formData.append('format', format);
-      formData.append('subjectId', selectedSubject); // NEW: Send subject ID
-
       // DEBUG: Log what we're sending
-      console.log('📤 Sending to server:', {
-        file: file.name,
-        format,
-        subjectId: selectedSubject
-      });
+      console.log('📤 Sending to server:', { file: file.name, format });
 
       console.log('%c🤖 AI Parsing Started', 'color: #3b82f6; font-weight: bold; font-size: 14px');
       console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #3b82f6');
@@ -135,16 +129,20 @@ export default function TestImportPage() {
         console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #3b82f6');
       }
 
+      // Auto-detected content type from server
+      const serverDetectedType = data.detectedType || 'generic';
+      setDetectedType(serverDetectedType);
+      console.log('🔍 Detected content type:', serverDetectedType);
+
       // Convert LaTeX formulas to TipTap JSON
+      const isChemistry = serverDetectedType === 'chemistry';
+      const isPhysics = serverDetectedType === 'physics';
+
       const questionsWithFormulas = (data.questions || []).map((q: ParsedQuestion) => {
-        // Fan uchun maxsus konvertatsiya
-        const isChemistry = selectedSubject === 'chemistry';
-        const isPhysics = selectedSubject === 'physics';
-        
-        const hasFormulas = q.text.includes('\\(') || q.text.includes('\\[') || 
+        const hasFormulas = q.text.includes('\\(') || q.text.includes('\\[') ||
                            (isChemistry && (q.text.includes('_') || q.text.includes('^') || q.text.includes('\\cdot'))) ||
                            (isPhysics && (q.text.includes('_') || q.text.includes('^') || q.text.includes('\\times') || q.text.includes('\\div')));
-        
+
         let questionJson = null;
         if (hasFormulas) {
           if (isChemistry) {
@@ -156,7 +154,6 @@ export default function TestImportPage() {
           }
         }
 
-        // Convert variants with formulas
         const convertedVariants = q.variants.map((v) => {
           const variantHasFormulas = v.text.includes('\\(') || v.text.includes('\\[') ||
                                      (isChemistry && (v.text.includes('_') || v.text.includes('^') || v.text.includes('\\cdot'))) ||
@@ -170,10 +167,7 @@ export default function TestImportPage() {
             } else {
               variantJson = convertLatexToTiptapJson(v.text);
             }
-            return {
-              ...v,
-              text: variantJson || v.text,
-            };
+            return { ...v, text: variantJson || v.text };
           }
           return v;
         });
@@ -182,7 +176,7 @@ export default function TestImportPage() {
           ...q,
           text: questionJson || q.text,
           variants: convertedVariants,
-          correctAnswer: '', // Bo'sh qoldirish - foydalanuvchi o'zi tanlaydi
+          correctAnswer: q.correctAnswer || '',
           imageUrl: q.imageUrl, // Сохраняем imageUrl из Word документа
         };
       });
@@ -530,28 +524,6 @@ export default function TestImportPage() {
               <p className="text-gray-600">Word, PDF yoki rasm formatida test yuklang</p>
             </div>
 
-            {/* NEW: Subject Selection */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <label className="block text-sm font-medium text-blue-900 mb-2">
-                📚 Fan tanlang (parsing uchun):
-              </label>
-              <select
-                value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
-                className="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-base"
-              >
-                <option value="math">📐 Matematika (LaTeX formulalar)</option>
-                <option value="biology">🧬 Biologiya (rasmlar, lotin nomlari)</option>
-                <option value="physics">⚡ Fizika (formulalar, birliklar)</option>
-                <option value="chemistry">🧪 Kimyo (molekulalar, reaksiyalar)</option>
-                <option value="literature">📚 Ona tili va Adabiyot (matn tahlili)</option>
-                <option value="history">📜 Tarix</option>
-              </select>
-              <p className="text-xs text-blue-700 mt-2">
-                💡 Har bir fan uchun maxsus parsing algoritmi ishlatiladi
-              </p>
-            </div>
-
             <label className="block">
               <div className="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer">
                 <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -631,7 +603,7 @@ export default function TestImportPage() {
                 .map((q, idx) => {
                   const textStr = typeof q.text === 'string' ? q.text : JSON.stringify(q.text);
                   const hasProblematicText = !q.text || textStr.includes('(parse qilinmadi)');
-                  const hasEmptyVariants = q.variants.some(v => !v.text);
+                  const hasEmptyVariants = q.variants.some(v => !v.text && !v.imageUrl);
                   return { idx: idx + 1, isProblematic: hasProblematicText || hasEmptyVariants };
                 })
                 .filter(item => item.isProblematic);
@@ -671,7 +643,7 @@ export default function TestImportPage() {
                   // Check if question is problematic
                   const textStr = typeof q.text === 'string' ? q.text : JSON.stringify(q.text);
                   const hasProblematicText = !q.text || textStr.includes('(parse qilinmadi)');
-                  const hasEmptyVariants = q.variants.some(v => !v.text);
+                  const hasEmptyVariants = q.variants.some(v => !v.text && !v.imageUrl);
                   const isProblematic = hasProblematicText || hasEmptyVariants;
                   
                   return (
@@ -701,8 +673,9 @@ export default function TestImportPage() {
                               alt="Question"
                               className="rounded-lg border-2 border-gray-200"
                               style={{
-                                maxWidth: q.imageWidth ? `${q.imageWidth}px` : '20rem',
-                                maxHeight: q.imageHeight ? `${q.imageHeight}px` : '12rem',
+                                width: q.imageWidth ? `${q.imageWidth}px` : undefined,
+                                height: q.imageHeight ? `${q.imageHeight}px` : undefined,
+                                maxWidth: '100%',
                               }}
                             />
                             <button
@@ -755,12 +728,22 @@ export default function TestImportPage() {
                             >
                               <span className="font-bold text-xl">{v.letter}</span>
                             </button>
-                            <div className="flex-1 border rounded-lg">
-                              <RichTextEditor
-                                value={v.text}
-                                onChange={(value) => handleVariantChange(idx, vIdx, value)}
-                                placeholder="Variant matni..."
-                              />
+                            <div className="flex-1">
+                              <div className="border rounded-lg">
+                                <RichTextEditor
+                                  value={v.text}
+                                  onChange={(value) => handleVariantChange(idx, vIdx, value)}
+                                  placeholder="Variant matni..."
+                                />
+                              </div>
+                              {v.imageUrl && (
+                                <img
+                                  src={v.imageUrl}
+                                  alt={`Variant ${v.letter}`}
+                                  className="mt-1 rounded border border-gray-200"
+                                  style={{ maxHeight: '3rem' }}
+                                />
+                              )}
                             </div>
 
                             <button

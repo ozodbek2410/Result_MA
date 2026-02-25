@@ -18,7 +18,7 @@ export interface MediaItem {
 
 export interface ParsedQuestion {
   text: string;
-  variants: { letter: string; text: string }[];
+  variants: { letter: string; text: string; imageUrl?: string }[];
   correctAnswer: string;
   points: number;
   originalNumber?: number; // Fayldagi asl savol raqami (gap detection uchun)
@@ -455,11 +455,14 @@ export abstract class BaseParser {
 
     // Pandoc rasm markerlarini ___IMAGE_N___ ga aylantirish (BARCHA parserlar uchun)
     // ![](media/image1.png){...} or ![](tempDir/media/image1.png){...} → ___IMAGE_1___
-    // MUHIM: \n bilan ajratish — marker ALOHIDA qatorda bo'lishi kerak
-    cleaned = cleaned.replace(/!\[\]\((?:[^)]*\/)?media\/image(\d+)\.[a-z]+\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
-    cleaned = cleaned.replace(/!\[.*?\]\((?:[^)]*\/)?media\/image(\d+)(?:\.[a-z]+)?(?:[^)]*)\)(\{[^}]*\})?/gi, '\n___IMAGE_$1___\n');
+    // Bo'shliq bilan ajratish — inline rasmlar variant ichida qoladi, lekin text bilan birlashmaydi
+    cleaned = cleaned.replace(/!\[\]\((?:[^)]*\/)?media\/image(\d+)\.[a-z]+\)(\{[^}]*\})?/gi, ' ___IMAGE_$1___ ');
+    cleaned = cleaned.replace(/!\[.*?\]\((?:[^)]*\/)?media\/image(\d+)(?:\.[a-z]+)?(?:[^)]*)\)(\{[^}]*\})?/gi, ' ___IMAGE_$1___ ');
     // Bold ichidagi rasmlarni tozalash: **___IMAGE_1___** → ___IMAGE_1___
-    cleaned = cleaned.replace(/\*\*\s*(___IMAGE_\d+___)\s*\*\*/g, '\n$1\n');
+    cleaned = cleaned.replace(/\*\*\s*(___IMAGE_\d+___)\s*\*\*/g, ' $1 ');
+    // Rasm markerdan keyin savol raqami kelsa — newline bilan ajratish
+    // Masalan: "___IMAGE_1___ 12. Savol matni" → "___IMAGE_1___\n12. Savol matni"
+    cleaned = cleaned.replace(/(___IMAGE_\d+___)\s*(\d{1,3}[\.\)])/g, '$1\n$2');
 
     return cleaned;
   }
@@ -496,13 +499,16 @@ export abstract class BaseParser {
     
     console.log(`🔍 [PARSER] Found ${matches.length} question markers`);
     
-    const validMatches = matches.filter((m) => {
+    let validMatches = matches.filter((m) => {
       const num = parseInt(m[1]);
       return num >= 1 && num <= 100;
     });
-    
+
     console.log(`✅ [PARSER] Valid question markers: ${validMatches.length}`);
-    
+
+    // Sequential filter: skip sub-items (e.g., "1) sazavor; 2) pinhona" inside questions)
+    validMatches = this.filterSequentialMarkers(validMatches);
+
     for (let i = 0; i < validMatches.length; i++) {
       const match = validMatches[i];
       const startIdx = match.index!;
@@ -512,7 +518,7 @@ export abstract class BaseParser {
       
       // CRITICAL FIX: Check if block has variants
       // If no variants found, check next line - it might be the variants line
-      const hasVariants = block.match(/[A-D]\s*\)/gi);
+      const hasVariants = block.match(/[A-D]\s*\)/g);
       const variantCount = hasVariants ? hasVariants.length : 0;
       
       if (variantCount < 2 && i < validMatches.length - 1) {
@@ -523,7 +529,7 @@ export abstract class BaseParser {
         
         // Check if next block is actually a variants line (starts with A), B), etc.)
         const nextBlockFirstLine = nextBlock.split('\n')[0].trim();
-        const startsWithVariant = nextBlockFirstLine.match(/^(?:\*\*\s*)?[A-D]\s*\)/i);
+        const startsWithVariant = nextBlockFirstLine.match(/^(?:\*\*\s*)?[A-D]\s*\)/);
         
         if (startsWithVariant) {
           // Next block is variants line, merge it with current block
@@ -561,8 +567,46 @@ export abstract class BaseParser {
   }
 
   /**
-   * Extract single question from text block
+   * Filter question markers to keep only ascending sequence.
+   * Skips sub-items (1, 2, 3 inside question body) that break numbering.
    */
+  private filterSequentialMarkers(matches: RegExpExecArray[]): RegExpExecArray[] {
+    if (matches.length <= 1) return matches;
+
+    const nums = matches.map(m => parseInt(m[1]));
+
+    // Find the start index giving the longest ascending subsequence
+    let bestStart = 0;
+    let bestLen = 0;
+
+    for (let s = 0; s < nums.length; s++) {
+      let len = 1;
+      let last = nums[s];
+      for (let j = s + 1; j < nums.length; j++) {
+        if (nums[j] > last) { len++; last = nums[j]; }
+      }
+      if (len > bestLen) { bestLen = len; bestStart = s; }
+    }
+
+    // Build filtered list from best start
+    const filtered: RegExpExecArray[] = [];
+    let lastNum = 0;
+
+    for (let i = bestStart; i < matches.length; i++) {
+      const n = parseInt(matches[i][1]);
+      if (n > lastNum) {
+        filtered.push(matches[i]);
+        lastNum = n;
+      }
+    }
+
+    if (filtered.length < matches.length) {
+      console.log(`📊 [PARSER] Sequential filter: ${matches.length} → ${filtered.length} (skipped ${matches.length - filtered.length} sub-items)`);
+    }
+
+    return filtered;
+  }
+
   /**
    * Extract question with inline variants (all on same line)
    * Example: "5) question text A) 1 B) 2 **C) 3** D) 4"
@@ -573,31 +617,31 @@ export abstract class BaseParser {
     let cleanLine = line.replace(/^(?:\*\*\s*)?\d+(?:\*\*\s*)?[.)]\s*/, '').trim();
     
     // Find where variants start (first A), B), C), or D))
-    const firstVariantMatch = cleanLine.match(/[A-D]\s*\)/i);
+    const firstVariantMatch = cleanLine.match(/[A-D]\s*\)/);
     if (!firstVariantMatch) return null;
-    
+
     const variantStartIdx = firstVariantMatch.index!;
     const questionText = cleanLine.substring(0, variantStartIdx).trim();
     const variantsText = cleanLine.substring(variantStartIdx);
-    
+
     // Detect correct answer (bold variant)
-    const boldVariantPattern = /(?:\*\*\s*([A-D])\s*\)|([A-D])\s*\)\s*\*\*)/gi;
+    const boldVariantPattern = /(?:\*\*\s*([A-D])\s*\)|([A-D])\s*\)\s*\*\*)/g;
     const boldMatches = Array.from(variantsText.matchAll(boldVariantPattern));
     let correctAnswer = 'A';
     if (boldMatches.length > 0) {
-      correctAnswer = (boldMatches[0][1] || boldMatches[0][2]).toUpperCase();
+      correctAnswer = (boldMatches[0][1] || boldMatches[0][2]);
       console.log(`  🎯 Correct answer detected: ${correctAnswer}`);
     }
-    
+
     // Remove bold markers
     let cleanVariants = variantsText.replace(/\*\*/g, ' ').replace(/____/g, ' ').replace(/\s+/g, ' ');
-    
-    // Split by variant letters
-    const parts = cleanVariants.split(/(?=[A-D]\s*\))/i);
+
+    // Split by variant letters (uppercase only)
+    const parts = cleanVariants.split(/(?=[A-D]\s*\))/);
     const variants: { letter: string; text: string }[] = [];
-    
+
     for (const part of parts) {
-      const match = part.match(/^([A-D])\s*\)\s*(.*)$/i);
+      const match = part.match(/^([A-D])\s*\)\s*(.*)$/);
       if (match) {
         const letter = match[1].toUpperCase();
         let text = match[2].trim();
@@ -647,12 +691,12 @@ export abstract class BaseParser {
     const fullBlock = nonImageLines.join(' ');
 
     // Check if this block has inline variants (all variants on same line)
-    const variantPattern = /(?:\*\*\s*)?[A-D]\s*\)(?:\s*\*\*)?/gi;
-    const variantMatches = fullBlock.match(variantPattern);
-    const variantCount = variantMatches ? variantMatches.length : 0;
+    const variantPatternUpper = /(?:\*\*\s*)?[A-D]\s*\)(?:\s*\*\*)?/g;
+    const variantMatchesUpper = fullBlock.match(variantPatternUpper);
+    const variantCountUpper = variantMatchesUpper ? variantMatchesUpper.length : 0;
 
     // If 4 variants found in full block, process as single line
-    if (variantCount === 4) {
+    if (variantCountUpper === 4) {
       console.log(`🔍 [PARSER] Detected 4 inline variants in block, processing as single line`);
       const result = this.extractInlineVariants(fullBlock, mathBlocks);
       if (result && extractedImageUrl && !result.imageUrl) {
@@ -681,6 +725,9 @@ export abstract class BaseParser {
     let inQuestion = true;
     
     for (const line of lines) {
+      // Stop if we already have all 4 standard variants (A, B, C, D)
+      if (['A', 'B', 'C', 'D'].every(l => variants.some(v => v.letter === l))) break;
+
       // CRITICAL FIX: Remove question number from question text (more aggressive)
       // Matches: "1)" or "**1**)" or "1." at the start
       if (line.match(/^(?:\*\*\s*)?\d+(?:\*\*\s*)?[.)]/)) {
@@ -704,36 +751,32 @@ export abstract class BaseParser {
       // Also handles: "A) 2 ** B) ** ___MATH_3___ C) ___MATH_4___ D) ___MATH_5___"
       // Also handles: "A) 2 **B)** ___MATH_3___ C) ___MATH_4___ D) ___MATH_5___"
       // Count variants by looking for A), B), C), D) with optional ** before/after
-      const variantPattern = /(?:\*\*\s*)?[A-D]\s*\)(?:\s*\*\*)?/gi;
-      const variantMatches = line.match(variantPattern);
-      const variantCount = variantMatches ? variantMatches.length : 0;
-      
-      if (variantCount >= 2) {
+      const variantPatternLine = /(?:\*\*\s*)?[A-D]\s*\)(?:\s*\*\*)?/g;
+      const variantMatchesLine = line.match(variantPatternLine);
+      const variantCountLine = variantMatchesLine ? variantMatchesLine.length : 0;
+
+      if (variantCountLine >= 2) {
         inQuestion = false;
-        console.log(`🔍 [PARSER] Detected ${variantCount} inline variants in line: ${line}`);
-        
-        // First, detect which variant is bold (correct answer)
-        // Pattern 1: ** A) text** or **A)** text
-        // Pattern 2: A) text **B)** text (bold after previous variant)
-        const boldVariantPattern = /(?:\*\*\s*([A-D])\s*\)|([A-D])\s*\)\s*\*\*)/gi;
+        console.log(`🔍 [PARSER] Detected ${variantCountLine} inline variants in line: ${line}`);
+
+        // Detect which variant is bold (correct answer)
+        const boldVariantPattern = /(?:\*\*\s*([A-D])\s*\)|([A-D])\s*\)\s*\*\*)/g;
         const boldMatches = Array.from(line.matchAll(boldVariantPattern));
         if (boldMatches.length > 0) {
-          const boldLetter = (boldMatches[0][1] || boldMatches[0][2]).toUpperCase();
-          correctAnswer = boldLetter;
-          console.log(`  🎯 Correct answer detected: ${boldLetter}`);
+          correctAnswer = boldMatches[0][1] || boldMatches[0][2];
+          console.log(`  🎯 Correct answer detected: ${correctAnswer}`);
         }
-        
+
         // Remove bold markers first for easier parsing
         let cleanLine = line.replace(/\*\*/g, ' ').replace(/____/g, ' ').replace(/\s+/g, ' ');
-        
-        // Split by variant letters (A, B, C, D)
-        // Use lookahead to split before each variant letter
-        const parts = cleanLine.split(/(?=[A-D]\s*\))/i);
-        
+
+        // Split by variant letters (uppercase only)
+        const parts = cleanLine.split(/(?=[A-D]\s*\))/);
+
         for (const part of parts) {
-          const match = part.match(/^([A-D])\s*\)\s*(.*)$/i);
+          const match = part.match(/^([A-D])\s*\)\s*(.*)$/);
           if (match) {
-            const letter = match[1].toUpperCase();
+            const letter = match[1];
             let text = match[2].trim();
             
             text = this.restoreMath(text, mathBlocks);
@@ -917,19 +960,24 @@ export abstract class BaseParser {
     console.log(`🔍 [MEDIA] Full text length: ${question.text.length}`);
     console.log(`🔍 [MEDIA] Contains ![](media/: ${question.text.includes('![](media/')}`);
 
-    // Variant matnlaridan ham rasm markerlarini tekshirish (xavfsizlik uchun)
-    // Ba'zan ___IMAGE_X___ variant text ichiga kirib qoladi
+    // Variant matnlaridan rasm markerlarini tekshirish
+    // ___IMAGE_X___ variant text ichiga kirib qoladi — har bir variant o'z rasmini oladi
     if (question.variants) {
       for (const v of question.variants) {
         const imgInVariant = v.text.match(/___IMAGE_(\d+)___/);
         if (imgInVariant) {
           const imgNum = imgInVariant[1];
-          if (!question.imageUrl) {
-            question.imageUrl = this.findImageByNumber(imgNum);
-            console.log(`  🔍 [MEDIA] Found image marker in variant ${v.letter}, set imageUrl`);
+          const imgUrl = this.findImageByNumber(imgNum);
+          if (imgUrl) {
+            v.imageUrl = imgUrl;
+            console.log(`  🔍 [MEDIA] Found image in variant ${v.letter}: ${imgUrl}`);
           }
           // Markerini variant matnidan olib tashlash
           v.text = v.text.replace(/___IMAGE_\d+___/g, '').trim();
+          // Rasmli variant text bo'sh bo'lsa — placeholder (Mongoose required validation uchun)
+          if (!v.text && v.imageUrl) {
+            v.text = '[rasm]';
+          }
         }
       }
     }

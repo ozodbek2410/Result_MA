@@ -16,6 +16,7 @@ export default function TestPrintPage() {
   const [loading, setLoading] = useState(true);
   const [selectedStudents, setSelectedStudents] = useState<any[]>([]);
   const [variants, setVariants] = useState<any[]>([]);
+  const [variantsLoading, setVariantsLoading] = useState(true);
   const [columnsCount, setColumnsCount] = useState(2);
   const [testsPerPage] = useState(1);
   const [sheetsPerPage, setSheetsPerPage] = useState(1);
@@ -58,6 +59,7 @@ export default function TestPrintPage() {
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
       setVariants(data);
+      setVariantsLoading(false);
       console.log('📦 CLIENT: Loaded', data.length, 'variants');
       if (data.length > 0) {
         console.log('📦 CLIENT: Sample variant:', {
@@ -72,6 +74,7 @@ export default function TestPrintPage() {
       }
     } catch (error) {
       console.error('Error fetching variants:', error);
+      setVariantsLoading(false);
     }
   };
 
@@ -149,10 +152,49 @@ export default function TestPrintPage() {
 
   // Handle Answer Sheet Word Export
   const handleDownloadAnswerKeyWord = async () => {
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
-      showError('Word export hozircha mavjud emas. PDF dan foydalaning.');
-    } catch (error: any) {
-      console.error('Error:', error);
+      setExporting(true);
+      setExportProgress(5);
+      success('Javob varaqasi Word yaratilmoqda...');
+
+      const endpoint = isBlockTest
+        ? `/block-tests/${id}/export-answer-sheets-docx`
+        : `/tests/${id}/export-answer-sheets-docx`;
+
+      const studentCount = Math.max(selectedStudents.length, 1);
+      const estimatedMs = studentCount * 800;
+      const startTime = Date.now();
+      progressTimer = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const ratio = Math.min(elapsed / estimatedMs, 1);
+        setExportProgress(Math.round(5 + 85 * (1 - Math.pow(1 - ratio, 2))));
+      }, 300);
+
+      const response = await api.post(endpoint, {
+        students: selectedStudents.map(s => s._id),
+      }, { responseType: 'blob' });
+
+      clearInterval(progressTimer);
+      setExportProgress(100);
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `javob-varaqasi-${Date.now()}.docx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      success('Word yuklandi');
+      setTimeout(() => { setExporting(false); setExportProgress(0); }, 500);
+    } catch (error: unknown) {
+      if (progressTimer) clearInterval(progressTimer);
+      console.error('Error downloading answer sheets DOCX:', error);
+      showError('Word yuklashda xatolik');
+      setExporting(false);
+      setExportProgress(0);
     }
   };
 
@@ -578,6 +620,26 @@ export default function TestPrintPage() {
     const hasVariants = variants.length > 0;
     const hasShuffledVariants = variants.some(v => v.shuffledQuestions && v.shuffledQuestions.length > 0);
 
+    if (variantsLoading) {
+      return (
+        <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="border border-gray-200 rounded-lg p-6 space-y-3 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-1/3" />
+              <div className="h-3 bg-gray-100 rounded w-full" />
+              <div className="h-3 bg-gray-100 rounded w-5/6" />
+              <div className="flex gap-4 mt-2">
+                <div className="h-3 bg-gray-100 rounded w-1/4" />
+                <div className="h-3 bg-gray-100 rounded w-1/4" />
+                <div className="h-3 bg-gray-100 rounded w-1/4" />
+                <div className="h-3 bg-gray-100 rounded w-1/4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     if (!hasVariants) {
       return (
         <div className="text-center py-12">
@@ -619,55 +681,48 @@ export default function TestPrintPage() {
                 return (
                   <div
                     key={student._id}
-                    className={`print-page-table ${testsPerPage > 1 ? 'border-2 border-gray-300 p-3' : ''}`}
-                    style={{
-                      fontFamily,
-                      lineHeight,
-                      position: 'relative'
-                    }}
+                    className={`${testsPerPage > 1 ? 'border-2 border-gray-300 p-3' : ''}`}
+                    style={{ fontFamily, lineHeight, position: 'relative' }}
                   >
-                    {/* Academy Header — repeats on every printed page via table-header-group */}
-                    <div className="print-page-header">
-                      <div>
-                        <div className="flex items-center justify-between border-b-2 border-gray-800 pb-1 mb-1" style={{ fontFamily: 'Times New Roman, serif' }}>
-                          <div className="flex items-center gap-2">
-                            <img src="/logo.png" alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
-                          </div>
-                          <div className="text-center flex-1 px-2">
-                            <div className="font-bold tracking-wide" style={{ fontSize: '16px', color: '#1a1a6e' }}>MATH ACADEMY</div>
-                            <div className="font-bold" style={{ fontSize: '11px', color: '#444' }}>Xususiy maktabi</div>
-                          </div>
-                          <div className="text-right">
-                            <div style={{ fontSize: '10px', color: '#333', lineHeight: '1.3' }}>Sharqona ta'lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
-                            <div className="font-bold" style={{ fontSize: '11px', color: '#1a1a6e' }}>&#9742; +91-333-66-22</div>
-                          </div>
+                    {/* Full-width header section — NO column-count here */}
+                    <div>
+                      {/* Academy Header */}
+                      <div className="w-full flex items-center justify-between border-b-2 border-gray-800 pb-1 mb-1" style={{ fontFamily: 'Times New Roman, serif' }}>
+                        <div className="flex items-center gap-2">
+                          <img src="/logo.png" alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                        </div>
+                        <div className="text-center flex-1 px-2">
+                          <div className="font-bold tracking-wide" style={{ fontSize: '16px', color: '#1a1a6e' }}>MATH ACADEMY</div>
+                          <div className="font-bold" style={{ fontSize: '11px', color: '#444' }}>Xususiy maktabi</div>
+                        </div>
+                        <div className="text-right">
+                          <div style={{ fontSize: '10px', color: '#333', lineHeight: '1.3' }}>Sharqona ta'lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+                          <div className="font-bold" style={{ fontSize: '11px', color: '#1a1a6e' }}>&#9742; +91-333-66-22</div>
                         </div>
                       </div>
-                    </div>
-                    <div className="print-page-body">
-                    <div>
-                    <div className={`${spacingClasses.header}`}>
-                      <div className={`flex items-center gap-3 ${testsPerPage > 1 ? 'text-sm' : ''}`}>
-                        <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
-                          {student.fullName}
-                        </h2>
-                        <span style={{ fontSize: `${fontSize - 2}px` }}>| Variant: {variantCode}</span>
-                        {isBlockTest ? (
-                          <>
-                            <span style={{ fontSize: `${fontSize - 2}px` }}>| {test.classNumber}-sinf</span>
-                            <span style={{ fontSize: `${fontSize - 2}px` }}>| {formatPeriod(test.periodMonth, test.periodYear)}</span>
-                          </>
-                        ) : (
-                          <span style={{ fontSize: `${fontSize - 2}px` }}>
-                            | {test.subjectId?.nameUzb || test.subjectId || 'Test'} {test.classNumber || 10}{test.groupId?.nameUzb?.charAt(0) || 'A'}
-                          </span>
-                        )}
+                      {/* Student info */}
+                      <div className={`${spacingClasses.header}`}>
+                        <div className={`flex items-center gap-3 ${testsPerPage > 1 ? 'text-sm' : ''}`}>
+                          <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
+                            {student.fullName}
+                          </h2>
+                          <span style={{ fontSize: `${fontSize - 2}px` }}>| Variant: {variantCode}</span>
+                          {isBlockTest ? (
+                            <>
+                              <span style={{ fontSize: `${fontSize - 2}px` }}>| {test.classNumber}-sinf</span>
+                              <span style={{ fontSize: `${fontSize - 2}px` }}>| {formatPeriod(test.periodMonth, test.periodYear)}</span>
+                            </>
+                          ) : (
+                            <span style={{ fontSize: `${fontSize - 2}px` }}>
+                              | {test.subjectId?.nameUzb || test.subjectId || 'Test'} {test.classNumber || 10}{test.groupId?.nameUzb?.charAt(0) || 'A'}
+                            </span>
+                          )}
+                        </div>
                       </div>
+                      <hr className="border-t-2 border-gray-800 mb-3" />
                     </div>
-
-                    <hr className="border-t-2 border-gray-800 mb-3" />
-
-                    <div className={columnsCount === 2 ? 'columns-2 gap-4' : ''}>
+                    {/* Questions — 2-column section */}
+                    <div style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
                       {isBlockTest && test.subjectTests?.length > 0 ? (() => {
                         const subjectGroups = test.subjectTests.map((st: any) => ({
                           name: st.subjectId?.nameUzb || 'Fan',
@@ -708,12 +763,16 @@ export default function TestPrintPage() {
                                         </div>
                                       )}
                                       <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
-                                        {question.variants?.map((qVariant: any) => {
+                                        {question.variants?.map((qVariant: any, vi: number) => {
                                           const variantText = convertTiptapJsonToText(qVariant.text);
                                           return (
-                                            <span key={qVariant.letter} className="mr-3">
+                                            <span key={`${qi}-${vi}-${qVariant.letter}`} className="mr-3">
                                               <span className="font-semibold">{qVariant.letter}) </span>
-                                              <MathText text={variantText} />
+                                              {qVariant.imageUrl ? (
+                                                <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ maxHeight: '1.5em' }} />
+                                              ) : (
+                                                <MathText text={variantText} />
+                                              )}
                                             </span>
                                           );
                                         })}
@@ -741,12 +800,16 @@ export default function TestPrintPage() {
                                   </div>
                                 )}
                                 <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
-                                  {question.variants?.map((qVariant: any) => {
+                                  {question.variants?.map((qVariant: any, vi: number) => {
                                     const variantText = convertTiptapJsonToText(qVariant.text);
                                     return (
-                                      <span key={qVariant.letter} className="mr-3">
+                                      <span key={`${index}-${vi}-${qVariant.letter}`} className="mr-3">
                                         <span className="font-semibold">{qVariant.letter}) </span>
-                                        <MathText text={variantText} />
+                                        {qVariant.imageUrl ? (
+                                          <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ maxHeight: '1.5em' }} />
+                                        ) : (
+                                          <MathText text={variantText} />
+                                        )}
                                       </span>
                                     );
                                   })}
@@ -757,8 +820,6 @@ export default function TestPrintPage() {
                         </div>
                       )}
                     </div>
-                    </div>{/* close content wrapper */}
-                    </div>{/* close print-page-body */}
                   </div>
                 );
               })}
@@ -885,31 +946,19 @@ export default function TestPrintPage() {
           <div key={pageIndex} className="page-break" style={{
             width: '100%',
             margin: '0',
-            display: sheetsPerPage === 1 ? 'flex' : 'grid',
-            justifyContent: sheetsPerPage === 1 ? 'center' : undefined,
-            gridTemplateColumns: 
-              sheetsPerPage === 6 ? (useVerticalLayout ? '1fr 1fr' : '1fr 1fr 1fr') : 
-              sheetsPerPage === 4 ? '1fr 1fr' : 
-              sheetsPerPage === 2 ? (useVerticalLayout ? '1fr' : '1fr 1fr') : 
-              '1fr',
-            gridTemplateRows: 
-              sheetsPerPage === 6 ? (useVerticalLayout ? '1fr 1fr 1fr' : '1fr 1fr') : 
-              sheetsPerPage === 4 ? '1fr 1fr' : 
-              sheetsPerPage === 2 ? (useVerticalLayout ? '1fr 1fr' : '1fr') : 
-              '1fr',
-            gap: 
-              sheetsPerPage === 6 ? '3mm' :
-              sheetsPerPage === 4 ? '5mm' : 
-              sheetsPerPage === 2 ? '8mm' : 
-              '0',
-            minHeight: '277mm',
-            padding: sheetsPerPage === 6 ? '5mm' : '10mm',
+            display: 'flex',
+            flexWrap: sheetsPerPage > 1 ? 'wrap' : 'nowrap',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            padding: sheetsPerPage === 1 ? '20mm 0' : '5mm',
             boxSizing: 'border-box',
-            // Убираем разрыв страницы для последней группы
+            gap:
+              sheetsPerPage === 6 ? '3mm' :
+              sheetsPerPage === 4 ? '5mm' :
+              sheetsPerPage === 2 ? '8mm' :
+              '0',
             pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto',
             breakAfter: pageIndex < pages.length - 1 ? 'page' : 'auto',
-            pageBreakInside: 'avoid',
-            breakInside: 'avoid'
           }}>
             {studentsOnPage.map((student) => {
               const variant = variantsMap.get(student._id);
@@ -1171,7 +1220,7 @@ export default function TestPrintPage() {
 
           @page {
             size: A4 portrait;
-            margin: 10mm 12mm;
+            margin: ${type === 'sheets' ? '0' : '10mm 12mm'};
           }
 
           .print-page {
@@ -1199,18 +1248,6 @@ export default function TestPrintPage() {
             opacity: var(--print-bg-opacity, 0.05);
             z-index: 0;
             pointer-events: none;
-          }
-
-          /* Table trick: header repeats on every printed page */
-          .print-page-table {
-            display: table;
-            width: 100%;
-          }
-          .print-page-header {
-            display: table-header-group;
-          }
-          .print-page-body {
-            display: table-row-group;
           }
 
           .print-page:last-child {
@@ -1263,15 +1300,6 @@ export default function TestPrintPage() {
             opacity: var(--print-bg-opacity, 0.05);
             z-index: 0;
             pointer-events: none;
-          }
-          .print-page-table {
-            display: block;
-          }
-          .print-page-header {
-            display: block;
-          }
-          .print-page-body {
-            display: block;
           }
         }
         
