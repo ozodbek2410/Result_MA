@@ -18,7 +18,7 @@ export interface MediaItem {
 
 export interface ParsedQuestion {
   text: string;
-  variants: { letter: string; text: string; imageUrl?: string }[];
+  variants: { letter: string; text: string; imageUrl?: string; imageWidth?: number; imageHeight?: number }[];
   correctAnswer: string;
   points: number;
   originalNumber?: number; // Fayldagi asl savol raqami (gap detection uchun)
@@ -970,6 +970,11 @@ export abstract class BaseParser {
           const imgUrl = this.findImageByNumber(imgNum);
           if (imgUrl) {
             v.imageUrl = imgUrl;
+            const dims = this.imageDimensions.get(imgNum);
+            if (dims) {
+              v.imageWidth = dims.widthPx;
+              v.imageHeight = dims.heightPx;
+            }
             console.log(`  🔍 [MEDIA] Found image in variant ${v.letter}: ${imgUrl}`);
           }
           // Markerini variant matnidan olib tashlash
