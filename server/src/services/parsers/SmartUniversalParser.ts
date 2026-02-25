@@ -284,6 +284,12 @@ export class SmartUniversalParser extends BaseParser {
       cleaned = cleaned.replace(/([\d,\.]+)\s*\\(cdot|times|div)\s*\\\((.*?)\\\)/g, '\\($1 \\$2 $3\\)');
       cleaned = cleaned.replace(/\\\((.*?)\\\)\s*\\(cdot|times|div)\s*([\d,\.]+)/g, '\\($1 \\$2 $3\\)');
       cleaned = cleaned.replace(/\\\((.*?)\\\)\s*\\\((.*?)\\\)/g, '\\($1 $2\\)');
+      // Standalone \operator between letters/numbers: A\cdot B → \(A \cdot B\)
+      // Protect existing \(...\) blocks to avoid nesting
+      const _blocks: string[] = [];
+      let _tmp = cleaned.replace(/\\\([\s\S]*?\\\)/g, (m) => { _blocks.push(m); return `\x00M${_blocks.length - 1}\x00`; });
+      _tmp = _tmp.replace(/([A-Za-z0-9])\s*\\(cdot|times|div)\s*([A-Za-z0-9])/g, '\\($1 \\$2 $3\\)');
+      cleaned = _tmp.replace(/\x00M(\d+)\x00/g, (_, i) => _blocks[parseInt(i)]);
     }
 
     return cleaned;
