@@ -1109,9 +1109,12 @@ export abstract class BaseParser {
           }
         }
       }
-      // Barcha variantlardan TABLE markerlarini tozalash
+      // Barcha variantlardan TABLE markerlarini va answer sheet matnini tozalash
       for (const v of question.variants) {
-        v.text = v.text.replace(/___TABLE_\d+___/g, '').trim();
+        // TABLE marker va undan keyingi barcha matn (answer sheet, OMR jadval) ni o'chirish
+        v.text = v.text.replace(/\s*(?:Javoblar:?\s*)?___TABLE_\d+___[\s\S]*/g, '').trim();
+        // Qolgan {.mark} fragmentlarini tozalash (agar cleanPandocMarkdown o'tkazib yuborsa)
+        v.text = v.text.replace(/\]\{\.mark\}/g, '').replace(/\[\s*$/g, '').trim();
       }
     }
 
