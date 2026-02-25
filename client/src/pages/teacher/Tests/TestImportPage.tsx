@@ -677,6 +677,18 @@ export default function TestImportPage() {
                                 height: q.imageHeight ? `${q.imageHeight}px` : undefined,
                                 maxWidth: '100%',
                               }}
+                              onLoad={(e) => {
+                                // Fallback: agar dimension yo'q, PNG DPI dan hisoblash (150 DPI → 96 DPI = 0.64x)
+                                if (!q.imageWidth && !q.imageHeight) {
+                                  const img = e.currentTarget;
+                                  const scaledW = Math.round(img.naturalWidth * 0.64);
+                                  const scaledH = Math.round(img.naturalHeight * 0.64);
+                                  if (scaledW > 0 && scaledW < img.naturalWidth) {
+                                    img.style.width = `${scaledW}px`;
+                                    img.style.height = `${scaledH}px`;
+                                  }
+                                }
+                              }}
                             />
                             <button
                               type="button"
