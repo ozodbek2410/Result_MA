@@ -545,6 +545,10 @@ export abstract class BaseParser {
   protected cleanPandocMarkdown(markdown: string): string {
     let cleaned = markdown;
 
+    // Pandoc {.mark} span — Word highlight → bold (correct answer detection uchun)
+    // [C)]{.mark} → **C)** yoki [C) 33]{.mark} → **C) 33**
+    cleaned = cleaned.replace(/\[([^\]]+)\]\{\.mark\}/g, '**$1**');
+
     // Remove escape characters
     cleaned = cleaned.replace(/\\\'/g, "'");  // \' → '
     cleaned = cleaned.replace(/\\\./g, '.');  // \. → .
@@ -1104,6 +1108,10 @@ export abstract class BaseParser {
             v.text = '[rasm]';
           }
         }
+      }
+      // Barcha variantlardan TABLE markerlarini tozalash
+      for (const v of question.variants) {
+        v.text = v.text.replace(/___TABLE_\d+___/g, '').trim();
       }
     }
 
