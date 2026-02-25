@@ -175,6 +175,10 @@ export class SmartUniversalParser extends BaseParser {
   protected preCleanText(text: string): { cleanText: string; mathBlocks: string[] } {
     let cleaned = text;
 
+    // 0. Pandoc {.mark} span — Word highlight → bold (BEFORE math protection!)
+    // [C)]{.mark} → **C)** , [C) 33]{.mark} → **C) 33**
+    cleaned = cleaned.replace(/\[([^\]]+)\]\{\.mark\}/g, '**$1**');
+
     // 1. Basic Pandoc cleanup (safe for ALL subjects)
     cleaned = cleaned.replace(/\\`/g, '`');
     cleaned = cleaned.replace(/`/g, "'");

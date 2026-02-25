@@ -672,15 +672,14 @@ export default function TestImportPage() {
                               src={q.imageUrl || q.image}
                               alt="Question"
                               className="rounded-lg border-2 border-gray-200"
+                              {...(q.imageWidth ? { width: q.imageWidth, height: q.imageHeight, style: { maxWidth: '100%' } } : {})}
                               onLoad={(e) => {
                                 const img = e.currentTarget;
-                                // WMF→PNG 150 DPI da convert qilinadi, display uchun 96 DPI kerak (0.64x)
-                                const w = q.imageWidth || Math.round(img.naturalWidth * 0.64);
-                                const h = q.imageHeight || Math.round(img.naturalHeight * 0.64);
-                                if (w > 0) {
-                                  img.style.width = `${w}px`;
-                                  img.style.height = `${h}px`;
-                                  img.style.maxWidth = '100%';
+                                if (!img.width || img.width === img.naturalWidth) {
+                                  // Server dimension yo'q — PNG DPI fallback (150→96)
+                                  const w = Math.round(img.naturalWidth * 0.64);
+                                  const h = Math.round(img.naturalHeight * 0.64);
+                                  if (w > 0) { img.width = w; img.height = h; }
                                 }
                               }}
                             />
@@ -747,11 +746,14 @@ export default function TestImportPage() {
                                   src={v.imageUrl}
                                   alt={`Variant ${v.letter}`}
                                   className="mt-1 rounded border border-gray-200"
+                                  {...(v.imageWidth ? { width: v.imageWidth, height: v.imageHeight } : {})}
                                   onLoad={(e) => {
                                     const img = e.currentTarget;
-                                    const w = v.imageWidth || Math.round(img.naturalWidth * 0.64);
-                                    const h = v.imageHeight || Math.round(img.naturalHeight * 0.64);
-                                    if (w > 0) { img.style.width = `${w}px`; img.style.height = `${h}px`; }
+                                    if (!img.width || img.width === img.naturalWidth) {
+                                      const w = Math.round(img.naturalWidth * 0.64);
+                                      const h = Math.round(img.naturalHeight * 0.64);
+                                      if (w > 0) { img.width = w; img.height = h; }
+                                    }
                                   }}
                                 />
                               )}
