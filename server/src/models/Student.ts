@@ -2,6 +2,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IStudent extends Document {
   crmId?: number;
+  studentCode: number;
+  telegramChatId?: number;
   branchId: mongoose.Types.ObjectId;
   fullName: string;
   firstName?: string;
@@ -30,6 +32,8 @@ export interface IStudent extends Document {
 
 const StudentSchema = new Schema<IStudent>({
   crmId: { type: Number, sparse: true, unique: true },
+  studentCode: { type: Number, unique: true },
+  telegramChatId: { type: Number, sparse: true, unique: true },
   branchId: { type: Schema.Types.ObjectId, ref: 'Branch', required: true },
   fullName: { type: String, required: true },
   firstName: String,
@@ -62,6 +66,21 @@ StudentSchema.index({ classNumber: 1 });
 StudentSchema.index({ branchId: 1, classNumber: 1 });
 StudentSchema.index({ fullName: 1 });
 StudentSchema.index({ isActive: 1 });
-// profileToken уже имеет unique index из схемы
+
+// Auto-generate studentCode for new students
+StudentSchema.pre('validate', async function (next) {
+  if (!this.studentCode) {
+    const Student = mongoose.model<IStudent>('Student');
+    let code: number;
+    let exists = true;
+    while (exists) {
+      code = Math.floor(10000 + Math.random() * 90000);
+      const found = await Student.findOne({ studentCode: code }).lean();
+      exists = !!found;
+    }
+    this.studentCode = code!;
+  }
+  next();
+});
 
 export default mongoose.model<IStudent>('Student', StudentSchema);

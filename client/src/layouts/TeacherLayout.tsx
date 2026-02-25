@@ -13,7 +13,6 @@ import {
   ChevronRight,
   ClipboardList,
   ScanLine,
-  RefreshCw,
   Building2,
   UserCog,
   BookMarked,
@@ -66,7 +65,6 @@ interface MenuItem {
 // Admin menu — only management + statistics
 const adminMenuDef: MenuItem[] = [
   { path: '/teacher/dashboard', label: 'Statistika', icon: BarChart3 },
-  { path: '/teacher/admin/crm-sync', label: 'CRM Sinxronizatsiya', icon: RefreshCw },
   { path: '/teacher/admin/branches', label: 'Filiallar', icon: Building2, roles: ['SUPER_ADMIN'] },
   { path: '/teacher/admin/users', label: 'Foydalanuvchilar', icon: UserCog },
   { path: '/teacher/admin/subjects', label: 'Fanlar', icon: BookMarked },

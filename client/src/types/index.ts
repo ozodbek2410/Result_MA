@@ -27,6 +27,7 @@ export enum UserRole {
 export interface Student {
   _id: string;
   fullName: string;
+  studentCode?: number;
   phone?: string;
   parentPhone?: string;
   classNumber?: number;

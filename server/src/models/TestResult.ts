@@ -57,4 +57,36 @@ TestResultSchema.index({ testId: 1, studentId: 1 }); // Compound index for uniqu
 TestResultSchema.index({ blockTestId: 1, studentId: 1 }); // Compound index
 TestResultSchema.index({ createdAt: -1 }); // For sorting
 
+// Send Telegram notification after result saved
+TestResultSchema.post('save', async function (doc) {
+  try {
+    const { TelegramBotService } = await import('../services/telegramBotService');
+    const Test = (await import('./Test')).default;
+    const BlockTest = (await import('./BlockTest')).default;
+
+    let testName = 'Test';
+    if (doc.testId) {
+      const test = await Test.findById(doc.testId).select('name').lean();
+      if (test) testName = test.name;
+    } else if (doc.blockTestId) {
+      const bt = await BlockTest.findById(doc.blockTestId).select('name').lean();
+      if (bt) testName = bt.name;
+    }
+
+    const correct = doc.answers.filter((a: IAnswer) => a.isCorrect).length;
+    const incorrect = doc.answers.filter((a: IAnswer) => !a.isCorrect && a.selectedAnswer).length;
+
+    await TelegramBotService.sendResultNotification(doc.studentId.toString(), {
+      testName,
+      totalPoints: doc.totalPoints,
+      maxPoints: doc.maxPoints,
+      percentage: doc.percentage,
+      correct,
+      incorrect,
+    });
+  } catch {
+    // Silent fail — notification should not block result saving
+  }
+});
+
 export default mongoose.model<ITestResult>('TestResult', TestResultSchema);

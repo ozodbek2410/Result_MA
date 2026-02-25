@@ -3,7 +3,7 @@ import api from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Loading } from '@/components/ui/Loading';
 import { usePermissions } from '@/hooks/usePermissions';
-import { BarChart3, Users, GraduationCap, BookOpen, Building2, FileText, RefreshCw } from 'lucide-react';
+import { BarChart3, Users, GraduationCap, BookOpen, Building2, FileText } from 'lucide-react';
 
 interface SystemStats {
   totalBranches: number;
@@ -33,18 +33,6 @@ interface BranchDashboard {
   }>;
 }
 
-interface SyncStatus {
-  isConfigured: boolean;
-  syncEnabled: boolean;
-  lastSync?: {
-    status: string;
-    completedAt: string;
-    result?: {
-      students: { created: number; updated: number };
-      teachers: { created: number; updated: number };
-    };
-  };
-}
 
 function StatCard({ icon: Icon, label, value, color }: {
   icon: React.ComponentType<{ className?: string }>;
@@ -86,14 +74,6 @@ export default function AdminDashboardPage() {
     enabled: !isSuperAdmin,
   });
 
-  const { data: syncStatus } = useQuery<SyncStatus>({
-    queryKey: ['sync-status'],
-    queryFn: async () => {
-      const res = await api.get('/crm/sync/status');
-      return res.data;
-    },
-  });
-
   if (statsLoading || branchLoading) return <Loading />;
 
   return (
@@ -104,29 +84,6 @@ export default function AdminDashboardPage() {
         icon={BarChart3}
       />
 
-      {/* CRM Sync Status */}
-      {syncStatus?.lastSync && (
-        <div className={`mb-6 rounded-lg border p-4 flex items-center gap-3 ${
-          syncStatus.lastSync.status === 'completed' ? 'bg-green-50 border-green-200' :
-          syncStatus.lastSync.status === 'failed' ? 'bg-red-50 border-red-200' :
-          'bg-yellow-50 border-yellow-200'
-        }`}>
-          <RefreshCw className={`w-5 h-5 ${
-            syncStatus.lastSync.status === 'completed' ? 'text-green-600' :
-            syncStatus.lastSync.status === 'failed' ? 'text-red-600' :
-            'text-yellow-600 animate-spin'
-          }`} />
-          <div className="flex-1">
-            <p className="text-sm font-medium">
-              CRM Sync: {syncStatus.lastSync.status === 'completed' ? 'Muvaffaqiyatli' :
-                syncStatus.lastSync.status === 'failed' ? 'Xatolik' : 'Jarayonda'}
-            </p>
-            <p className="text-xs text-gray-500">
-              {new Date(syncStatus.lastSync.completedAt).toLocaleString('uz-UZ')}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* SUPER_ADMIN: System-wide stats */}
       {isSuperAdmin && stats && (

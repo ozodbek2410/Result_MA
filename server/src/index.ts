@@ -15,6 +15,7 @@ import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import { registerOMRHandler } from './services/omrQueueHandler';
 import { initScheduler } from './scheduler';
 import { LocalFileService } from './services/localFileService';
+import { TelegramBotService } from './services/telegramBotService';
 
 // Import models to register them with Mongoose
 import './models/User';
@@ -221,7 +222,10 @@ connectDB().then(async () => {
   
   // Инициализируем планировщик для автоматического повышения класса
   initScheduler();
-  
+
+  // Telegram bot
+  TelegramBotService.init();
+
   app.listen(PORT, () => {
     logger.info(`Сервер запущен на порту ${PORT}`, 'SERVER');
     logger.info(`Окружение: ${env.NODE_ENV}`, 'SERVER');
@@ -230,3 +234,6 @@ connectDB().then(async () => {
   logger.error('Не удалось запустить сервер', error, 'SERVER');
   process.exit(1);
 });
+
+process.on('SIGTERM', () => { TelegramBotService.stop(); process.exit(0); });
+process.on('SIGINT', () => { TelegramBotService.stop(); process.exit(0); });

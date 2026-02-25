@@ -74,6 +74,9 @@ export default function PublicProfile() {
               </div>
               <div className="flex-1 text-center md:text-left">
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">{data.student.fullName}</h1>
+                {data.student.studentCode && (
+                  <p className="text-sm text-gray-400 font-mono mb-2">ID: {data.student.studentCode}</p>
+                )}
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
                   <Badge variant="info" className="text-sm px-3 py-1">
                     {data.student.classNumber}-sinf

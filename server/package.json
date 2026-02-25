@@ -34,7 +34,8 @@
     "generate-answer-sheet": "tsx src/scripts/generateAnswerSheet.ts",
     "list-variants": "tsx src/scripts/listVariants.ts",
     "test-tables": "tsx src/scripts/testTableExtraction.ts",
-    "cleanup-media": "tsx src/scripts/cleanupMedia.ts"
+    "cleanup-media": "tsx src/scripts/cleanupMedia.ts",
+    "generate-student-codes": "tsx src/scripts/generateStudentCodes.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",
@@ -65,7 +66,9 @@
     "multer": "^1.4.5-lts.1",
     "node-cache": "^5.1.2",
     "node-cron": "^4.2.1",
+    "node-telegram-bot-api": "^0.67.0",
     "officeparser": "^6.0.4",
+    "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.2",
     "playwright": "^1.58.2",
@@ -88,6 +91,7 @@
     "@types/multer": "^1.4.11",
     "@types/node": "^20.10.6",
     "@types/node-cron": "^3.0.11",
+    "@types/node-telegram-bot-api": "^0.64.13",
     "@types/pdf-parse": "^1.1.5",
     "@types/qrcode": "^1.5.5",
     "@types/uuid": "^9.0.7",
