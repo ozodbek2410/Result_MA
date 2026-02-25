@@ -139,8 +139,77 @@ export abstract class BaseParser {
       }
       
       console.log(`✅ [PARSER] Extracted ${this.extractedImages.size} images`);
+
+      // DOCX XML dan rasm o'lchamlarini o'qish (Pandoc {width=...} bo'lmagan rasmlar uchun)
+      this.extractImageDimensionsFromDocxXml(zip);
     } catch (error) {
       console.error('❌ [PARSER] Error extracting images:', error);
+    }
+  }
+
+  /**
+   * DOCX XML dan rasm o'lchamlarini o'qish
+   * word/document.xml dagi wp:extent cx/cy (EMU) va word/_rels/document.xml.rels dagi rId → filename mapping
+   */
+  private extractImageDimensionsFromDocxXml(zip: AdmZip): void {
+    try {
+      const relsEntry = zip.getEntry('word/_rels/document.xml.rels');
+      const docEntry = zip.getEntry('word/document.xml');
+      if (!relsEntry || !docEntry) return;
+
+      const relsXml = relsEntry.getData().toString('utf-8');
+      const docXml = docEntry.getData().toString('utf-8');
+
+      // rId → image filename mapping
+      const rIdMap = new Map<string, string>();
+      const relPattern = /Relationship[^>]*Id="(rId\d+)"[^>]*Target="media\/(image\d+\.[a-z]+)"/gi;
+      let relMatch;
+      while ((relMatch = relPattern.exec(relsXml)) !== null) {
+        rIdMap.set(relMatch[1], relMatch[2]);
+      }
+
+      // 1) DrawingML: wp:inline/wp:anchor ichida wp:extent + a:blip
+      const drawingPattern = /<(?:wp:inline|wp:anchor)[^>]*>[\s\S]*?<\/(?:wp:inline|wp:anchor)>/gi;
+      let drawMatch;
+      while ((drawMatch = drawingPattern.exec(docXml)) !== null) {
+        const block = drawMatch[0];
+        const extentMatch = block.match(/<wp:extent\s+cx="(\d+)"\s+cy="(\d+)"/);
+        const blipMatch = block.match(/<a:blip[^>]*r:embed="(rId\d+)"/);
+        if (extentMatch && blipMatch) {
+          const widthPx = Math.round(parseInt(extentMatch[1]) / 914400 * 96);
+          const heightPx = Math.round(parseInt(extentMatch[2]) / 914400 * 96);
+          const filename = rIdMap.get(blipMatch[1]);
+          if (filename) {
+            const numMatch = filename.match(/image(\d+)/);
+            if (numMatch && widthPx > 0 && heightPx > 0 && !this.imageDimensions.has(numMatch[1])) {
+              this.imageDimensions.set(numMatch[1], { widthPx, heightPx });
+              console.log(`📐 [PARSER] Image ${numMatch[1]} from DrawingML: ${widthPx}x${heightPx}px`);
+            }
+          }
+        }
+      }
+
+      // 2) VML: v:shape style="width:137.4pt;height:33.2pt" + v:imagedata r:id="rIdN"
+      const shapePattern = /v:shape[^>]*style="([^"]*)"[\s\S]*?v:imagedata[^>]*r:id="(rId\d+)"/gi;
+      let shapeMatch;
+      while ((shapeMatch = shapePattern.exec(docXml)) !== null) {
+        const style = shapeMatch[1];
+        const rId = shapeMatch[2];
+        const wMatch = style.match(/width:([\d.]+)(pt|in|cm|mm)/);
+        const hMatch = style.match(/height:([\d.]+)(pt|in|cm|mm)/);
+        const filename = rIdMap.get(rId);
+        if (wMatch && hMatch && filename) {
+          const widthPx = this.parseDimensionToPixels(wMatch[1] + wMatch[2]);
+          const heightPx = this.parseDimensionToPixels(hMatch[1] + hMatch[2]);
+          const numMatch = filename.match(/image(\d+)/);
+          if (numMatch && widthPx > 0 && heightPx > 0 && !this.imageDimensions.has(numMatch[1])) {
+            this.imageDimensions.set(numMatch[1], { widthPx, heightPx });
+            console.log(`📐 [PARSER] Image ${numMatch[1]} from VML: ${widthPx}x${heightPx}px`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('⚠️ [PARSER] Error reading DOCX XML dimensions:', error);
     }
   }
 
