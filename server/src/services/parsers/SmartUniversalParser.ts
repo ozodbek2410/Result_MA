@@ -181,7 +181,9 @@ export class SmartUniversalParser extends BaseParser {
 
     // 1. Basic Pandoc cleanup (safe for ALL subjects)
     cleaned = cleaned.replace(/\\`/g, '`');
+    cleaned = cleaned.replace(/`[^`]*`\{=[a-z]+\}/g, ''); // raw inline before backtick→quote
     cleaned = cleaned.replace(/`/g, "'");
+    cleaned = cleaned.replace(/'[^']*'\{=[a-z]+\}/g, ''); // raw inline after backtick→quote
     cleaned = cleaned.replace(/\\'/g, "'");
     cleaned = cleaned.replace(/\\"/g, '"');
     cleaned = cleaned.replace(/^#{1,6}\s+/gm, '');
