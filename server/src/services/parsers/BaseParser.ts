@@ -344,6 +344,24 @@ export abstract class BaseParser {
       } catch {}
       
       if (converted) {
+        // PNG dan display o'lchamini hisoblash (150 DPI -> 96 DPI screen)
+        try {
+          const pngBuffer = await fs.readFile(pngPath);
+          const pngDims = this.readPngDimensions(pngBuffer);
+          if (pngDims) {
+            const numMatch = originalName.match(/image(\d+)/);
+            if (numMatch && !this.imageDimensions.has(numMatch[1])) {
+              // PNG DPI dan display o'lcham = pngPx * (96 / pngDPI)
+              const dpi = pngDims.dpi || 150;
+              const widthPx = Math.round(pngDims.width * 96 / dpi);
+              const heightPx = Math.round(pngDims.height * 96 / dpi);
+              if (widthPx > 0 && heightPx > 0) {
+                this.imageDimensions.set(numMatch[1], { widthPx, heightPx });
+                console.log(`📐 [PARSER] Image ${numMatch[1]} from PNG DPI: ${pngDims.width}x${pngDims.height}@${dpi}dpi → ${widthPx}x${heightPx}px`);
+              }
+            }
+          }
+        } catch {}
         return `/uploads/test-images/${uniqueName}`;
       }
       
@@ -353,6 +371,39 @@ export abstract class BaseParser {
       
     } catch (error) {
       console.error('❌ [PARSER] EMF conversion error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Read PNG width, height and DPI from file header (IHDR + pHYs chunks)
+   */
+  private readPngDimensions(buffer: Buffer): { width: number; height: number; dpi: number } | null {
+    try {
+      // PNG signature: 8 bytes, then IHDR chunk
+      if (buffer.length < 24 || buffer.toString('ascii', 1, 4) !== 'PNG') return null;
+      const width = buffer.readUInt32BE(16);
+      const height = buffer.readUInt32BE(20);
+
+      // Search for pHYs chunk (pixels per unit)
+      let dpi = 150; // default for our Python conversion
+      let offset = 8;
+      while (offset < buffer.length - 12) {
+        const chunkLen = buffer.readUInt32BE(offset);
+        const chunkType = buffer.toString('ascii', offset + 4, offset + 8);
+        if (chunkType === 'pHYs' && chunkLen === 9) {
+          const ppuX = buffer.readUInt32BE(offset + 8);
+          const unit = buffer.readUInt8(offset + 16);
+          if (unit === 1 && ppuX > 0) {
+            dpi = Math.round(ppuX / 39.3701); // meters -> inches
+          }
+          break;
+        }
+        if (chunkType === 'IDAT' || chunkType === 'IEND') break;
+        offset += chunkLen + 12;
+      }
+      return { width, height, dpi };
+    } catch {
       return null;
     }
   }

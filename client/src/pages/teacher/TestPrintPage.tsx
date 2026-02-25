@@ -759,7 +759,7 @@ export default function TestPrintPage() {
                                       </div>
                                       {question.imageUrl && (
                                         <div className="my-1 ml-6">
-                                          <img src={question.imageUrl} alt="Question" style={{ width: question.imageWidth ? `${question.imageWidth}px` : undefined, height: question.imageHeight ? `${question.imageHeight}px` : undefined, maxWidth: '100%' }} />
+                                          <img src={question.imageUrl} alt="Question" style={{ width: question.imageWidth ? `${question.imageWidth}px` : undefined, height: question.imageHeight ? `${question.imageHeight}px` : undefined, maxWidth: '100%' }} onLoad={(e) => { if (!question.imageWidth && !question.imageHeight) { const img = e.currentTarget; const sw = Math.round(img.naturalWidth * 0.64); const sh = Math.round(img.naturalHeight * 0.64); if (sw > 0 && sw < img.naturalWidth) { img.style.width = `${sw}px`; img.style.height = `${sh}px`; } } }} />
                                         </div>
                                       )}
                                       <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
@@ -769,7 +769,7 @@ export default function TestPrintPage() {
                                             <span key={`${qi}-${vi}-${qVariant.letter}`} className="mr-3">
                                               <span className="font-semibold">{qVariant.letter}) </span>
                                               {qVariant.imageUrl ? (
-                                                <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ width: qVariant.imageWidth ? `${qVariant.imageWidth}px` : undefined, height: qVariant.imageHeight ? `${qVariant.imageHeight}px` : undefined, maxHeight: '2em' }} />
+                                                <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ width: qVariant.imageWidth ? `${qVariant.imageWidth}px` : undefined, height: qVariant.imageHeight ? `${qVariant.imageHeight}px` : undefined, maxHeight: '2em' }} onLoad={(e) => { if (!qVariant.imageWidth && !qVariant.imageHeight) { const img = e.currentTarget; const sw = Math.round(img.naturalWidth * 0.64); const sh = Math.round(img.naturalHeight * 0.64); if (sw > 0 && sw < img.naturalWidth) { img.style.width = `${sw}px`; img.style.height = `${sh}px`; } } }} />
                                               ) : (
                                                 <MathText text={variantText} />
                                               )}
@@ -796,7 +796,7 @@ export default function TestPrintPage() {
                                 </div>
                                 {question.imageUrl && (
                                   <div className="my-1 ml-6">
-                                    <img src={question.imageUrl} alt="Question" style={{ width: question.imageWidth ? `${question.imageWidth}px` : undefined, height: question.imageHeight ? `${question.imageHeight}px` : undefined, maxWidth: '100%' }} />
+                                    <img src={question.imageUrl} alt="Question" style={{ width: question.imageWidth ? `${question.imageWidth}px` : undefined, height: question.imageHeight ? `${question.imageHeight}px` : undefined, maxWidth: '100%' }} onLoad={(e) => { if (!question.imageWidth && !question.imageHeight) { const img = e.currentTarget; const sw = Math.round(img.naturalWidth * 0.64); const sh = Math.round(img.naturalHeight * 0.64); if (sw > 0 && sw < img.naturalWidth) { img.style.width = `${sw}px`; img.style.height = `${sh}px`; } } }} />
                                   </div>
                                 )}
                                 <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
@@ -806,7 +806,7 @@ export default function TestPrintPage() {
                                       <span key={`${index}-${vi}-${qVariant.letter}`} className="mr-3">
                                         <span className="font-semibold">{qVariant.letter}) </span>
                                         {qVariant.imageUrl ? (
-                                          <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ width: qVariant.imageWidth ? `${qVariant.imageWidth}px` : undefined, height: qVariant.imageHeight ? `${qVariant.imageHeight}px` : undefined, maxHeight: '2em' }} />
+                                          <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ width: qVariant.imageWidth ? `${qVariant.imageWidth}px` : undefined, height: qVariant.imageHeight ? `${qVariant.imageHeight}px` : undefined, maxHeight: '2em' }} onLoad={(e) => { if (!qVariant.imageWidth && !qVariant.imageHeight) { const img = e.currentTarget; const sw = Math.round(img.naturalWidth * 0.64); const sh = Math.round(img.naturalHeight * 0.64); if (sw > 0 && sw < img.naturalWidth) { img.style.width = `${sw}px`; img.style.height = `${sh}px`; } } }} />
                                         ) : (
                                           <MathText text={variantText} />
                                         )}
