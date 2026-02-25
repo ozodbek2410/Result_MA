@@ -549,16 +549,23 @@ export abstract class BaseParser {
     // [C)]{.mark} → **C)** yoki [C) 33]{.mark} → **C) 33**
     cleaned = cleaned.replace(/\[([^\]]+)\]\{\.mark\}/g, '**$1**');
 
+    // Pandoc raw inline — `<!-- -->`{=html} va boshqa raw blocklar
+    cleaned = cleaned.replace(/`[^`]*`\{=[a-z]+\}/g, '');
+
+    // Pandoc escaped dollar — \$ → $ (math formulalar to'g'ri yopilishi uchun)
+    // $\frac{3}{2}\$ → $\frac{3}{2}$ , $2^{x+1}\$ni → $2^{x+1}$ni
+    // LEKIN $\$ ni buzmaslik uchun — faqat $ dan keyin bo'lmagan \$ ni almashtirish
+    cleaned = cleaned.replace(/([^$])\\\$/g, '$1$');
+
     // Remove escape characters
     cleaned = cleaned.replace(/\\\'/g, "'");  // \' → '
     cleaned = cleaned.replace(/\\\./g, '.');  // \. → .
     cleaned = cleaned.replace(/\\\)/g, ')');  // \) → )
     cleaned = cleaned.replace(/\\\"/g, '"');  // \" → "
 
-    // Fix: Remove "\ \" (backslash + space + backslash) at END of LaTeX formulas
-    // Example: $\sqrt{\mathbf{6}}\ \$ → $\sqrt{\mathbf{6}}$
-    // IMPORTANT: Only remove at the END (before closing $), not in the middle!
-    cleaned = cleaned.replace(/\\\s+\\\$/g, '$');
+    // Fix: Remove trailing "\ " inside math formulas before closing $
+    // $formula\ $ → $formula$ , $formula\ \ \ $ → $formula$
+    cleaned = cleaned.replace(/(?:\\[ ])+\$/g, '$');
 
     // Fix: "5.To'g'ri" → "5. To'g'ri" (add space after number+dot before capital letter)
     cleaned = cleaned.replace(/(\n\d+)\.([A-Z])/g, '$1. $2');
