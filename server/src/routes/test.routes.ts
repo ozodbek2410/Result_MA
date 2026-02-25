@@ -484,15 +484,18 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     console.log('Absolute file path:', absolutePath);
 
     let questions;
+    let detectedType = 'generic';
     let logs: any[] = [];
-    
+
     try {
-      questions = await TestImportService.importTest(absolutePath, format, subjectId);
+      const result = await TestImportService.importTest(absolutePath, format, subjectId);
+      questions = result.questions;
+      detectedType = result.detectedType;
       logs = TestImportService.getParsingLogs();
     } catch (parseError: any) {
       console.error('Parse error:', parseError);
       logs = TestImportService.getParsingLogs();
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: parseError.message || 'Faylni tahlil qilishda xatolik',
         details: parseError.toString(),
         logs
@@ -500,17 +503,18 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     }
 
     if (!questions || questions.length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Faylda savollar topilmadi. Iltimos, fayl formatini tekshiring.',
         hint: 'Savollar 1., 2., 3. formatida raqamlanishi va A), B), C), D) variantlari bo\'lishi kerak.',
         logs
       });
     }
 
-    console.log('Successfully parsed questions:', questions.length);
-    res.json({ 
+    console.log(`Successfully parsed ${questions.length} questions (type: ${detectedType})`);
+    res.json({
       message: 'Fayl muvaffaqiyatli tahlil qilindi',
       questions,
+      detectedType,
       count: questions.length,
       logs
     });
@@ -553,12 +557,21 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ message: 'Guruh tanlanmagan' });
     }
 
+    // Rasmli variantlarda bo'sh text bo'lsa placeholder qo'yish (Mongoose required validation)
+    const sanitizedQuestions = questions.map((q: any) => ({
+      ...q,
+      variants: q.variants?.map((v: any) => ({
+        ...v,
+        text: v.text || (v.imageUrl ? '[rasm]' : '-')
+      }))
+    }));
+
     const test = new Test({
       name: testName || 'Yuklangan test',
       groupId,
       subjectId,
       classNumber: classNumber || 7,
-      questions,
+      questions: sanitizedQuestions,
       branchId: req.user?.branchId,
       createdBy: req.user?.id
     });
@@ -1042,6 +1055,70 @@ router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReques
     const err = error as Error;
     console.error('Error exporting answer sheets PDF:', err);
     res.status(500).json({ message: 'Javob varaqasi PDF yaratishda xatolik', error: err.message });
+  }
+});
+
+// ============================================================================
+// ANSWER SHEETS DOCX EXPORT
+// ============================================================================
+
+router.post('/:id/export-answer-sheets-docx', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const testId = req.params.id;
+    const { students: studentIds = [], settings = {} } = req.body;
+
+    const test = await Test.findById(testId)
+      .populate('subjectId', 'nameUzb')
+      .populate('groupId', 'name classNumber letter')
+      .lean();
+    if (!test) return res.status(404).json({ message: 'Test topilmadi' });
+
+    const groupId = (test as Record<string, unknown>).groupId;
+    let allStudents: Array<Record<string, unknown>> = [];
+    if (groupId) {
+      const group = await StudentGroup.findById((groupId as Record<string, unknown>)._id || groupId)
+        .populate('students', 'fullName')
+        .lean();
+      allStudents = ((group as Record<string, unknown>)?.students as Array<Record<string, unknown>>) || [];
+    }
+
+    const selected = studentIds.length > 0
+      ? allStudents.filter((s: Record<string, unknown>) => studentIds.includes((s._id as string).toString()))
+      : allStudents;
+
+    const variants = await StudentVariant.find({
+      testId,
+      testType: 'Test',
+      studentId: { $in: selected.map((s: Record<string, unknown>) => s._id) }
+    }).lean();
+
+    const variantMap = new Map<string, string>();
+    variants.forEach((v: Record<string, unknown>) => {
+      variantMap.set((v.studentId as string)?.toString() || '', (v.variantCode as string) || '');
+    });
+
+    const totalQuestions = ((test as Record<string, unknown>).questions as Array<unknown>)?.length || 0;
+    const classNumber = (test as Record<string, unknown>).classNumber as number || 10;
+    const groupLetter = ((test as Record<string, unknown>).groupId as Record<string, unknown>)?.nameUzb?.toString()?.charAt(0) || 'A';
+    const subjectName = ((test as Record<string, unknown>).subjectId as Record<string, unknown>)?.nameUzb as string || '';
+
+    const docxBuffer = await PandocDocxService.generateAnswerSheetDocx({
+      students: selected.map((s: Record<string, unknown>) => ({
+        fullName: (s.fullName as string) || '',
+        variantCode: variantMap.get((s._id as string).toString()) || ''
+      })),
+      test: { classNumber, groupLetter, subjectName },
+      totalQuestions
+    });
+
+    const filename = `javob-varaqasi-${classNumber}-sinf-${Date.now()}.docx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(docxBuffer);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('Error exporting answer sheets DOCX:', err);
+    res.status(500).json({ message: 'Javob varaqasi Word yaratishda xatolik', error: err.message });
   }
 });
 

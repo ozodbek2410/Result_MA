@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import Tesseract from 'tesseract.js';
 import fs from 'fs/promises';
+import pdfParse from 'pdf-parse';
 import { GroqService } from './groqService';
 import { wordParser } from './wordParser';
 import { ParserFactory } from './parsers/ParserFactory';
@@ -68,26 +69,26 @@ export class TestImportService {
    * @param filePath - Path to DOCX file
    * @param subjectId - Subject ID (optional, defaults to 'math' for backward compatibility)
    */
-  static async parseWord(filePath: string, subjectId: string = 'math'): Promise<ParsedQuestion[]> {
+  static async parseWord(filePath: string, _subjectId?: string): Promise<{ questions: ParsedQuestion[]; detectedType: string }> {
     try {
-      console.log(`📄 [IMPORT] Parsing DOCX file for subject: ${subjectId}`);
-      
-      // Get subject-specific parser
-      const parser = ParserFactory.getParser(subjectId);
+      console.log('📄 [IMPORT] Parsing DOCX file (auto-detect)');
+
+      const parser = ParserFactory.getParser();
       const questions = await parser.parse(filePath);
+      const detectedType = parser.getDetectedType();
       
       if (questions.length > 0) {
-        console.log(`✅ [IMPORT] Parser extracted ${questions.length} questions`);
-        return questions;
+        console.log(`✅ [IMPORT] Parser extracted ${questions.length} questions (type: ${detectedType})`);
+        return { questions, detectedType };
       }
-      
+
       // Fallback: try mammoth + regex if parser fails
       console.log('⚠️ [IMPORT] Parser returned 0 questions, trying fallback...');
       const buffer = await fs.readFile(filePath);
       const result = await mammoth.extractRawText({ buffer });
       const text = result.value;
-      
-      return this.parseTextContent(text);
+
+      return { questions: this.parseTextContent(text), detectedType: 'generic' };
     } catch (error: any) {
       console.error('❌ [IMPORT] Error parsing Word file:', error);
       throw new Error(`Word faylni o'qishda xatolik: ${error.message}`);
@@ -114,6 +115,93 @@ export class TestImportService {
     } catch (error: any) {
       throw new Error(`Rasmni o'qishda xatolik: ${error.message}`);
     }
+  }
+
+  /**
+   * Parse PDF file
+   */
+  static async parsePdf(filePath: string, subjectId?: string): Promise<ParsedQuestion[]> {
+    try {
+      console.log(`[IMPORT] Parsing PDF file...`);
+      const buffer = await fs.readFile(filePath);
+      const data = await pdfParse(buffer);
+      const text = data.text;
+      console.log(`[IMPORT] PDF pages: ${data.numpages}, text length: ${text.length}`);
+
+      // AI parsing first
+      try {
+        const aiQuestions = await GroqService.parseTestWithAI(text);
+        if (aiQuestions.length > 0) {
+          console.log(`[IMPORT] AI parsed ${aiQuestions.length} questions from PDF`);
+          return GroqService.convertToOurFormat(aiQuestions);
+        }
+      } catch (aiError) {
+        console.log(`[IMPORT] AI parsing failed, using regex fallback`);
+      }
+
+      // Fallback: PDF-specific regex parsing
+      return this.parsePdfText(text);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`PDF faylni o'qishda xatolik: ${msg}`);
+    }
+  }
+
+  /**
+   * PDF text specific parser - handles inline variants (A)... B)... C)... D)...)
+   */
+  private static parsePdfText(text: string): ParsedQuestion[] {
+    const questions: ParsedQuestion[] = [];
+
+    // Split by question numbers: "1." or "1)" at line start
+    const blocks = text.split(/(?=(?:^|\n)\s*\d+\s*[\.\)])/);
+
+    for (const block of blocks) {
+      const trimmed = block.trim();
+      if (!trimmed) continue;
+
+      // Check if block starts with a question number
+      const numMatch = trimmed.match(/^(\d+)\s*[\.\)]\s*/);
+      if (!numMatch) continue;
+
+      // Remove question number
+      let content = trimmed.replace(/^\d+\s*[\.\)]\s*/, '').trim();
+      // Join multiline into single string for variant extraction
+      content = content.replace(/\n/g, ' ').replace(/\s+/g, ' ');
+
+      // Extract variants: A) ... B) ... C) ... D) ...
+      const variantRegex = /\b([A-D])\)\s*/g;
+      const variantPositions: Array<{ letter: string; index: number }> = [];
+      let match;
+
+      while ((match = variantRegex.exec(content)) !== null) {
+        variantPositions.push({ letter: match[1], index: match.index });
+      }
+
+      if (variantPositions.length < 2) continue;
+
+      // Question text is everything before first variant
+      const questionText = content.substring(0, variantPositions[0].index).trim();
+      if (!questionText) continue;
+
+      // Extract variant texts
+      const variants: Array<{ letter: string; text: string }> = [];
+      for (let i = 0; i < variantPositions.length; i++) {
+        const start = variantPositions[i].index + variantPositions[i].letter.length + 2; // skip "A) "
+        const end = i + 1 < variantPositions.length ? variantPositions[i + 1].index : content.length;
+        const varText = content.substring(start, end).trim();
+        variants.push({ letter: variantPositions[i].letter, text: varText });
+      }
+
+      questions.push({
+        text: questionText,
+        variants,
+        correctAnswer: 'A',
+        points: 1,
+      });
+    }
+
+    return questions;
   }
 
   /**
@@ -197,22 +285,27 @@ export class TestImportService {
    * @param subjectId - Subject ID (optional, for subject-specific parsing)
    */
   static async importTest(
-    filePath: string, 
+    filePath: string,
     format: 'word' | 'image',
     subjectId?: string
-  ): Promise<ParsedQuestion[]> {
+  ): Promise<{ questions: ParsedQuestion[]; detectedType: string }> {
     const ext = filePath.split('.').pop()?.toLowerCase();
+
+    // PDF auto-detect regardless of format param
+    if (ext === 'pdf') {
+      return { questions: await this.parsePdf(filePath, subjectId), detectedType: 'generic' };
+    }
 
     switch (format) {
       case 'word':
         if (ext === 'docx' || ext === 'doc') {
           return this.parseWord(filePath, subjectId);
         }
-        throw new Error('Noto\'g\'ri Word format. Faqat .docx va .doc fayllari qo\'llab-quvvatlanadi');
+        throw new Error('Noto\'g\'ri Word format. Faqat .docx, .doc va .pdf fayllari qo\'llab-quvvatlanadi');
 
       case 'image':
         if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
-          return this.parseImage(filePath);
+          return { questions: await this.parseImage(filePath), detectedType: 'generic' };
         }
         throw new Error('Noto\'g\'ri rasm format. Faqat .jpg, .jpeg va .png fayllari qo\'llab-quvvatlanadi');
 
