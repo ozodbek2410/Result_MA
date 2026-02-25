@@ -758,8 +758,8 @@ export default function TestPrintPage() {
                                         <span><MathText text={questionText} /></span>
                                       </div>
                                       {question.imageUrl && (
-                                        <div className="my-2 ml-6">
-                                          <img src={question.imageUrl} alt="Question" className="max-w-full h-auto" style={{ maxHeight: testsPerPage === 1 ? '200px' : '150px', objectFit: 'contain' }} />
+                                        <div className="my-1 ml-6">
+                                          <img src={question.imageUrl} alt="Question" style={{ width: question.imageWidth ? `${question.imageWidth}px` : undefined, height: question.imageHeight ? `${question.imageHeight}px` : undefined, maxWidth: '100%' }} />
                                         </div>
                                       )}
                                       <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
@@ -769,7 +769,7 @@ export default function TestPrintPage() {
                                             <span key={`${qi}-${vi}-${qVariant.letter}`} className="mr-3">
                                               <span className="font-semibold">{qVariant.letter}) </span>
                                               {qVariant.imageUrl ? (
-                                                <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ maxHeight: '1.5em' }} />
+                                                <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ width: qVariant.imageWidth ? `${qVariant.imageWidth}px` : undefined, height: qVariant.imageHeight ? `${qVariant.imageHeight}px` : undefined, maxHeight: '2em' }} />
                                               ) : (
                                                 <MathText text={variantText} />
                                               )}
@@ -795,8 +795,8 @@ export default function TestPrintPage() {
                                   <span><MathText text={questionText} /></span>
                                 </div>
                                 {question.imageUrl && (
-                                  <div className="my-2 ml-6">
-                                    <img src={question.imageUrl} alt="Question" className="max-w-full h-auto" style={{ maxHeight: testsPerPage === 1 ? '200px' : '150px', objectFit: 'contain' }} />
+                                  <div className="my-1 ml-6">
+                                    <img src={question.imageUrl} alt="Question" style={{ width: question.imageWidth ? `${question.imageWidth}px` : undefined, height: question.imageHeight ? `${question.imageHeight}px` : undefined, maxWidth: '100%' }} />
                                   </div>
                                 )}
                                 <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
@@ -806,7 +806,7 @@ export default function TestPrintPage() {
                                       <span key={`${index}-${vi}-${qVariant.letter}`} className="mr-3">
                                         <span className="font-semibold">{qVariant.letter}) </span>
                                         {qVariant.imageUrl ? (
-                                          <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ maxHeight: '1.5em' }} />
+                                          <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={{ width: qVariant.imageWidth ? `${qVariant.imageWidth}px` : undefined, height: qVariant.imageHeight ? `${qVariant.imageHeight}px` : undefined, maxHeight: '2em' }} />
                                         ) : (
                                           <MathText text={variantText} />
                                         )}

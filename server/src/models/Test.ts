@@ -5,6 +5,8 @@ export interface IQuestionVariant {
   text: string;
   formula?: string;
   imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 export interface IMediaItem {
@@ -17,6 +19,8 @@ export interface IQuestion {
   text: string;
   formula?: string;
   imageUrl?: string; // Legacy support
+  imageWidth?: number; // Word dagi original kenglik (px)
+  imageHeight?: number; // Word dagi original balandlik (px)
   media?: IMediaItem[]; // Yangi format
   variants: IQuestionVariant[];
   correctAnswer?: 'A' | 'B' | 'C' | 'D' | ''; // Необязательно для вопросов без вариантов
@@ -38,7 +42,9 @@ const QuestionVariantSchema = new Schema<IQuestionVariant>({
   letter: { type: String, enum: ['A', 'B', 'C', 'D'], required: true },
   text: { type: String, required: true },
   formula: String,
-  imageUrl: String
+  imageUrl: String,
+  imageWidth: Number,
+  imageHeight: Number
 }, { _id: false });
 
 const MediaItemSchema = new Schema<IMediaItem>({
@@ -51,6 +57,8 @@ const QuestionSchema = new Schema<IQuestion>({
   text: { type: String, required: true },
   formula: String,
   imageUrl: String, // Legacy support
+  imageWidth: Number, // Word dagi original kenglik (px)
+  imageHeight: Number, // Word dagi original balandlik (px)
   media: [MediaItemSchema], // Yangi format
   variants: [QuestionVariantSchema],
   correctAnswer: { type: String, enum: ['A', 'B', 'C', 'D', ''], required: false }, // Необязательно для вопросов без вариантов
