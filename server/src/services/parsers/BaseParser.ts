@@ -36,6 +36,7 @@ export abstract class BaseParser {
   protected extractedImages: Map<string, string> = new Map();
   protected extractedTables: Map<string, string> = new Map();
   protected imageDimensions: Map<string, { widthPx: number; heightPx: number }> = new Map();
+  protected extractedFormulas: Map<string, string> = new Map(); // imageNum -> LaTeX
   protected tableExtractor: TableExtractor;
   protected tableRenderer: TableRenderer;
   
@@ -73,8 +74,12 @@ export abstract class BaseParser {
   protected async extractImagesFromDocx(filePath: string): Promise<void> {
     try {
       console.log('📸 [PARSER] Extracting images from DOCX...');
-      
+
       this.extractedImages.clear();
+      this.extractedFormulas.clear();
+
+      // Extract OLE equation formulas FIRST (before image processing)
+      await this.extractOleEquationFormulas(filePath);
       
       const zip = new AdmZip(filePath);
       const zipEntries = zip.getEntries();
@@ -106,11 +111,21 @@ export abstract class BaseParser {
         const bNum = parseInt(b.name.match(/\d+/)?.[0] || '999');
         return aNum - bNum;
       });
-      
+
+      // DOCX XML dan rasm o'lchamlarini OLDIN o'qish (VML/DrawingML aniqroq)
+      this.extractImageDimensionsFromDocxXml(zip);
+
       for (const { entry, name } of imageFiles) {
         const imageBuffer = entry.getData();
         const ext = path.extname(name).toLowerCase();
-        
+
+        // Skip formula images — they are OLE equations converted to LaTeX
+        const imgNumMatch = name.match(/image(\d+)/);
+        if (imgNumMatch && this.extractedFormulas.has(imgNumMatch[1])) {
+          console.log(`⏭️ [PARSER] Skipping formula image: ${name} (OLE equation → LaTeX)`);
+          continue;
+        }
+
         // EMF/WMF formatlarini PNG ga konvertatsiya qilish
         if (ext === '.emf' || ext === '.wmf') {
           try {
@@ -139,11 +154,44 @@ export abstract class BaseParser {
       }
       
       console.log(`✅ [PARSER] Extracted ${this.extractedImages.size} images`);
-
-      // DOCX XML dan rasm o'lchamlarini o'qish (Pandoc {width=...} bo'lmagan rasmlar uchun)
-      this.extractImageDimensionsFromDocxXml(zip);
     } catch (error) {
       console.error('❌ [PARSER] Error extracting images:', error);
+    }
+  }
+
+  /**
+   * Extract OLE Equation Editor formulas from DOCX using MTEF parser.
+   * Returns Map<imageNum, latexString> for formula images.
+   */
+  private async extractOleEquationFormulas(filePath: string): Promise<void> {
+    try {
+      const scriptPath = path.join(__dirname, '..', '..', '..', 'python', 'mtef_to_latex.py');
+      const pythonPaths = ['python', 'py', 'python3'];
+
+      for (const pyPath of pythonPaths) {
+        try {
+          const { stdout } = await execFileAsync(pyPath, [scriptPath, '--json-map', filePath], { timeout: 30000 });
+          const parsed = stdout.trim();
+          if (!parsed || parsed === '{}') return;
+
+          const map: Record<string, string> = JSON.parse(parsed);
+          for (const [imgFile, latex] of Object.entries(map)) {
+            const numMatch = imgFile.match(/image(\d+)/);
+            if (numMatch) {
+              this.extractedFormulas.set(numMatch[1], latex);
+            }
+          }
+
+          if (this.extractedFormulas.size > 0) {
+            console.log(`📐 [PARSER] Extracted ${this.extractedFormulas.size} OLE equation formulas`);
+          }
+          return;
+        } catch {
+          // Try next python path
+        }
+      }
+    } catch (error) {
+      console.error('⚠️ [PARSER] OLE equation extraction failed:', error);
     }
   }
 
@@ -739,6 +787,80 @@ export abstract class BaseParser {
   }
 
   /**
+   * Extract variants in "A.text B.text C.text D.text" format (dot separator)
+   */
+  private extractDotSepVariants(block: string, mathBlocks: string[]): ParsedQuestion | null {
+    let cleanBlock = block.replace(/^(?:\*\*\s*)?\d+(?:\*\*\s*)?[.)]\s*/, '').trim();
+
+    const firstVariantIdx = cleanBlock.search(/[A-D]\.\S/);
+    if (firstVariantIdx === -1) return null;
+
+    const questionText = cleanBlock.substring(0, firstVariantIdx).trim();
+    const variantsText = cleanBlock.substring(firstVariantIdx);
+
+    const boldMatch = variantsText.match(/\*\*\s*([A-D])\s*\./);
+    const correctAnswer = boldMatch ? boldMatch[1] : 'A';
+
+    const cleanVariants = variantsText.replace(/\*\*/g, ' ').replace(/\s+/g, ' ');
+    const parts = cleanVariants.split(/(?=[A-D]\.)/);
+    const variants: { letter: string; text: string }[] = [];
+
+    for (const part of parts) {
+      const match = part.match(/^([A-D])\.\s*(.*)$/);
+      if (match) {
+        let text = match[2].trim();
+        text = this.restoreMath(text, mathBlocks);
+        text = this.finalCleanText(text, mathBlocks);
+        if (text) variants.push({ letter: match[1], text });
+      }
+    }
+
+    if (!questionText || variants.length < 2) return null;
+
+    return {
+      text: this.finalCleanText(this.restoreMath(questionText, mathBlocks), mathBlocks),
+      variants,
+      correctAnswer,
+      points: 1,
+    };
+  }
+
+  /**
+   * Extract variants in "A text B text C text D text" format (no separator)
+   */
+  private extractSpaceSepVariants(block: string, mathBlocks: string[]): ParsedQuestion | null {
+    let cleanBlock = block.replace(/^(?:\*\*\s*)?\d+(?:\*\*\s*)?[.)]\s*/, '').trim();
+
+    const firstVarMatch = cleanBlock.match(/(?<!\w)A\s+[a-z]/);
+    if (!firstVarMatch || firstVarMatch.index === undefined) return null;
+
+    const questionText = cleanBlock.substring(0, firstVarMatch.index).trim();
+    const variantsText = cleanBlock.substring(firstVarMatch.index);
+
+    const parts = variantsText.split(/\s+(?=[A-D]\s+[a-z])/);
+    const variants: { letter: string; text: string }[] = [];
+
+    for (const part of parts) {
+      const match = part.match(/^([A-D])\s+(.+)$/s);
+      if (match) {
+        let text = match[2].trim();
+        text = this.restoreMath(text, mathBlocks);
+        text = this.finalCleanText(text, mathBlocks);
+        if (text) variants.push({ letter: match[1], text });
+      }
+    }
+
+    if (!questionText || variants.length < 2) return null;
+
+    return {
+      text: this.finalCleanText(this.restoreMath(questionText, mathBlocks), mathBlocks),
+      variants,
+      correctAnswer: 'A',
+      points: 1,
+    };
+  }
+
+  /**
    * Extract question with inline variants (all on same line)
    * Example: "5) question text A) 1 B) 2 **C) 3** D) 4"
    */
@@ -834,6 +956,26 @@ export abstract class BaseParser {
         result.imageUrl = extractedImageUrl;
       }
       return result;
+    }
+
+    // Check for A. format: "A.text B.text C.text D.text"
+    const dotSepCount = (fullBlock.match(/[A-D]\.\S/g) || []).length;
+    if (dotSepCount >= 2) {
+      const dotResult = this.extractDotSepVariants(fullBlock, mathBlocks);
+      if (dotResult) {
+        if (extractedImageUrl && !dotResult.imageUrl) dotResult.imageUrl = extractedImageUrl;
+        return dotResult;
+      }
+    }
+
+    // Check for "A text B text" no-separator format (Uzbek style without ) or .)
+    const spaceSepCount = (fullBlock.match(/(?<!\w)[A-D]\s+[a-z]/g) || []).length;
+    if (spaceSepCount >= 2) {
+      const spaceResult = this.extractSpaceSepVariants(fullBlock, mathBlocks);
+      if (spaceResult) {
+        if (extractedImageUrl && !spaceResult.imageUrl) spaceResult.imageUrl = extractedImageUrl;
+        return spaceResult;
+      }
     }
 
     // Otherwise, process line by line (standard format)
@@ -1090,6 +1232,20 @@ export abstract class BaseParser {
     console.log(`🔍 [MEDIA] Question text: ${question.text.substring(0, 50)}...`);
     console.log(`🔍 [MEDIA] Full text length: ${question.text.length}`);
     console.log(`🔍 [MEDIA] Contains ![](media/: ${question.text.includes('![](media/')}`);
+
+    // OLE equation formulas: replace ___IMAGE_N___ markers with LaTeX text
+    if (this.extractedFormulas.size > 0) {
+      this.extractedFormulas.forEach((latex, imgNum) => {
+        const marker = `___IMAGE_${imgNum}___`;
+        const replacement = `\\(${latex}\\)`;
+        question.text = question.text.split(marker).join(replacement);
+        if (question.variants) {
+          for (const v of question.variants) {
+            v.text = v.text.split(marker).join(replacement);
+          }
+        }
+      });
+    }
 
     // Variant matnlaridan rasm markerlarini tekshirish
     // ___IMAGE_X___ variant text ichiga kirib qoladi — har bir variant o'z rasmini oladi

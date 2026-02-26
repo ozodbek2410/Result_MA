@@ -48,7 +48,7 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res) => {
     const studentGroups = await StudentGroup.find({ groupId })
       .populate({
         path: 'studentId',
-        select: 'fullName _id profileToken'  // Только основные поля
+        select: 'fullName _id profileToken studentCode'
       })
       .lean();
     
@@ -122,7 +122,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       const studentGroups = await StudentGroup.find({ groupId })
         .populate({
           path: 'studentId',
-          select: 'fullName _id profileToken phone'  // Добавлено поле phone
+          select: 'fullName _id profileToken phone studentCode'
         })
         .lean()
         .exec();
@@ -168,7 +168,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const skip = (pageNum - 1) * limitNum;
     
     const students = await Student.find(filter)
-      .select('fullName classNumber phone directionId branchId _id profileToken subjectIds')
+      .select('fullName classNumber phone directionId branchId _id profileToken subjectIds studentCode')
       .populate('directionId', 'nameUzb')
       .populate('branchId', 'name')
       .populate('subjectIds', 'nameUzb')

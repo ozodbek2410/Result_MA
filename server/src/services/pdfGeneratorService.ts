@@ -2,6 +2,7 @@ import { chromium, Browser } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import QRCode from 'qrcode';
+import { PDFDocument } from 'pdf-lib';
 
 interface Question {
   number: number;
@@ -123,76 +124,92 @@ export class PDFGeneratorService {
    * Генерирует PDF из HTML с формулами
    * ВАЖНО: Каждый раз создаем новый browser instance для избежания memory leak
    */
-  static async generatePDF(testData: TestData): Promise<Buffer> {
-    let browser: Browser | null = null;
-    
+  /**
+   * Render a single batch of students to PDF buffer
+   */
+  private static async renderBatchPDF(browser: Browser, testData: TestData): Promise<Buffer> {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(60000);
+
     try {
-      // Создаем новый browser для каждого PDF
-      browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // Уменьшает использование shared memory
-          '--disable-gpu' // Отключаем GPU для headless
-        ]
+      const html = this.generateHTML(testData);
+      await page.setContent(html, { waitUntil: 'networkidle', timeout: 60000 });
+
+      await page.waitForFunction(`
+        () => {
+          const elements = document.querySelectorAll('.math-formula');
+          if (elements.length === 0) return true;
+          return Array.from(elements).every(el => el.querySelector('.katex') !== null);
+        }
+      `, { timeout: 30000 }).catch(() => {
+        console.warn('⚠️ KaTeX render timeout, continuing anyway');
       });
-      
-      const page = await browser.newPage();
-      
-      // Увеличиваем timeout для страницы
-      page.setDefaultTimeout(60000);
 
-      try {
-        // Генерируем HTML
-        const html = this.generateHTML(testData);
+      await page.waitForTimeout(500);
 
-        // Загружаем HTML
-        await page.setContent(html, { 
-          waitUntil: 'networkidle',
-          timeout: 60000
-        });
+      const pdfResult = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
+      });
 
-        // Ждем рендера KaTeX формул
-        await page.waitForFunction(`
-          () => {
-            const elements = document.querySelectorAll('.math-formula');
-            if (elements.length === 0) return true;
-            return Array.from(elements).every(el => 
-              el.querySelector('.katex') !== null
-            );
-          }
-        `, { timeout: 30000 }).catch(() => {
-          console.warn('⚠️ KaTeX render timeout, continuing anyway');
-        });
-
-        // Небольшая задержка для стабильности
-        await page.waitForTimeout(1000);
-
-        // Генерируем PDF
-        const pdfResult = await page.pdf({
-          format: 'A4',
-          printBackground: true,
-          margin: {
-            top: '10mm',
-            right: '10mm',
-            bottom: '10mm',
-            left: '10mm'
-          }
-        });
-
-        // Playwright may return Uint8Array instead of Buffer
-        return Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult);
-      } finally {
-        await page.close();
-      }
+      return Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult);
     } finally {
-      // КРИТИЧНО: Закрываем browser после каждого PDF
-      if (browser) {
-        await browser.close();
-        console.log('✅ Browser closed, memory freed');
+      await page.close();
+    }
+  }
+
+  static async generatePDF(testData: TestData): Promise<Buffer> {
+    const BATCH_SIZE = 3;
+    const students = testData.students || [];
+
+    // Small data or no students — render in one shot
+    if (students.length <= BATCH_SIZE) {
+      let browser: Browser | null = null;
+      try {
+        browser = await chromium.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+        });
+        return await this.renderBatchPDF(browser, testData);
+      } finally {
+        if (browser) { await browser.close(); console.log('✅ Browser closed, memory freed'); }
       }
     }
+
+    // Large data — split into batches, merge PDFs
+    console.log(`📦 Batching ${students.length} students in groups of ${BATCH_SIZE}`);
+    const pdfBuffers: Buffer[] = [];
+    let browser: Browser | null = null;
+
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+      });
+
+      for (let i = 0; i < students.length; i += BATCH_SIZE) {
+        const batch = students.slice(i, i + BATCH_SIZE);
+        console.log(`📄 Rendering batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(students.length / BATCH_SIZE)} (${batch.length} students)`);
+
+        const batchData: TestData = { ...testData, students: batch };
+        pdfBuffers.push(await this.renderBatchPDF(browser, batchData));
+      }
+    } finally {
+      if (browser) { await browser.close(); console.log('✅ Browser closed, memory freed'); }
+    }
+
+    // Merge all PDF buffers
+    console.log(`🔗 Merging ${pdfBuffers.length} PDF batches...`);
+    const mergedPdf = await PDFDocument.create();
+    for (const buf of pdfBuffers) {
+      const src = await PDFDocument.load(buf);
+      const pages = await mergedPdf.copyPages(src, src.getPageIndices());
+      pages.forEach(p => mergedPdf.addPage(p));
+    }
+    const mergedBytes = await mergedPdf.save();
+    console.log(`✅ Merged PDF: ${mergedBytes.length} bytes`);
+    return Buffer.from(mergedBytes);
   }
 
   /**
@@ -786,17 +803,21 @@ export class PDFGeneratorService {
    */
   private static renderMath(text: string): string {
     if (!text) return '';
-    
-    // Обрабатываем display math $...$
+
+    // Convert \[...\] to $$...$$ and \(...\) to $...$
+    text = text.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
+    text = text.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+
+    // Display math $$...$$
     text = text.replace(/\$\$(.*?)\$\$/g, (_match, latex) => {
       return `<span class="math-formula display-math" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
     });
-    
-    // Обрабатываем inline math $...$
+
+    // Inline math $...$
     text = text.replace(/\$([^\$]+?)\$/g, (_match, latex) => {
       return `<span class="math-formula" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
     });
-    
+
     return text;
   }
 
@@ -1014,7 +1035,7 @@ export class PDFGeneratorService {
   body { margin: 0; padding: 0; background: white; }
 
   .sheet {
-    width: 210mm; min-height: 297mm; position: relative;
+    width: 210mm; position: relative;
     background: white; padding: 14mm 12mm 10mm 12mm;
     font-family: Arial, Helvetica, sans-serif; color: #000;
     box-sizing: border-box; page-break-after: always;

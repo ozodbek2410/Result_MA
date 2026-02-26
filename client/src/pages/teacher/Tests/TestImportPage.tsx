@@ -46,9 +46,13 @@ interface ParsedQuestion {
  * Unified Test Import Page
  * Handles both Regular and Block test imports with conditional rendering
  */
-export default function TestImportPage() {
+interface TestImportPageProps {
+  defaultType?: 'regular' | 'block';
+}
+
+export default function TestImportPage({ defaultType = 'regular' }: TestImportPageProps) {
   const navigate = useNavigate();
-  const { testType, setTestType, isRegular, isBlock } = useTestType('regular');
+  const { testType, setTestType, isRegular, isBlock } = useTestType(defaultType);
   const { error: showErrorToast } = useToast();
 
   // React Query mutations
@@ -672,14 +676,13 @@ export default function TestImportPage() {
                               src={q.imageUrl || q.image}
                               alt="Question"
                               className="rounded-lg border-2 border-gray-200"
-                              {...(q.imageWidth ? { width: q.imageWidth, height: q.imageHeight, style: { maxWidth: '100%' } } : {})}
+                              style={q.imageWidth ? { width: q.imageWidth, maxWidth: '100%', height: 'auto' } : undefined}
                               onLoad={(e) => {
                                 const img = e.currentTarget;
-                                if (!img.width || img.width === img.naturalWidth) {
-                                  // Server dimension yo'q — PNG DPI fallback (150→96)
+                                if (!img.style.width) {
                                   const w = Math.round(img.naturalWidth * 0.64);
-                                  const h = Math.round(img.naturalHeight * 0.64);
-                                  if (w > 0) { img.width = w; img.height = h; }
+                                  img.style.width = w + 'px';
+                                  img.style.height = 'auto';
                                 }
                               }}
                             />
@@ -746,13 +749,13 @@ export default function TestImportPage() {
                                   src={v.imageUrl}
                                   alt={`Variant ${v.letter}`}
                                   className="mt-1 rounded border border-gray-200"
-                                  {...(v.imageWidth ? { width: v.imageWidth, height: v.imageHeight } : {})}
+                                  style={v.imageWidth ? { width: v.imageWidth, maxWidth: '100%', height: 'auto' } : undefined}
                                   onLoad={(e) => {
                                     const img = e.currentTarget;
-                                    if (!img.width || img.width === img.naturalWidth) {
+                                    if (!img.style.width) {
                                       const w = Math.round(img.naturalWidth * 0.64);
-                                      const h = Math.round(img.naturalHeight * 0.64);
-                                      if (w > 0) { img.width = w; img.height = h; }
+                                      img.style.width = w + 'px';
+                                      img.style.height = 'auto';
                                     }
                                   }}
                                 />
