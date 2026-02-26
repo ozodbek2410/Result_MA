@@ -338,7 +338,7 @@ export default function TeacherLayout() {
               <Route path="/tests/:id/print/:type" element={<TestPrintPage />} />
               <Route path="/block-tests" element={<BlockTestsPage />} />
               <Route path="/block-tests/create" element={<CreateBlockTestPage />} />
-              <Route path="/block-tests/import" element={<ImportBlockTestPage />} />
+              <Route path="/block-tests/import" element={<UnifiedTestImportPage defaultType="block" />} />
               <Route path="/block-tests/merge" element={<MergeBlockTestsPage />} />
               <Route path="/block-tests/:id/configure" element={<ConfigureBlockTestPage />} />
               <Route path="/block-tests/:id" element={<ConfigureBlockTestPage />} />

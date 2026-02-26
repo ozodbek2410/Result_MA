@@ -112,46 +112,6 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
     }
   }, [qrData]);
 
-  // Inject print styles
-  useEffect(() => {
-    const styleId = 'answer-sheet-print-styles';
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement('style');
-      style.id = styleId;
-      style.textContent = `
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 0;
-          }
-
-          body {
-            margin: 0;
-            padding: 0;
-          }
-
-          .answer-sheet-container {
-            page-break-after: always;
-            page-break-inside: avoid;
-          }
-
-          .answer-sheet-container * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            color-adjust: exact !important;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    return () => {
-      const style = document.getElementById(styleId);
-      if (style) {
-        style.remove();
-      }
-    };
-  }, []);
 
   const totalQuestions = questions || 45;
   const layout = getGridLayout(totalQuestions);
@@ -228,7 +188,6 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
     color: 'black',
     boxSizing: 'border-box',
     margin: '0 auto',
-    pageBreakAfter: 'always',
     fontSize: 'initial',
     lineHeight: 'initial',
     letterSpacing: 'initial',

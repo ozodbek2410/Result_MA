@@ -7,7 +7,7 @@ import { hasMathML, convertMathMLToLatex } from '@/lib/mathmlUtils';
 import './editor.css';
 
 interface RichTextEditorProps {
-  value: string;
+  value: string | Record<string, unknown>;
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
@@ -100,7 +100,15 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
   }, [editor]);
 
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
+    if (!editor) return;
+
+    // Handle TipTap JSON object directly (from convertLatexToTiptapJson)
+    if (value && typeof value === 'object' && (value as any).type === 'doc') {
+      editor.commands.setContent(value as any, { emitUpdate: false });
+      return;
+    }
+
+    if (value !== editor.getHTML()) {
       try {
         if (value && typeof value === 'string') {
           try {
@@ -110,55 +118,91 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
               return;
             }
           } catch {
-            // Не JSON, продолжаем как HTML
+            // Not JSON, continue as HTML
           }
-          
-          // Парсим $...$ формулы и конвертируем их в formula nodes
-          let processedValue = value;
-          
-          // Заменяем $...$ на formula nodes
-          const formulaRegex = /\$([^$]+)\$/g;
-          if (formulaRegex.test(value)) {
-            console.log('🔍 [RichTextEditor] Found $...$ formulas in value, converting...');
-            
-            // Разбиваем текст на части
+
+          // Parse \(...\) or $...$ formulas and convert to formula nodes
+          if (value.includes('\\(') || value.includes('\\[') || /\$[^$]+\$/.test(value)) {
             const parts: Array<{ type: 'text' | 'formula', content: string }> = [];
+            let remaining = value;
+
+            // Parse \(...\) and \[...\] delimiters
+            const delimRegex = /\\[()\[\]]/g;
             let lastIndex = 0;
-            let match;
-            
-            const regex = /\$([^$]+)\$/g;
-            while ((match = regex.exec(value)) !== null) {
-              // Добавляем текст перед формулой
-              if (match.index > lastIndex) {
-                parts.push({ type: 'text', content: value.substring(lastIndex, match.index) });
+            let delimMatch;
+            let inFormula = false;
+            let formulaStart = -1;
+            let formulaType: '(' | '[' | null = null;
+
+            while ((delimMatch = delimRegex.exec(value)) !== null) {
+              const sym = delimMatch[0];
+              if (!inFormula) {
+                if (sym === '\\(' || sym === '\\[') {
+                  if (delimMatch.index > lastIndex) {
+                    parts.push({ type: 'text', content: value.substring(lastIndex, delimMatch.index) });
+                  }
+                  inFormula = true;
+                  formulaStart = delimMatch.index + 2;
+                  formulaType = sym === '\\(' ? '(' : '[';
+                }
+              } else {
+                const expectedEnd = formulaType === '(' ? '\\)' : '\\]';
+                if (sym === expectedEnd) {
+                  parts.push({ type: 'formula', content: value.substring(formulaStart, delimMatch.index) });
+                  inFormula = false;
+                  formulaType = null;
+                  lastIndex = delimMatch.index + 2;
+                }
               }
-              
-              // Добавляем формулу
-              parts.push({ type: 'formula', content: match[1] });
-              lastIndex = regex.lastIndex;
             }
-            
-            // Добавляем оставшийся текст
             if (lastIndex < value.length) {
-              parts.push({ type: 'text', content: value.substring(lastIndex) });
+              remaining = value.substring(lastIndex);
+            } else {
+              remaining = '';
             }
-            
-            // Очищаем редактор и вставляем части
-            editor.commands.clearContent();
-            
-            parts.forEach(part => {
-              if (part.type === 'formula') {
-                editor.commands.setFormula(part.content);
-              } else if (part.content.trim()) {
-                editor.commands.insertContent(part.content, { updateSelection: false });
+
+            // If \(...\) found, use those parts
+            if (parts.length > 0) {
+              if (remaining.trim()) parts.push({ type: 'text', content: remaining });
+              editor.commands.clearContent();
+              parts.forEach(part => {
+                if (part.type === 'formula') {
+                  editor.commands.setFormula(part.content);
+                } else if (part.content.trim()) {
+                  editor.commands.insertContent(part.content, { updateSelection: false });
+                }
+              });
+              return;
+            }
+
+            // Fallback: parse $...$ formulas
+            const dollarRegex = /\$([^$]+)\$/g;
+            let dMatch;
+            lastIndex = 0;
+            while ((dMatch = dollarRegex.exec(value)) !== null) {
+              if (dMatch.index > lastIndex) {
+                parts.push({ type: 'text', content: value.substring(lastIndex, dMatch.index) });
               }
-            });
-            
-            console.log('✅ [RichTextEditor] Converted $...$ formulas to formula nodes');
-            return;
+              parts.push({ type: 'formula', content: dMatch[1] });
+              lastIndex = dollarRegex.lastIndex;
+            }
+            if (parts.length > 0) {
+              if (lastIndex < value.length) {
+                parts.push({ type: 'text', content: value.substring(lastIndex) });
+              }
+              editor.commands.clearContent();
+              parts.forEach(part => {
+                if (part.type === 'formula') {
+                  editor.commands.setFormula(part.content);
+                } else if (part.content.trim()) {
+                  editor.commands.insertContent(part.content, { updateSelection: false });
+                }
+              });
+              return;
+            }
           }
-          
-          editor.commands.setContent(processedValue, { emitUpdate: false });
+
+          editor.commands.setContent(value, { emitUpdate: false });
         }
       } catch (err) {
         console.error('Error setting editor content:', err);
