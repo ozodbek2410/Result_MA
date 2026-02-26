@@ -21,7 +21,8 @@ import {
   Plus,
   Search,
   BarChart3,
-  QrCode
+  QrCode,
+  UserMinus
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
@@ -120,6 +121,17 @@ export default function GroupDetailPage() {
       error(err.response?.data?.message || 'Xatolik yuz berdi');
     } finally {
       setAddingStudents(false);
+    }
+  };
+
+  const handleRemoveStudent = async (studentId: string, studentName: string) => {
+    if (!confirm(`${studentName} ni guruhdan chiqarmoqchimisiz?`)) return;
+    try {
+      await api.delete(`/teacher/groups/${id}/students/${studentId}`);
+      success(`${studentName} guruhdan chiqarildi`);
+      fetchStudents();
+    } catch (err: any) {
+      error(err.response?.data?.message || 'Xatolik yuz berdi');
     }
   };
 
@@ -494,14 +506,24 @@ export default function GroupDetailPage() {
                             >
                               <QrCode className="w-4 h-4 text-purple-600" />
                             </button>
-                            <Button 
-                              variant="ghost" 
+                            <Button
+                              variant="ghost"
                               size="sm"
                               onClick={() => setSelectedStudentId(student._id)}
                             >
                               <BarChart3 className="w-4 h-4 mr-1" />
                               Natijalar
                             </Button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveStudent(student._id, student.fullName);
+                              }}
+                              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Guruhdan chiqarish"
+                            >
+                              <UserMinus className="w-4 h-4 text-red-500" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -543,14 +565,24 @@ export default function GroupDetailPage() {
                         >
                           <QrCode className="w-4 h-4 text-purple-600" />
                         </button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="flex-shrink-0"
                           onClick={() => setSelectedStudentId(student._id)}
                         >
                           <BarChart3 className="w-4 h-4" />
                         </Button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveStudent(student._id, student.fullName);
+                          }}
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Guruhdan chiqarish"
+                        >
+                          <UserMinus className="w-4 h-4 text-red-500" />
+                        </button>
                       </div>
                     </div>
                   </div>
