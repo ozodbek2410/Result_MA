@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/useToast';
 
 interface ParsedQuestion {
   text: string;
-  variants: { letter: string; text: string; imageUrl?: string }[];
+  variants: { letter: string; text: string; imageUrl?: string; imageWidth?: number }[];
   correctAnswer: string;
   points: number;
   image?: string; // Локальный путь (загруженный вручную)
