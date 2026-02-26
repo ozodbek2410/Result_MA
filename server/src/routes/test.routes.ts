@@ -1183,6 +1183,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
             text: questionText,
             options,
             correctAnswer: q.correctAnswer || '',
+            ...extractQuestionMedia(q),
           };
         });
 
@@ -1203,7 +1204,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
       // Старый формат - без студентов
       const questions = (test.questions || []).map((q: any, index: number) => {
         const questionText = convertVariantText(q.text);
-        
+
         const options = (q.variants || q.options || []).map((v: any) => {
           if (typeof v === 'string') return v;
           if (v.text) {
@@ -1211,12 +1212,13 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
           }
           return '';
         });
-        
+
         return {
           number: index + 1,
           text: questionText,
           options,
           correctAnswer: q.correctAnswer || '',
+          ...extractQuestionMedia(q),
         };
       });
       
@@ -1474,6 +1476,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
             text: questionText,
             options,
             correctAnswer: q.correctAnswer || '',
+            ...extractQuestionMedia(q),
           };
         });
 
@@ -1505,7 +1508,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
         } else {
           questionText = convertTiptapToLatex(q.text);
         }
-        
+
         const options = (q.variants || q.options || []).map((v: any) => {
           if (typeof v === 'string') return v;
           if (v.text) {
@@ -1521,12 +1524,13 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
           }
           return '';
         });
-        
+
         return {
           number: index + 1,
           text: questionText,
           options,
           correctAnswer: q.correctAnswer || '',
+          ...extractQuestionMedia(q),
         };
       });
       
@@ -1564,6 +1568,32 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
  */
 function convertTiptapToLatex(json: any): string {
   return convertVariantText(json);
+}
+
+/** Collect unique images from q.imageUrl + q.media, deduplicated */
+function extractQuestionMedia(q: any): { imageUrl: undefined; media: { type: string; url: string; position: string }[] | undefined; imageWidth: number | undefined; imageHeight: number | undefined } {
+  const uniqueImages: { type: string; url: string; position: string }[] = [];
+  const seen = new Set<string>();
+  const norm = (url: string) => url.replace(/^https?:\/\/[^/]+/, '').replace(/\\/g, '/');
+
+  if (q.imageUrl) {
+    seen.add(norm(q.imageUrl));
+    uniqueImages.push({ type: 'image', url: q.imageUrl, position: 'after' });
+  }
+  if (q.media && Array.isArray(q.media)) {
+    for (const m of q.media) {
+      if (m.url && !seen.has(norm(m.url))) {
+        seen.add(norm(m.url));
+        uniqueImages.push({ type: m.type || 'image', url: m.url, position: m.position || 'after' });
+      }
+    }
+  }
+  return {
+    imageUrl: undefined,
+    media: uniqueImages.length > 0 ? uniqueImages : undefined,
+    imageWidth: q.imageWidth || undefined,
+    imageHeight: q.imageHeight || undefined,
+  };
 }
 
 // ============================================================================
