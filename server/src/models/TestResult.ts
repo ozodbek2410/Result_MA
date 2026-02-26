@@ -69,8 +69,8 @@ TestResultSchema.post('save', async function (doc) {
       const test = await Test.findById(doc.testId).select('name').lean();
       if (test) testName = test.name;
     } else if (doc.blockTestId) {
-      const bt = await BlockTest.findById(doc.blockTestId).select('name').lean();
-      if (bt) testName = bt.name;
+      const bt = await BlockTest.findById(doc.blockTestId).select('periodMonth periodYear classNumber').lean();
+      if (bt) testName = `Blok test ${bt.periodMonth}/${bt.periodYear} (${bt.classNumber}-sinf)`;
     }
 
     const correct = doc.answers.filter((a: IAnswer) => a.isCorrect).length;
