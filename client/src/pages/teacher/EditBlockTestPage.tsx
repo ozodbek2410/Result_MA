@@ -1,9 +1,9 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { ArrowLeft, Save, Trash2, Edit2, Plus, Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Edit2, Plus, Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 
 function getParserKeyFromSubject(subjectName: string): string {
@@ -26,16 +26,32 @@ export default function EditBlockTestPage() {
   const [periodMonth, setPeriodMonth] = useState('');
   const [periodYear, setPeriodYear] = useState('');
 
-  // Yangi fan qo'shish uchun state
+  // Yangi fanlar qo'shish uchun state
   const [showAddForm, setShowAddForm] = useState(false);
   const [subjects, setSubjects] = useState<any[]>([]);
-  const [newSubjectId, setNewSubjectId] = useState('');
-  const [newGroupLetter, setNewGroupLetter] = useState('');
-  const [newFile, setNewFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [parsedQuestions, setParsedQuestions] = useState<any[] | null>(null);
-  const [addError, setAddError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  interface SubjectRow {
+    rowId: string;
+    subjectId: string;
+    groupLetter: string;
+    file: File | null;
+    parsedQuestions: any[] | null;
+    error: string;
+    status: 'idle' | 'loading' | 'done' | 'error';
+  }
+
+  const newRow = (): SubjectRow => ({
+    rowId: Math.random().toString(36).slice(2),
+    subjectId: '',
+    groupLetter: '',
+    file: null,
+    parsedQuestions: null,
+    error: '',
+    status: 'idle',
+  });
+
+  const [rows, setRows] = useState<SubjectRow[]>([newRow()]);
 
   useEffect(() => {
     loadBlockTest();
@@ -179,79 +195,69 @@ export default function EditBlockTestPage() {
     }
   };
 
-  // Fayl yuklash va parse qilish
-  const handleFileUpload = async () => {
-    if (!newSubjectId) {
-      setAddError('Avval fanni tanlang!');
-      return;
-    }
-    if (!newFile) {
-      setAddError('Fayl tanlanmagan!');
-      return;
-    }
-
-    setAddError('');
-    setUploading(true);
-    setParsedQuestions(null);
-
-    try {
-      const selectedSubject = subjects.find((s: any) => s._id === newSubjectId);
-      const parserKey = selectedSubject ? getParserKeyFromSubject(selectedSubject.nameUzb) : 'math';
-
-      const formData = new FormData();
-      formData.append('file', newFile);
-      formData.append('format', 'word');
-      formData.append('subjectId', parserKey);
-
-      const { data } = await api.post('/tests/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
-      });
-
-      if (data.questions && data.questions.length > 0) {
-        setParsedQuestions(data.questions);
-      } else {
-        setAddError('Faylda savollar topilmadi');
-      }
-    } catch (error: any) {
-      console.error('Error parsing file:', error);
-      setAddError(error.response?.data?.message || 'Faylni tahlil qilishda xatolik');
-    } finally {
-      setUploading(false);
-    }
+  const updateRow = (rowId: string, patch: Partial<SubjectRow>) => {
+    setRows(prev => prev.map(r => r.rowId === rowId ? { ...r, ...patch } : r));
   };
 
-  // Parse qilingan savollarni blok testga qo'shish
-  const handleConfirmAdd = async () => {
-    if (!parsedQuestions || parsedQuestions.length === 0) return;
+  const handleFileUploadAll = async () => {
+    const toProcess = rows.filter(r => r.subjectId && r.file && !r.parsedQuestions);
+    if (toProcess.length === 0) return;
 
     setUploading(true);
-    setAddError('');
 
+    await Promise.all(toProcess.map(async (row) => {
+      updateRow(row.rowId, { status: 'loading', error: '' });
+      try {
+        const selectedSubject = subjects.find((s: any) => s._id === row.subjectId);
+        const parserKey = selectedSubject ? getParserKeyFromSubject(selectedSubject.nameUzb) : 'math';
+
+        const formData = new FormData();
+        formData.append('file', row.file!);
+        formData.append('format', 'word');
+        formData.append('subjectId', parserKey);
+
+        const { data } = await api.post('/tests/import', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120000,
+        });
+
+        if (data.questions && data.questions.length > 0) {
+          updateRow(row.rowId, { parsedQuestions: data.questions, status: 'done' });
+        } else {
+          updateRow(row.rowId, { error: 'Faylda savollar topilmadi', status: 'error' });
+        }
+      } catch (error: any) {
+        updateRow(row.rowId, {
+          error: error.response?.data?.message || 'Faylni tahlil qilishda xatolik',
+          status: 'error',
+        });
+      }
+    }));
+
+    setUploading(false);
+  };
+
+  const handleConfirmAdd = async () => {
+    const doneRows = rows.filter(r => r.parsedQuestions && r.parsedQuestions.length > 0);
+    if (doneRows.length === 0) return;
+
+    setUploading(true);
     try {
-      await api.post('/block-tests/import/confirm', {
-        questions: parsedQuestions,
-        classNumber: parseInt(classNumber),
-        subjectId: newSubjectId,
-        groupLetter: newGroupLetter || null,
-        periodMonth: parseInt(periodMonth),
-        periodYear: parseInt(periodYear),
-      });
-
-      // Formni tozalash
-      setShowAddForm(false);
-      setNewSubjectId('');
-      setNewGroupLetter('');
-      setNewFile(null);
-      setParsedQuestions(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-
-      // Blok testni qayta yuklash
+      for (const row of doneRows) {
+        await api.post('/block-tests/import/confirm', {
+          questions: row.parsedQuestions,
+          classNumber: parseInt(classNumber),
+          subjectId: row.subjectId,
+          groupLetter: row.groupLetter || null,
+          periodMonth: parseInt(periodMonth),
+          periodYear: parseInt(periodYear),
+        });
+      }
+      resetAddForm();
       await loadBlockTest();
-      alert('Fan muvaffaqiyatli qo\'shildi! Eski variantlar o\'chirildi — "Sozlash" sahifasida variantlarni qayta yarating.');
+      alert(`${doneRows.length} ta fan muvaffaqiyatli qo'shildi!`);
     } catch (error: any) {
-      console.error('Error adding subject:', error);
-      setAddError(error.response?.data?.message || 'Fan qo\'shishda xatolik');
+      alert(error.response?.data?.message || 'Fan qo\'shishda xatolik');
     } finally {
       setUploading(false);
     }
@@ -259,12 +265,7 @@ export default function EditBlockTestPage() {
 
   const resetAddForm = () => {
     setShowAddForm(false);
-    setNewSubjectId('');
-    setNewGroupLetter('');
-    setNewFile(null);
-    setParsedQuestions(null);
-    setAddError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    setRows([newRow()]);
   };
 
   if (loading) {
@@ -399,92 +400,118 @@ export default function EditBlockTestPage() {
             )}
           </div>
 
-          {/* Yangi fan qo'shish formi */}
+          {/* Bir nechta fan qo'shish formi */}
           {showAddForm && (
             <div className="mt-4 border border-blue-200 rounded-lg p-4 bg-blue-50/50">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-800">Yangi fan qo'shish (.docx)</h3>
+                <h3 className="font-semibold text-gray-800">Fanlar qo'shish (.docx)</h3>
                 <button onClick={resetAddForm} className="text-gray-400 hover:text-gray-600">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="space-y-3">
-                {/* Fan tanlash */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fan</label>
-                  <select
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                    value={newSubjectId}
-                    onChange={(e) => setNewSubjectId(e.target.value)}
-                    disabled={uploading}
-                  >
-                    <option value="">Fanni tanlang</option>
-                    {blockTestSubjects.map((s: any) => (
-                      <option key={s._id} value={s._id}>{s.nameUzb}</option>
-                    ))}
-                  </select>
+                {/* Ustun sarlavhalari */}
+                <div className="grid grid-cols-[1fr_120px_1fr_32px] gap-2 px-1 text-xs font-medium text-gray-500">
+                  <span>Fan</span>
+                  <span>Guruh</span>
+                  <span>.docx fayl</span>
+                  <span></span>
                 </div>
 
-                {/* Guruh harfi */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Guruh harfi (ixtiyoriy)</label>
-                  <select
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                    value={newGroupLetter}
-                    onChange={(e) => setNewGroupLetter(e.target.value)}
-                    disabled={uploading}
-                  >
-                    <option value="">Umumiy (barcha guruhlar)</option>
-                    <option value="A">A guruh</option>
-                    <option value="B">B guruh</option>
-                    <option value="C">C guruh</option>
-                    <option value="D">D guruh</option>
-                  </select>
-                </div>
+                {rows.map((row) => (
+                  <div key={row.rowId} className="grid grid-cols-[1fr_120px_1fr_32px] gap-2 items-center">
+                    {/* Fan */}
+                    <select
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm w-full"
+                      value={row.subjectId}
+                      onChange={(e) => updateRow(row.rowId, { subjectId: e.target.value, parsedQuestions: null, error: '', status: 'idle' })}
+                      disabled={uploading || row.status === 'done'}
+                    >
+                      <option value="">Fanni tanlang</option>
+                      {blockTestSubjects.map((s: any) => (
+                        <option key={s._id} value={s._id}>{s.nameUzb}</option>
+                      ))}
+                    </select>
 
-                {/* Fayl yuklash */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">.docx fayl</label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".docx"
-                    onChange={(e) => {
-                      setNewFile(e.target.files?.[0] || null);
-                      setParsedQuestions(null);
-                      setAddError('');
-                    }}
-                    disabled={uploading}
-                    className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  />
-                </div>
+                    {/* Guruh harfi */}
+                    <select
+                      className="rounded-md border border-gray-300 px-2 py-2 text-sm w-full"
+                      value={row.groupLetter}
+                      onChange={(e) => updateRow(row.rowId, { groupLetter: e.target.value })}
+                      disabled={uploading || row.status === 'done'}
+                    >
+                      <option value="">Umumiy</option>
+                      <option value="A">A guruh</option>
+                      <option value="B">B guruh</option>
+                      <option value="C">C guruh</option>
+                      <option value="D">D guruh</option>
+                    </select>
 
-                {/* Xatolik */}
-                {addError && (
-                  <div className="flex items-start gap-2 p-2 bg-red-50 border border-red-200 rounded-md">
-                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-700">{addError}</p>
+                    {/* Fayl */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept=".docx"
+                        onChange={(e) => updateRow(row.rowId, { file: e.target.files?.[0] || null, parsedQuestions: null, error: '', status: 'idle' })}
+                        disabled={uploading || row.status === 'done'}
+                        className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      />
+                      {row.status === 'done' && (
+                        <span className="text-xs text-green-600 whitespace-nowrap font-medium">
+                          {row.parsedQuestions?.length} ta
+                        </span>
+                      )}
+                      {row.status === 'loading' && (
+                        <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full flex-shrink-0" />
+                      )}
+                      {row.error && (
+                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                      )}
+                    </div>
+
+                    {/* O'chirish */}
+                    <button
+                      onClick={() => setRows(prev => prev.length > 1 ? prev.filter(r => r.rowId !== row.rowId) : prev)}
+                      className="text-gray-400 hover:text-red-500 disabled:opacity-30"
+                      disabled={uploading || rows.length === 1}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
+                ))}
 
-                {/* Parse natijasi */}
-                {parsedQuestions && (
-                  <div className="flex items-start gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-green-700">
-                      {parsedQuestions.length} ta savol topildi. Tasdiqlash uchun "Qo'shish" tugmasini bosing.
-                    </p>
+                {/* Qator qo'shish */}
+                <button
+                  onClick={() => setRows(prev => [...prev, newRow()])}
+                  disabled={uploading}
+                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-40"
+                >
+                  <Plus className="w-4 h-4" />
+                  Fan qo'shish
+                </button>
+
+                {/* Xatolar ro'yxati */}
+                {rows.some(r => r.error) && (
+                  <div className="p-2 bg-red-50 border border-red-200 rounded-md space-y-1">
+                    {rows.filter(r => r.error).map(r => (
+                      <div key={r.rowId} className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700">
+                          {subjects.find(s => s._id === r.subjectId)?.nameUzb || 'Fan'}: {r.error}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 )}
 
                 {/* Tugmalar */}
                 <div className="flex gap-2 pt-1">
-                  {!parsedQuestions ? (
+                  {rows.some(r => r.status !== 'done' && r.subjectId && r.file) && (
                     <Button
                       size="sm"
-                      onClick={handleFileUpload}
-                      disabled={uploading || !newFile || !newSubjectId}
+                      onClick={handleFileUploadAll}
+                      disabled={uploading || !rows.some(r => r.subjectId && r.file && r.status !== 'done')}
                     >
                       {uploading ? (
                         <>
@@ -494,11 +521,12 @@ export default function EditBlockTestPage() {
                       ) : (
                         <>
                           <Upload className="w-4 h-4 mr-1" />
-                          Yuklash va tahlil qilish
+                          Tahlil qilish
                         </>
                       )}
                     </Button>
-                  ) : (
+                  )}
+                  {rows.some(r => r.status === 'done') && (
                     <Button
                       size="sm"
                       onClick={handleConfirmAdd}
@@ -512,7 +540,7 @@ export default function EditBlockTestPage() {
                       ) : (
                         <>
                           <CheckCircle className="w-4 h-4 mr-1" />
-                          Qo'shish ({parsedQuestions.length} savol)
+                          Qo'shish ({rows.filter(r => r.status === 'done').length} ta fan)
                         </>
                       )}
                     </Button>
