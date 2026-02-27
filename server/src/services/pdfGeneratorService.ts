@@ -432,28 +432,31 @@ export class PDFGeneratorService {
     .question {
       break-inside: avoid;
       page-break-inside: avoid;
+      -webkit-column-break-inside: avoid;
+      display: inline-block;
+      width: 100%;
       margin-bottom: 8px;
     }
-    
+
     .question-number {
       font-weight: bold;
       font-size: 9pt;
     }
-    
+
     .subject-tag {
       font-weight: bold;
       font-size: 9pt;
     }
-    
+
     .question-text {
       margin-bottom: 3px;
       line-height: 1.3;
     }
-    
+
     .options {
       margin-left: 12px;
     }
-    
+
     .options.inline {
       display: flex;
       flex-wrap: wrap;
@@ -475,41 +478,42 @@ export class PDFGeneratorService {
     .options.grid .option {
       margin-bottom: 0;
     }
-    
+
     .option {
       margin-bottom: 1px;
       display: flex;
       align-items: flex-start;
     }
-    
+
     .option-letter {
       min-width: 20px;
       font-weight: bold;
     }
-    
+
     .option-text {
       flex: 1;
     }
-    
+
     .math-formula {
       display: inline;
     }
-    
+
     .katex {
       font-size: 0.95em;
     }
-    
+
     @media print {
       body {
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
       }
-      
+
       .question {
         break-inside: avoid;
         page-break-inside: avoid;
+        -webkit-column-break-inside: avoid;
       }
-      
+
       .student-page {
         page-break-after: always;
       }
@@ -665,28 +669,31 @@ export class PDFGeneratorService {
     .question {
       break-inside: avoid;
       page-break-inside: avoid;
+      -webkit-column-break-inside: avoid;
+      display: inline-block;
+      width: 100%;
       margin-bottom: 8px;
     }
-    
+
     .question-number {
       font-weight: bold;
       font-size: 9pt;
     }
-    
+
     .subject-tag {
       font-weight: bold;
       font-size: 9pt;
     }
-    
+
     .question-text {
       margin-bottom: 3px;
       line-height: 1.3;
     }
-    
+
     .options {
       margin-left: 12px;
     }
-    
+
     .options.inline {
       display: flex;
       flex-wrap: wrap;
@@ -708,39 +715,40 @@ export class PDFGeneratorService {
     .options.grid .option {
       margin-bottom: 0;
     }
-    
+
     .option {
       margin-bottom: 1px;
       display: flex;
       align-items: flex-start;
     }
-    
+
     .option-letter {
       min-width: 20px;
       font-weight: bold;
     }
-    
+
     .option-text {
       flex: 1;
     }
-    
+
     .math-formula {
       display: inline;
     }
-    
+
     .katex {
       font-size: 0.95em;
     }
-    
+
     @media print {
       body {
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
       }
-      
+
       .question {
         break-inside: avoid;
         page-break-inside: avoid;
+        -webkit-column-break-inside: avoid;
       }
     }
   </style>
@@ -827,6 +835,17 @@ export class PDFGeneratorService {
    */
   private static renderMath(text: string): string {
     if (!text) return '';
+
+    // Convert TipTap formula spans: <span data-type="formula" data-latex="..."></span>
+    // Decode HTML entities (&amp; -> &) and detect display mode for aligned environments
+    text = text.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_match, latex) => {
+      const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+      const isDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded);
+      return `<span class="math-formula${isDisplay ? ' display-math' : ''}" data-latex="${this.escapeHtml(decoded)}"></span>`;
+    });
+
+    // Strip remaining HTML tags (keep math-formula spans already created above)
+    text = text.replace(/<(?!\/?span\s)[^>]+>/g, '');
 
     // Convert \[...\] to $$...$$ and \(...\) to $...$
     text = text.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
