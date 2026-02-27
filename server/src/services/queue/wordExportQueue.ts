@@ -160,8 +160,8 @@ async function processWordExport(job: Job<WordExportJobData>): Promise<WordExpor
     
     const testData = {
       title: test.name || 'Test',
-      className: test.groupId 
-        ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` 
+      className: test.groupId
+        ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`)
         : '',
       subjectName: (test.subjectId as any)?.nameUzb || '',
       questions: [], // Empty array for compatibility

@@ -1196,7 +1196,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
 
       testData = {
         title: test.name || 'Test',
-        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        className: test.groupId ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`) : '',
         subjectName: (test.subjectId as any)?.nameUzb || '',
         students
       };
@@ -1224,7 +1224,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
       
       testData = {
         title: test.name || 'Test',
-        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        className: test.groupId ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`) : '',
         subjectName: (test.subjectId as any)?.nameUzb || '',
         questions
       };
@@ -1489,7 +1489,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
 
       testData = {
         title: test.name || 'Test',
-        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        className: test.groupId ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`) : '',
         subjectName: (test.subjectId as any)?.nameUzb || '',
         students,
         settings // Добавляем настройки
@@ -1536,7 +1536,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
       
       testData = {
         title: test.name || 'Test',
-        className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+        className: test.groupId ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`) : '',
         subjectName: (test.subjectId as any)?.nameUzb || '',
         questions,
         settings // Добавляем настройки
@@ -1630,7 +1630,7 @@ router.get('/:id/export-answer-key-pdf', authenticate, async (req: AuthRequest, 
     // Create answer key data (only correct answers)
     const answerKeyData = {
       title: `${test.name} - Titul varoq`,
-      className: test.groupId ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}` : '',
+      className: test.groupId ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`) : '',
       subjectName: (test.subjectId as any)?.nameUzb || '',
       variants: variants.map(v => ({
         variantCode: v.variantCode,
