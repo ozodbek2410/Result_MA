@@ -55,6 +55,8 @@ function renderMathToHtml(text: string): string {
   // Extract formulas from HTML tags
   cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$1$$');
   cleanedText = cleanedText.replace(/<[^>]+>/g, '');
+  // Unescape HTML entities (TipTap escapes & inside formulas)
+  cleanedText = cleanedText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
   cleanedText = cleanedText.trim();
 
   // Normalize format
