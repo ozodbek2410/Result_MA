@@ -22,9 +22,14 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:9999',
-        changeOrigin: true
+        changeOrigin: true,
+        timeout: 300000, // 5 min for PDF generation
       },
       '/uploads': {
+        target: 'http://localhost:9999',
+        changeOrigin: true
+      },
+      '/exports': {
         target: 'http://localhost:9999',
         changeOrigin: true
       }
