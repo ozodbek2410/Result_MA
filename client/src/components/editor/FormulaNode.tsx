@@ -12,10 +12,7 @@ export default function FormulaNode({ node, updateAttributes, selected, editor }
   const currentLatexRef = useRef<string>('');
   const hasOpenedRef = useRef(false); // Флаг для предотвращения повторного открытия
   
-  const rawLatex = node.attrs.latex || '';
-  const latex = rawLatex.replace(/\\\\/g, '\\');
-  
-  console.log('🔍 [FormulaNode] Rendering formula:', { rawLatex, latex, hasLatex: !!latex, showPopover });
+  const latex = node.attrs.latex || '';
   
   useEffect(() => {
     currentLatexRef.current = latex;
@@ -25,15 +22,14 @@ export default function FormulaNode({ node, updateAttributes, selected, editor }
   useEffect(() => {
     if (formulaRef.current && latex) {
       try {
+        const useDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(latex);
         katex.render(latex, formulaRef.current, {
-          displayMode: false,
+          displayMode: useDisplay,
           throwOnError: false,
           errorColor: '#cc0000',
           strict: false
         });
-        console.log('✅ [FormulaNode] Formula rendered successfully');
       } catch (error) {
-        console.error('❌ [FormulaNode] KaTeX render error:', error, 'LaTeX:', latex);
         if (formulaRef.current) {
           formulaRef.current.textContent = latex;
           formulaRef.current.style.color = '#cc0000';
