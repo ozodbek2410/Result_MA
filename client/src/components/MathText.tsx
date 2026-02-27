@@ -52,8 +52,14 @@ function renderMathToHtml(text: string): string {
   cleanedText = cleanedText.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
   cleanedText = cleanedText.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
 
-  // Extract formulas from HTML tags
-  cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$1$$');
+  // Extract formulas from HTML tags, decode entities and detect display mode
+  cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_: string, latex: string) => {
+    const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
+      return '$$' + decoded + '$$';
+    }
+    return '$' + decoded + '$';
+  });
   cleanedText = cleanedText.replace(/<[^>]+>/g, '');
   // Unescape HTML entities (TipTap escapes & inside formulas)
   cleanedText = cleanedText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -152,8 +158,9 @@ function MathText({ text, className = '' }: MathTextProps) {
   // Fast path: no math markers — render plain text
   if (!text) return null;
   if (!hasMathMarkers(text)) {
-    // Strip simple HTML tags (<p>, <br>, <div>) — no span (fast path has no math)
-    const clean = text.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '').trim();
+    // Strip simple HTML tags and decode HTML entities
+    let clean = text.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '').trim();
+    clean = clean.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
     return <span className={className}>{clean}</span>;
   }
 
