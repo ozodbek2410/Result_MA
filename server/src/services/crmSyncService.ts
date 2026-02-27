@@ -1,4 +1,5 @@
 ﻿import { logger } from '../config/logger';
+import { cacheService } from '../utils/cache';
 import { CrmApiService, CrmStudent, CrmTeacher, CrmGroup, CrmSpecialty } from './crmApiService';
 import Branch from '../models/Branch';
 import Subject from '../models/Subject';
@@ -136,6 +137,7 @@ class CrmSyncServiceClass {
       });
 
       logger.info(`CRM sync completed in ${result.duration}ms`, 'CRM_SYNC');
+      cacheService.flush();
 
       return result;
     } catch (error: unknown) {
