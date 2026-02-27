@@ -1614,15 +1614,22 @@ router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReques
       periodYear: blockTest.periodYear
     }).populate('subjectTests.subjectId', 'nameUzb').lean();
 
-    // Load students first (needed for totalQuestions calculation)
-    const allStudents = await Student.find({
-      classNumber: blockTest.classNumber,
-      branchId: blockTest.branchId
-    }).populate('directionId', 'nameUzb').lean();
-
-    const selectedStudents = studentIds.length > 0
-      ? allStudents.filter(s => studentIds.includes(s._id.toString()))
-      : allStudents;
+    // Load students: filter by passed IDs, or by variant assignment
+    let selectedStudents: any[];
+    if (studentIds.length > 0) {
+      selectedStudents = await Student.find({ _id: { $in: studentIds } })
+        .populate('directionId', 'nameUzb').lean();
+    } else {
+      // No IDs passed — load only students who have variants for this block test
+      const allTestIds = allTests.map(t => t._id);
+      const variantDocs = await StudentVariant.find({
+        testId: { $in: allTestIds },
+        testType: 'BlockTest'
+      }).select('studentId').lean();
+      const variantStudentIds = [...new Set(variantDocs.map(v => v.studentId.toString()))];
+      selectedStudents = await Student.find({ _id: { $in: variantStudentIds } })
+        .populate('directionId', 'nameUzb').lean();
+    }
 
     // Calculate totalQuestions: prefer StudentTestConfig, fallback to unique-subject max
     const selectedStudentIds = selectedStudents.map(s => s._id);

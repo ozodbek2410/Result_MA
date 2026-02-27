@@ -18,11 +18,12 @@ export default function FormulaNode({ node, updateAttributes, selected, editor }
     currentLatexRef.current = latex;
   }, [latex]);
 
+  const useDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(latex);
+
   // Рендерим формулу через KaTeX
   useEffect(() => {
     if (formulaRef.current && latex) {
       try {
-        const useDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(latex);
         katex.render(latex, formulaRef.current, {
           displayMode: useDisplay,
           throwOnError: false,
@@ -90,12 +91,12 @@ export default function FormulaNode({ node, updateAttributes, selected, editor }
   };
 
   return (
-    <NodeViewWrapper as="span" className="inline-block relative">
+    <NodeViewWrapper as={useDisplay ? 'div' : 'span'} className={useDisplay ? 'block relative my-1' : 'inline-block relative'}>
       <span
         ref={nodeRef}
         onDoubleClick={handleDoubleClick}
         onClick={handleDoubleClick}
-        className={`inline-flex items-center px-1 py-0.5 mx-0.5 rounded cursor-pointer transition-all ${
+        className={`${useDisplay ? 'block' : 'inline-flex items-center'} px-1 py-0.5 mx-0.5 rounded cursor-pointer transition-all ${
           selected
             ? 'bg-blue-50 ring-2 ring-blue-300'
             : 'hover:bg-blue-50'

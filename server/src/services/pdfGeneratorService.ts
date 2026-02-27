@@ -289,9 +289,11 @@ export class PDFGeneratorService {
                 const maxSingle = Math.max(...cleanOptions.map(o => o.length), 0);
                 // inline: qisqa bo'lsa 1 qatorda, aks holda vertikal
                 const optionsClass = totalLength < 120 && maxSingle < 50 ? 'options inline' : 'options';
-                
+                const cleanText = stripHtml(q.text);
+                const isLong = cleanText.length + totalLength > 600;
+
                 return `
-                <div class="question">
+                <div class="question${isLong ? ' long-question' : ''}">
                   <div class="question-text">
                     <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
                   </div>
@@ -439,6 +441,12 @@ export class PDFGeneratorService {
       margin-bottom: 8px;
     }
 
+    .question.long-question {
+      break-inside: auto;
+      page-break-inside: auto;
+      -webkit-column-break-inside: auto;
+    }
+
     .question-number {
       font-weight: bold;
       font-size: 9pt;
@@ -513,6 +521,12 @@ export class PDFGeneratorService {
         break-inside: avoid;
         page-break-inside: avoid;
         -webkit-column-break-inside: avoid;
+      }
+
+      .question.long-question {
+        break-inside: auto;
+        page-break-inside: auto;
+        -webkit-column-break-inside: auto;
       }
 
       .student-page {
@@ -676,6 +690,12 @@ export class PDFGeneratorService {
       margin-bottom: 8px;
     }
 
+    .question.long-question {
+      break-inside: auto;
+      page-break-inside: auto;
+      -webkit-column-break-inside: auto;
+    }
+
     .question-number {
       font-weight: bold;
       font-size: 9pt;
@@ -751,6 +771,12 @@ export class PDFGeneratorService {
         page-break-inside: avoid;
         -webkit-column-break-inside: avoid;
       }
+
+      .question.long-question {
+        break-inside: auto;
+        page-break-inside: auto;
+        -webkit-column-break-inside: auto;
+      }
     }
   </style>
 </head>
@@ -785,9 +811,11 @@ export class PDFGeneratorService {
         ${testData.questions.map(q => {
           const totalLength = q.options.reduce((sum, opt) => sum + opt.length, 0);
           const optionsClass = totalLength < 80 ? 'options inline' : 'options';
-          
+          const stripH = (s: string) => s.replace(/<[^>]*>/g, '').trim();
+          const isLong = stripH(q.text).length + totalLength > 600;
+
           return `
-          <div class="question">
+          <div class="question${isLong ? ' long-question' : ''}">
             <div class="question-text">
               <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
             </div>

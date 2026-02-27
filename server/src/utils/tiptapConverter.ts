@@ -153,9 +153,14 @@ export function convertTiptapToLatex(json: any): string {
  * Output: '2 $\\frac{3}{7}$'
  */
 function convertHtmlWithLatex(html: string): string {
-  // Replace <span data-latex="..." ...></span> with $latex$
+  // Replace <span data-latex="..." ...></span> with $latex$ (decode HTML entities)
   let result = html.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_m, latex) => {
-    return `$${latex}$`;
+    const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    // Use $$...$$ for multi-line environments (aligned, cases, etc.)
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
+      return `$$${decoded}$$`;
+    }
+    return `$${decoded}$`;
   });
   // Strip remaining HTML tags
   result = result.replace(/<[^>]*>/g, '');

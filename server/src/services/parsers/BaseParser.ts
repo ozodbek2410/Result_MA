@@ -1130,7 +1130,7 @@ export abstract class BaseParser {
       }
       
       // PRIORITY 2: Check if line has variants (standard format: A) text on separate line)
-      const variantMatch = line.match(/^(\*\*|__)?([A-D])(\*\*|__)?\)\s*(.+)/i);
+      const variantMatch = line.match(/^(\*\*|__)?\s*([A-D])(\*\*|__)?\)\s*(.+)/i);
       if (variantMatch) {
         inQuestion = false;
         const letter = variantMatch[2].toUpperCase();
