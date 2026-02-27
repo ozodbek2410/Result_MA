@@ -53,7 +53,7 @@ interface TestImportPageProps {
 export default function TestImportPage({ defaultType = 'regular' }: TestImportPageProps) {
   const navigate = useNavigate();
   const { testType, setTestType, isRegular, isBlock } = useTestType(defaultType);
-  const { error: showErrorToast } = useToast();
+  const { error: showErrorToast, warning: showWarningToast } = useToast();
 
   // React Query mutations
   const importTestMutation = useImportTest();
@@ -186,6 +186,17 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
       });
 
       setParsedQuestions(questionsWithFormulas);
+
+      // Alert: to'g'ri javob belgilanmagan savollar
+      const noAnswer = questionsWithFormulas
+        .map((q, i) => (!q.correctAnswer ? i + 1 : null))
+        .filter(Boolean) as number[];
+      if (noAnswer.length > 0) {
+        showWarningToast(
+          `${noAnswer.length} ta savolda to'g'ri javob belgilanmagan: ${noAnswer.join(', ')}-savollar`
+        );
+      }
+
       setStep('preview');
     } catch (err: any) {
       console.error('Import error:', err);
@@ -233,13 +244,16 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
   // Regular test confirmation
   const handleRegularTestConfirm = async (formData: RegularTestFormData) => {
     // Validatsiya: to'g'ri javob tanlanganligini tekshirish
-    const questionsWithoutAnswer = parsedQuestions.filter(q => !q.correctAnswer || q.correctAnswer.trim() === '');
-    if (questionsWithoutAnswer.length > 0) {
-      setError(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
-      showErrorToast(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+    const noAnswerNums = parsedQuestions
+      .map((q, i) => (!q.correctAnswer || q.correctAnswer.trim() === '' ? i + 1 : null))
+      .filter(Boolean) as number[];
+    if (noAnswerNums.length > 0) {
+      const msg = `To'g'ri javob belgilanmagan: ${noAnswerNums.join(', ')}-savollar`;
+      setError(msg);
+      showErrorToast(msg);
       return;
     }
-    
+
     setIsProcessing(true);
     setError('');
 
@@ -299,10 +313,13 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
   // Block test confirmation
   const handleBlockTestConfirm = async (formData: BlockTestFormData) => {
     // Validatsiya: to'g'ri javob tanlanganligini tekshirish
-    const questionsWithoutAnswer = parsedQuestions.filter(q => !q.correctAnswer || q.correctAnswer.trim() === '');
-    if (questionsWithoutAnswer.length > 0) {
-      setError(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
-      showErrorToast(`${questionsWithoutAnswer.length} ta savolda to'g'ri javob tanlanmagan`);
+    const noAnsNums = parsedQuestions
+      .map((q, i) => (!q.correctAnswer || q.correctAnswer.trim() === '' ? i + 1 : null))
+      .filter(Boolean) as number[];
+    if (noAnsNums.length > 0) {
+      const msg = `To'g'ri javob belgilanmagan: ${noAnsNums.join(', ')}-savollar`;
+      setError(msg);
+      showErrorToast(msg);
       return;
     }
     
@@ -337,15 +354,35 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
         };
       });
 
-      await importBlockTestMutation.mutateAsync({
+      const result = await importBlockTestMutation.mutateAsync({
         questions: questionsFormatted,
         classNumber: formData.classNumber,
         subjectId: formData.subjectId,
+        groupLetter: formData.groupLetter || null,
         periodMonth: formData.periodMonth,
         periodYear: formData.periodYear,
       });
 
-      console.log('✅ Block test imported successfully');
+      console.log('Block test imported:', result);
+
+      // Shuffle after import if requested
+      if (formData.shuffleAfterImport && result?.blockTest?._id) {
+        try {
+          console.log('Shuffling variants...');
+          // Get students for this class
+          const { data: students } = await api.get('/students', {
+            params: { classNumber: formData.classNumber }
+          });
+          if (students.length > 0) {
+            const studentIds = students.map((s: { _id: string }) => s._id);
+            await api.post(`/block-tests/${result.blockTest._id}/generate-variants`, { studentIds });
+            console.log(`Variants generated for ${studentIds.length} students`);
+          }
+        } catch (shuffleErr) {
+          console.error('Shuffle error:', shuffleErr);
+          // Import succeeded, shuffle failed — don't block
+        }
+      }
 
       setStep('complete');
 
@@ -480,8 +517,8 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
               </div>
             </div>
             
-            {/* View Mode Switch - Only show in preview step */}
-            {step === 'preview' && (
+            {/* View Mode Switch - Only show in preview step for regular tests */}
+            {isRegular && step === 'preview' && (
               <div className="flex items-center gap-4">
                 <div className="text-sm text-gray-600">
                   Topilgan: <span className="font-bold text-gray-900">{parsedQuestions.length} ta</span>
@@ -520,8 +557,15 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Step 1: File Upload */}
-        {step === 'upload' && (
+        {/* Block test: standalone multi-subject form */}
+        {isBlock && step !== 'complete' && (
+          <div className="max-w-4xl mx-auto">
+            <BlockTestImportForm standalone={true} />
+          </div>
+        )}
+
+        {/* Step 1: File Upload (regular test only) */}
+        {isRegular && step === 'upload' && (
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="text-center mb-8">
               <h3 className="text-2xl font-bold text-gray-900 mb-2">Test import qilish</h3>
@@ -579,8 +623,8 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
           </div>
         )}
 
-        {/* Step 2: Preview Questions */}
-        {step === 'preview' && (
+        {/* Step 2: Preview Questions (regular test only) */}
+        {isRegular && step === 'preview' && (
           <div className="space-y-6 pb-48 lg:pb-32">
             {/* Test Settings Form - Conditional Rendering */}
             <div className="bg-white border-2 border-blue-200 p-6 rounded-xl">
@@ -901,8 +945,8 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
           </div>
         )}
 
-        {/* Step 3: Complete */}
-        {step === 'complete' && (
+        {/* Step 3: Complete (regular test only — block test navigates from its own form) */}
+        {isRegular && step === 'complete' && (
           <div className="max-w-md mx-auto text-center py-16">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="w-10 h-10 text-green-600" />

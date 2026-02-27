@@ -25,6 +25,8 @@ export default function ConfigureBlockTestPage() {
   const [isShuffling, setIsShuffling] = useState(false);
   const [blockTest, setBlockTest] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printMode, setPrintMode] = useState<'questions' | 'answers'>('questions');
@@ -34,8 +36,14 @@ export default function ConfigureBlockTestPage() {
     loadData();
   }, [id]);
 
-  const filteredStudents = students.filter(student =>
-    student.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredStudents = students.filter(student => {
+    const matchSearch = student.fullName.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchSearch) return false;
+    if (selectedGroupId) {
+      return student.groupIds?.includes(selectedGroupId) || student.groupId === selectedGroupId;
+    }
+    return true;
+  }
   );
 
   const loadData = async () => {
@@ -44,12 +52,14 @@ export default function ConfigureBlockTestPage() {
 
       const { data: testData } = await api.get(`/block-tests/${id}`);
 
-      const testDate = new Date(testData.date).toISOString().split('T')[0];
+      const groupIdParam = typeof testData.groupId === 'object' ? testData.groupId?._id : testData.groupId;
 
       const { data: sameGroupTests } = await api.get('/block-tests', {
         params: {
           classNumber: testData.classNumber,
-          date: testDate,
+          periodMonth: testData.periodMonth,
+          periodYear: testData.periodYear,
+          ...(groupIdParam ? { groupId: groupIdParam } : {}),
           fields: 'full'
         }
       });
@@ -74,10 +84,26 @@ export default function ConfigureBlockTestPage() {
 
       setBlockTest(mergedBlockTest);
 
+      // Fetch groups for this class
+      const { data: groupsData } = await api.get('/teacher/my-groups').catch(() => ({ data: [] }));
+      const classGroups = groupsData.filter((g: any) => g.classNumber === testData.classNumber);
+      setGroups(classGroups);
+
       const { data: studentsData } = await api.get('/students', {
-        params: { classNumber: testData.classNumber }
+        params: testData.groupId ? { groupId: typeof testData.groupId === 'object' ? testData.groupId._id : testData.groupId } : { classNumber: testData.classNumber }
       });
-      setStudents(studentsData);
+
+      // Variant statusini yuklash
+      let variantStudentIds = new Set<string>();
+      try {
+        const { data: variantsData } = await api.get(`/student-variants/block-test/${id}`);
+        variantStudentIds = new Set(variantsData.map((v: any) => (v.studentId?._id || v.studentId)?.toString()));
+      } catch { /* variantlar yo'q */ }
+
+      setStudents(studentsData.map((s: any) => ({
+        ...s,
+        hasVariant: variantStudentIds.has(s._id?.toString())
+      })));
 
     } catch (err: any) {
       error('Ma\'lumotlarni yuklashda xatolik');
@@ -160,6 +186,15 @@ export default function ConfigureBlockTestPage() {
                     {idx + 1}
                   </div>
                   <span className="font-medium text-slate-900">{st.subjectId?.nameUzb || 'Fan'}</span>
+                  {st.groupLetter ? (
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                      {st.groupLetter} guruh
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full">
+                      Umumiy
+                    </span>
+                  )}
                 </div>
                 <span className="text-sm font-semibold text-slate-600">{st.questions?.length || 0} ta savol</span>
               </div>
@@ -204,8 +239,22 @@ export default function ConfigureBlockTestPage() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+        {/* Group filter + Search */}
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 space-y-2">
+          {groups.length > 0 && (
+            <select
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Barcha o'quvchilar</option>
+              {groups.map((g: any) => (
+                <option key={g._id} value={g._id}>
+                  {g.letter} guruh — {g.subjectId?.nameUzb || g.name} ({g.studentsCount} o'quvchi)
+                </option>
+              ))}
+            </select>
+          )}
           <div className="relative">
             <Input
               type="text"
@@ -241,6 +290,19 @@ export default function ConfigureBlockTestPage() {
         </div>
 
         <div>
+          {students.length > 0 && (() => {
+            const withVariant = students.filter(s => s.hasVariant).length;
+            const total = students.length;
+            return withVariant < total ? (
+              <div className="mb-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                {withVariant}/{total} o'quvchida variant bor. Variantlarni qayta yarating.
+              </div>
+            ) : (
+              <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                Barcha {total} o'quvchida variant mavjud.
+              </div>
+            );
+          })()}
           <StudentList
             students={filteredStudents}
             emptyMessage={searchQuery ? "Qidiruv bo'yicha o'quvchi topilmadi" : "O'quvchilar topilmadi"}

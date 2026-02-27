@@ -12,6 +12,7 @@ export interface IStudentConfig {
 
 export interface IBlockTest extends Document {
   branchId: mongoose.Types.ObjectId;
+  groupId?: mongoose.Types.ObjectId;
   classNumber: number;
   date: Date;
   periodMonth: number; // 1-12 (январь-декабрь)
@@ -41,6 +42,7 @@ const StudentConfigSchema = new Schema({
 
 const BlockTestSchema = new Schema<IBlockTest>({
   branchId: { type: Schema.Types.ObjectId, ref: 'Branch', required: true },
+  groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: false },
   classNumber: { type: Number, required: true },
   date: { type: Date, required: true },
   periodMonth: { type: Number, required: true, min: 1, max: 12 },
@@ -59,6 +61,7 @@ const BlockTestSchema = new Schema<IBlockTest>({
 BlockTestSchema.index({ branchId: 1 });
 BlockTestSchema.index({ classNumber: 1 });
 BlockTestSchema.index({ branchId: 1, classNumber: 1, periodMonth: 1, periodYear: 1 }); // Compound index
+BlockTestSchema.index({ groupId: 1, periodMonth: 1, periodYear: 1 }); // Group-based search
 BlockTestSchema.index({ date: -1 }); // For sorting
 BlockTestSchema.index({ createdBy: 1 });
 

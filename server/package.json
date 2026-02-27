@@ -35,7 +35,8 @@
     "list-variants": "tsx src/scripts/listVariants.ts",
     "test-tables": "tsx src/scripts/testTableExtraction.ts",
     "cleanup-media": "tsx src/scripts/cleanupMedia.ts",
-    "generate-student-codes": "tsx src/scripts/generateStudentCodes.ts"
+    "generate-student-codes": "tsx src/scripts/generateStudentCodes.ts",
+    "sync-groups": "tsx src/scripts/syncGroupsFromExcel.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",

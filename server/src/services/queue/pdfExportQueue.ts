@@ -123,7 +123,11 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
             number: index + 1,
             text: questionText,
             options,
-            correctAnswer: q.correctAnswer || ''
+            correctAnswer: q.correctAnswer || '',
+            imageUrl: q.imageUrl,
+            media: q.media,
+            imageWidth: q.imageWidth,
+            imageHeight: q.imageHeight,
           };
         });
         

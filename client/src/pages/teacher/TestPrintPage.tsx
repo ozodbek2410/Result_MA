@@ -673,8 +673,8 @@ export default function TestPrintPage() {
                 const rawQuestions = isBlockTest
                   ? test.subjectTests?.flatMap((st: any) => st.questions || [])
                   : test.questions;
-                const shuffledOk = variant?.shuffledQuestions?.length === rawQuestionsCount;
-                const questionsToRender = shuffledOk
+                // shuffledQuestions mavjud bo'lsa doim uni ishlat (guruh bo'yicha kam bo'lishi mumkin)
+                const questionsToRender = variant?.shuffledQuestions?.length > 0
                   ? variant.shuffledQuestions
                   : rawQuestions;
 
@@ -724,66 +724,69 @@ export default function TestPrintPage() {
                     {/* Questions — 2-column section */}
                     <div style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
                       {isBlockTest && test.subjectTests?.length > 0 ? (() => {
-                        const subjectGroups = test.subjectTests.map((st: any) => ({
-                          name: st.subjectId?.nameUzb || 'Fan',
-                          count: st.questions?.length || 0,
-                        }));
+                        // Shuffled savollarni subjectId bo'yicha guruhlash
+                        const hasShuffled = variant?.shuffledQuestions?.length > 0;
 
-                        const totalExpected = subjectGroups.reduce((s: number, g: any) => s + g.count, 0);
-                        const shuffledMatch = variant?.shuffledQuestions?.length === totalExpected;
-                        const allQuestions = shuffledMatch
-                          ? variant.shuffledQuestions
-                          : test.subjectTests.flatMap((st: any) => st.questions || []);
-
-                        let offset = 0;
-                        let globalIndex = 0;
-
-                        return subjectGroups.map((sg: any, sgIndex: number) => {
-                          const subjectQuestions = allQuestions.slice(offset, offset + sg.count);
-                          offset += sg.count;
-
+                        if (!hasShuffled) {
                           return (
-                            <div key={sgIndex}>
-                              <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px` }}>
-                                {sg.name} — {sg.count} ta savol
-                              </div>
-                              <div className={spacingClasses.questions}>
-                                {subjectQuestions.map((question: any, qi: number) => {
-                                  const currentIndex = globalIndex++;
-                                  const questionText = convertTiptapJsonToText(question.text);
-                                  return (
-                                    <div key={qi} className={`page-break-inside-avoid ${spacingClasses.question}`}>
-                                      <div className="mb-1">
-                                        <span className="font-bold">{currentIndex + 1}. </span>
-                                        <span><MathText text={questionText} /></span>
-                                      </div>
-                                      {question.imageUrl && (
-                                        <div className="my-1 ml-6">
-                                          <img src={question.imageUrl} alt="Question" style={question.imageWidth ? { width: question.imageWidth, maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.64); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
-                                        </div>
-                                      )}
-                                      <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
-                                        {question.variants?.map((qVariant: any, vi: number) => {
-                                          const variantText = convertTiptapJsonToText(qVariant.text);
-                                          return (
-                                            <span key={`${qi}-${vi}-${qVariant.letter}`} className="mr-3">
-                                              <span className="font-semibold">{qVariant.letter}) </span>
-                                              {qVariant.imageUrl ? (
-                                                <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={qVariant.imageWidth ? { width: qVariant.imageWidth, maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.64); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
-                                              ) : (
-                                                <MathText text={variantText} />
-                                              )}
-                                            </span>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                            <div className="text-center text-gray-400 py-4 text-sm">
+                              Bu o'quvchi uchun variant yaratilmagan
                             </div>
                           );
-                        });
+                        }
+
+                        const map = new Map<string, { name: string; groupLetter: string | null; questions: any[] }>();
+                        for (const q of variant.shuffledQuestions) {
+                          const sid = (q.subjectId?._id || q.subjectId || '').toString();
+                          const name = q.subjectId?.nameUzb || 'Fan';
+                          if (!map.has(sid)) map.set(sid, { name, groupLetter: q.studentGroupLetter || null, questions: [] });
+                          map.get(sid)!.questions.push(q);
+                        }
+                        const subjectGroups = Array.from(map.values());
+
+                        let globalIndex = 0;
+
+                        return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => (
+                          <div key={sgIndex}>
+                            <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px` }}>
+                              {sg.name}{sg.groupLetter ? ` (${sg.groupLetter} guruh)` : ''} — {sg.questions.length} ta savol
+                            </div>
+                            <div className={spacingClasses.questions}>
+                              {sg.questions.map((question: any, qi: number) => {
+                                const currentIndex = globalIndex++;
+                                const questionText = convertTiptapJsonToText(question.text);
+                                return (
+                                  <div key={qi} className={`page-break-inside-avoid ${spacingClasses.question}`}>
+                                    <div className="mb-1">
+                                      <span className="font-bold">{currentIndex + 1}. </span>
+                                      <span><MathText text={questionText} /></span>
+                                    </div>
+                                    {question.imageUrl && (
+                                      <div className="my-1 ml-6">
+                                        <img src={question.imageUrl} alt="Question" style={question.imageWidth ? { width: question.imageWidth, maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.64); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
+                                      </div>
+                                    )}
+                                    <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
+                                      {question.variants?.map((qVariant: any, vi: number) => {
+                                        const variantText = convertTiptapJsonToText(qVariant.text);
+                                        return (
+                                          <span key={`${qi}-${vi}-${qVariant.letter}`} className="mr-3">
+                                            <span className="font-semibold">{qVariant.letter}) </span>
+                                            {qVariant.imageUrl ? (
+                                              <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={qVariant.imageWidth ? { width: qVariant.imageWidth, maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.64); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
+                                            ) : (
+                                              <MathText text={variantText} />
+                                            )}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ));
                       })() : (
                         <div className={spacingClasses.questions}>
                           {questionsToRender?.map((question: any, index: number) => {
@@ -870,41 +873,43 @@ export default function TestPrintPage() {
               <hr className="border-t-2 border-gray-800 mb-4" />
               <div>
                 {isBlockTest && test.subjectTests?.length > 0 ? (() => {
-                  const subjectGroups = test.subjectTests.map((st: any) => ({
-                    name: st.subjectId?.nameUzb || 'Fan',
-                    count: st.questions?.length || 0,
-                  }));
+                  const hasShuffled = variant?.shuffledQuestions?.length > 0;
 
-                  const totalExpected = subjectGroups.reduce((s: number, g: any) => s + g.count, 0);
-                  const shuffledMatch = variant?.shuffledQuestions?.length === totalExpected;
-                  const allQuestions = shuffledMatch
-                    ? variant.shuffledQuestions
-                    : test.subjectTests.flatMap((st: any) => st.questions || []);
-
-                  let offset = 0;
-                  let globalIndex = 0;
-
-                  return subjectGroups.map((sg: any, sgIndex: number) => {
-                    const subjectQuestions = allQuestions.slice(offset, offset + sg.count);
-                    offset += sg.count;
-
+                  if (!hasShuffled) {
                     return (
-                      <div key={sgIndex}>
-                        <div className="font-bold border-b border-gray-400 pb-1 mb-2 mt-3">
-                          {sg.name} — {sg.count} ta savol
-                        </div>
-                        {subjectQuestions.map((question: any, qi: number) => {
-                          const currentIndex = globalIndex++;
-                          return (
-                            <div key={qi} className="mb-1">
-                              <span className="font-bold">{currentIndex + 1}. </span>
-                              <span className="font-bold text-blue-600">{question.correctAnswer}</span>
-                            </div>
-                          );
-                        })}
+                      <div className="text-center text-gray-400 py-4 text-sm">
+                        Bu o'quvchi uchun variant yaratilmagan
                       </div>
                     );
-                  });
+                  }
+
+                  const map = new Map<string, { name: string; groupLetter: string | null; questions: any[] }>();
+                  for (const q of variant.shuffledQuestions) {
+                    const sid = (q.subjectId?._id || q.subjectId || '').toString();
+                    const name = q.subjectId?.nameUzb || 'Fan';
+                    if (!map.has(sid)) map.set(sid, { name, groupLetter: q.studentGroupLetter || null, questions: [] });
+                    map.get(sid)!.questions.push(q);
+                  }
+                  const subjectGroups = Array.from(map.values());
+
+                  let globalIndex = 0;
+
+                  return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => (
+                    <div key={sgIndex}>
+                      <div className="font-bold border-b border-gray-400 pb-1 mb-2 mt-3">
+                        {sg.name}{sg.groupLetter ? ` (${sg.groupLetter} guruh)` : ''} — {sg.questions.length} ta savol
+                      </div>
+                      {sg.questions.map((question: any, qi: number) => {
+                        const currentIndex = globalIndex++;
+                        return (
+                          <div key={qi} className="mb-1">
+                            <span className="font-bold">{currentIndex + 1}. </span>
+                            <span className="font-bold text-blue-600">{question.correctAnswer}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ));
                 })() : (
                   questionsToRender?.map((question: any, index: number) => (
                     <div key={index} className="mb-1">
@@ -963,14 +968,10 @@ export default function TestPrintPage() {
             {studentsOnPage.map((student) => {
               const variant = variantsMap.get(student._id);
               const variantCode = variant?.variantCode || '';
-              const rawQuestions = isBlockTest
-                ? test.subjectTests?.flatMap((st: any) => st.questions || [])
-                : test.questions;
-              const totalRaw = rawQuestions?.length || 0;
-              const shuffledOk = variant?.shuffledQuestions?.length === totalRaw;
-              const questionsToRender = shuffledOk
+              // Block test: faqat variant dan ol, raw fallback qilma (noto'g'ri guruhlar chiqadi)
+              const questionsToRender = variant?.shuffledQuestions?.length > 0
                 ? variant.shuffledQuestions
-                : rawQuestions;
+                : (isBlockTest ? [] : test.questions);
 
               return (
                 <div key={student._id} style={{
@@ -1021,7 +1022,7 @@ export default function TestPrintPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between">
             {/* Left: Back Button */}
-            <Button size="sm" variant="outline" onClick={() => navigate(-1)}>
+            <Button size="sm" variant="outline" onClick={() => navigate(isBlockTest ? `/teacher/block-tests/${id}` : `/teacher/tests/${id}`)}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               Orqaga
             </Button>

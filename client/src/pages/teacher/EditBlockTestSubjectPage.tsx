@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { ArrowLeft, Save, Trash2, Plus, ImagePlus } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Plus, ImagePlus, Pin } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
@@ -199,6 +199,8 @@ export default function EditBlockTestSubjectPage() {
       updated[index].correctAnswer = value;
     } else if (field === 'points') {
       updated[index].points = parseInt(value) || 1;
+    } else if (field === 'pinned') {
+      updated[index].pinned = value;
     }
     setQuestions(updated);
   };
@@ -323,10 +325,17 @@ export default function EditBlockTestSubjectPage() {
       {/* Questions List */}
       <div className="space-y-4">
         {questions.map((q, idx) => (
-          <Card key={idx} className="border-2 border-gray-200">
+          <Card key={idx} className={`border-2 ${q.pinned ? 'border-amber-400 bg-amber-50/30' : 'border-gray-200'}`}>
             <CardContent className="p-6">
               <div className="flex items-start gap-3">
-                <span className="font-bold text-gray-700 text-lg mt-2">{idx + 1}.</span>
+                <div className="flex flex-col items-center gap-1 mt-2">
+                  <span className="font-bold text-gray-700 text-lg">{idx + 1}.</span>
+                  <button type="button" onClick={() => handleQuestionChange(idx, 'pinned', !q.pinned)}
+                    title={q.pinned ? 'Joylashuv qulflangan' : 'Joylashuvni qulflash'}
+                    className={`p-1 rounded transition-all ${q.pinned ? 'text-amber-600 bg-amber-100' : 'text-gray-300 hover:text-amber-500'}`}>
+                    <Pin className="w-4 h-4" />
+                  </button>
+                </div>
                 <div className="flex-1 space-y-3">
                   <div className="border rounded-lg">
                     <RichTextEditor

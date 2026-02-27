@@ -130,11 +130,13 @@ export class SmartUniversalParser extends BaseParser {
 
     if (maxScore === 0) return 'generic';
 
-    // Priority: math with LaTeX but no specific physics keywords → math
+    // Chemistry: check BEFORE math since chemistry files also have LaTeX (subscripts, superscripts)
+    if (chemistryScore >= 3 && chemistryScore >= mathScore) return 'chemistry';
+    // Math with LaTeX but no specific physics keywords → math
     if (mathScore >= 5 && physicsScore < 4) return 'math';
     // Physics: must have physics-specific keywords + formulas
     if (physicsScore >= 4 && mathScore >= 3) return 'physics';
-    // Chemistry: chemical formulas or terms
+    // Chemistry: lower score but still present
     if (chemistryScore >= 3) return 'chemistry';
 
     // Highest score wins
@@ -175,9 +177,33 @@ export class SmartUniversalParser extends BaseParser {
   protected preCleanText(text: string): { cleanText: string; mathBlocks: string[] } {
     let cleaned = text;
 
-    // 0. Pandoc {.mark} span — Word highlight → bold (BEFORE math protection!)
+    // 0. Remove pandoc trailing backslash line breaks (hard line breaks)
+    // "gulukogen\" → "gulukogen", "a-1,4,6; b-2,3,5\" → "a-1,4,6; b-2,3,5"
+    cleaned = cleaned.replace(/\\$/gm, '');
+    cleaned = cleaned.replace(/\\\*\*/g, '**'); // "b-2,3,5\**" → "b-2,3,5**"
+
+    // 0.1. Pandoc {.mark} span — Word highlight → bold (BEFORE math protection!)
     // [C)]{.mark} → **C)** , [C) 33]{.mark} → **C) 33**
     cleaned = cleaned.replace(/\[([^\]]+)\]\{\.mark\}/g, '**$1**');
+
+    // 0.1. Normalize Cyrillic variant markers to Latin
+    // С) → C), В) → B), А) → A) (Cyrillic look-alikes)
+    cleaned = cleaned.replace(/\u0410(\s*\))/g, 'A$1');
+    cleaned = cleaned.replace(/\u0412(\s*\))/g, 'B$1');
+    cleaned = cleaned.replace(/\u0421(\s*\))/g, 'C$1');
+
+    // 0.2. Normalize **D**) → **D)** (bold wraps only letter, paren outside → move inside)
+    cleaned = cleaned.replace(/\*\*([A-D])\*\*(\s*\))/g, '**$1)** ');
+
+    // 0.3. Strip pandoc italic: *text* → text (preserve **bold**)
+    // *A) 2;6 **D**) 3;7* → A) 2;6 **D**) 3;7
+    // *1, 3,7* → 1, 3,7 , *6*) → 6)
+    cleaned = cleaned.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/gs, '$1');
+
+    // 0.4. Strip remaining standalone * (DOCX correct answer markers)
+    // "3 va 6*" → "3 va 6", "aniqlang. *" → "aniqlang.", "E*" → "E"
+    // Won't touch **bold** markers since each * has adjacent *
+    cleaned = cleaned.replace(/(?<!\*)\*(?!\*)/g, '');
 
     // 1. Basic Pandoc cleanup (safe for ALL subjects)
     cleaned = cleaned.replace(/\\`/g, '`');
@@ -195,7 +221,20 @@ export class SmartUniversalParser extends BaseParser {
 
     // 2. Pandoc subscript/superscript to LaTeX (safe for ALL — no match if absent)
     cleaned = cleaned.replace(/([A-Za-z0-9\(\)])~([^~\s]+)~/g, '$1_$2');
-    cleaned = cleaned.replace(/([A-Za-z0-9])\^([^\^\s]+)\^/g, '$1^$2');
+    // Also handle subscript at start/after space/punctuation/bold: ~19~K → _{19}K
+    cleaned = cleaned.replace(/(^|\s|[.\)*])~([^~\s]+)~/gm, (_, pre, content) => {
+      return content.length > 1 ? `${pre}_{${content}}` : `${pre}_${content}`;
+    });
+    // Multi-char superscripts need braces: ^2-^ → ^{2-}, ^23^ → ^{23}
+    // Unicode \p{L} handles Cyrillic letters too (О^2-^ → О^{2-})
+    cleaned = cleaned.replace(/([\p{L}\d])\^([^\^\s]+)\^/gu, (_, pre, content) => {
+      return content.length > 1 ? `${pre}^{${content}}` : `${pre}^${content}`;
+    });
+    // Superscript at start/after space/punctuation/bold: ^14^N → ^{14}N
+    // Also handles 2.^14^N where . precedes ^ (before question number normalization)
+    cleaned = cleaned.replace(/(^|\s|[.\)*])(\^)([^\^\s]+)\^/gm, (_, pre, _caret, content) => {
+      return content.length > 1 ? `${pre}^{${content}}` : `${pre}^${content}`;
+    });
 
     // 3. Unpack \mathbf{} before hiding (safe — no match if absent)
     for (let i = 0; i < 3; i++) {
@@ -207,9 +246,10 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/\$(.*?)\$/gs, '\\($1\\)');
 
     // 5. Extract variant letters from inside formulas (safe — no match if absent)
+    // Added ( to lookback to handle variant at start of math block: \(A){Cl}^{-1}...
     cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (mathBlock) => {
       return mathBlock.replace(
-        /([0-9}\s])(\*\*|__)?([A-D])(\*\*|__)?(?:\\?\)|\\?\.)/g,
+        /([0-9}\s(])(\*\*|__)?([A-D])(\*\*|__)?(?:\\?\)|\\?\.)/g,
         '$1 \\) $2$3) \\( '
       );
     });
@@ -227,15 +267,16 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/(___MATH_\d+___)([a-zA-Z])/g, '$1 $2');
     cleaned = cleaned.replace(/([a-zA-Z])(___MATH_\d+___)/g, '$1 $2');
 
-    // 8. Clean escapes in text
-    cleaned = cleaned.replace(/\\([.\(\)\[\]])/g, '$1');
+    // 8. Clean escapes in text (including \< \> from pandoc)
+    cleaned = cleaned.replace(/\\([.\(\)\[\]<>])/g, '$1');
 
     // 9. Split inline questions BEFORE normalizing dots → parens
     // "D) variant_text 18. New question" → newline before 18.
     cleaned = cleaned.replace(/([A-D]\)[^\n]*?[a-z0-9,;)\]'"*_}])\s+(\d{1,3})\.\s*([A-ZQ«"'(])/g, '$1\n$2. $3');
 
     // 10. Normalize question numbers: "1." → "1)"
-    cleaned = cleaned.replace(/(^|\s|\n)(\*\*|__)?(\d+)(\*\*|__)?\.\s*/g, '$1$2$3$4) ');
+    // (?!\d) — o'nli sonlarni buzmaslik uchun (32.8 → 32.8, 1. → 1))
+    cleaned = cleaned.replace(/(^|\s|\n)(\*\*|__)?(\d+)(\*\*|__)?\.(?!\d)\s*/g, '$1$2$3$4) ');
     cleaned = cleaned.replace(/([^\s\n])(\*\*|__)?([A-D])(\*\*|__)?\)/g, '$1 $2$3$4)');
     cleaned = cleaned.replace(/(\d+|[A-D])(\*\*|__)?\)([^\s\n])/g, '$1$2) $3');
 
@@ -266,16 +307,66 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/≠/g, '\\neq ');
     cleaned = cleaned.replace(/≤/g, '\\leq ');
     cleaned = cleaned.replace(/≥/g, '\\geq ');
+
+    // Scientific notation: 169,32·10^{-27} → \(169{,}32 \cdot 10^{-27}\)
+    // Fix double dash in exponent first: ^{--24} → ^{-24}
+    cleaned = cleaned.replace(/\^{--(\d+)}/g, '^{-$1}');
+    // Full scientific notation with middle dot (·/∙)
+    cleaned = cleaned.replace(/([\d,\.]+)\s*[·∙]\s*(\d+)\^(\{[^}]+\})/g, (_, num, base, exp) => {
+      const latexNum = num.replace(/,/g, '{,}');
+      return `\\(${latexNum} \\cdot ${base}^${exp}\\)`;
+    });
+    // Remaining middle dots → \cdot (only useful inside existing LaTeX)
     cleaned = cleaned.replace(/∙/g, '\\cdot ');
     cleaned = cleaned.replace(/·/g, '\\cdot ');
 
     // CHEMISTRY-SPECIFIC: Only when chemistry detected
     if (this.detectedType === 'chemistry') {
+      // Fix Cyrillic lookalikes used as element symbols: О^{2-} → O^{2-}, С_2 → C_2
+      cleaned = cleaned.replace(/\u041E(?=[_^{\d])/g, 'O'); // Cyrillic О → Latin O
+      cleaned = cleaned.replace(/\u0421(?=[_^{\d])/g, 'C'); // Cyrillic С → Latin C
+      cleaned = cleaned.replace(/\u041D(?=[_^{\d])/g, 'H'); // Cyrillic Н → Latin H
+
       // Duplicate formula removal: H2OH2O → H2O
       cleaned = cleaned.replace(/([A-Z][a-z]?\d+)\1+/g, '$1');
       // Reaction arrows
       cleaned = cleaned.replace(/<->/g, '\u21CC'); // ⇌
       cleaned = cleaned.replace(/->/g, '\u2192');  // →
+
+      // Wrap chemistry formulas with subscript/superscript in LaTeX blocks
+      // Skip text already inside \(...\)
+      const chemBlocks: string[] = [];
+      cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (m) => { chemBlocks.push(m); return `\x00C${chemBlocks.length - 1}\x00`; });
+
+      // Isotope notation: ^{14}N, ^{13}C (mass number before element)
+      cleaned = cleaned.replace(/(\^(?:\{[^}]+\}|\d))([A-Z][a-z]?)(?=\s|$|[^_^{a-z\d])/g, '\\($1$2\\)');
+
+      // Isotope with atomic number: _{19}K^{39}, _{17}Cl^{35}
+      cleaned = cleaned.replace(/(_(?:\{[^}]+\}|\d))([A-Z][a-z]?)(\^(?:\{[^}]+\}|\d))?/g, (m, sub, elem, sup) => {
+        return sup ? `\\(${sub}${elem}${sup}\\)` : `\\(${sub}${elem}\\)`;
+      });
+
+      // Re-protect new \(...\) blocks from isotope regexes before chemistry formula regex
+      cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (m) => { chemBlocks.push(m); return `\x00C${chemBlocks.length - 1}\x00`; });
+
+      // Match chemistry formulas: sequences of element symbols, digits, brackets with _/^
+      // Examples: K_3[Fe(CN)_6], Mn^{2+}, SO_3, Al(OH)_3, Ca^{2+}
+      cleaned = cleaned.replace(/([A-Z][a-z]?[\d_^{}\[\]()A-Za-z+\-]*(?:[_^](?:\{[^}]+\}|\d))[A-Za-z\d_^{}\[\]()+\-]*)/g,
+        (match) => {
+          if (!/[_^]/.test(match)) return match;
+          if (/^[A-D]$/.test(match)) return match;
+          return `\\(${match}\\)`;
+        }
+      );
+
+      // Electron configurations: 4d^8, 3s^2, 2p^{6}, 4f^{14}
+      // Use \d (not \d+) so 2s^22p^5 parses as 2s^2 + 2p^5, not 2s^22
+      cleaned = cleaned.replace(/(\d+[spdf])(\^(?:\{[^}]+\}|\d))(?![spdf])/g, '\\($1$2\\)');
+
+      // Merge adjacent LaTeX: \(X\) _3 → \(X_3\), \(X\)_3 → \(X_3\)
+      cleaned = cleaned.replace(/\\\(([\s\S]*?)\\\)\s*([_^](?:\{[^}]+\}|\d))/g, '\\($1$2\\)');
+
+      cleaned = cleaned.replace(/\x00C(\d+)\x00/g, (_, i) => chemBlocks[parseInt(i)]);
     }
 
     // PHYSICS/MATH: Merge adjacent LaTeX blocks

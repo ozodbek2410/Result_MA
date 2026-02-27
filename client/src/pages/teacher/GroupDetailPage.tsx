@@ -5,14 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { PageNavbar } from '@/components/ui/PageNavbar';
-import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@/components/ui/Dialog';
-import { Checkbox } from '@/components/ui/Checkbox';
 import { useToast } from '@/hooks/useToast';
 import StudentProfileModal from '@/components/StudentProfileModal';
 import StudentQRCode from '@/components/StudentQRCode';
-import { 
+import {
   ArrowLeft,
-  Users, 
+  Users,
   GraduationCap,
   Calendar,
   MapPin,
@@ -22,24 +20,41 @@ import {
   Search,
   BarChart3,
   QrCode,
-  UserMinus
+  UserMinus,
+  Trash2,
+  BookOpen,
+  Save,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
+
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+
+interface SubjectConfig {
+  subjectId: string;
+  groupLetter: string;
+}
 
 export default function GroupDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [group, setGroup] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
-  const [allStudents, setAllStudents] = useState<any[]>([]);
   const [tests, setTests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
-  const [addingStudents, setAddingStudents] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [qrStudent, setQrStudent] = useState<any>(null);
+  // Group-level subject+letter config
+  const [subjectConfigs, setSubjectConfigs] = useState<SubjectConfig[]>([]);
+  const [allSubjects, setAllSubjects] = useState<any[]>([]);
+  const [savingConfig, setSavingConfig] = useState(false);
+  // Per-student subject+letter assignments — key: `${studentId}:${subjectId}`
+  const [studentLetters, setStudentLetters] = useState<Record<string, string>>({});
+  const [savingLetters, setSavingLetters] = useState(false);
+  const [showSubjectConfig, setShowSubjectConfig] = useState(false);
+  const [showStudentLetters, setShowStudentLetters] = useState(false);
   const { success, error } = useToast();
 
   useEffect(() => {
@@ -47,6 +62,9 @@ export default function GroupDetailPage() {
       fetchGroupDetails();
       fetchStudents();
       fetchTests();
+      fetchSubjectConfig();
+      fetchAllSubjects();
+      fetchStudentLetters();
     }
   }, [id]);
 
@@ -54,15 +72,105 @@ export default function GroupDetailPage() {
     try {
       const { data } = await api.get(`/groups/${id}`);
       setGroup(data);
-    } catch (error: any) {
-      console.error('Error fetching group:', error);
-      if (error.response?.status === 403) {
-        // Нет доступа к группе
-        setGroup(null);
-      }
+    } catch (err: any) {
+      console.error('Error fetching group:', err);
+      if (err.response?.status === 403) setGroup(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchSubjectConfig = async () => {
+    try {
+      const { data } = await api.get(`/groups/${id}/subject-config`);
+      setSubjectConfigs(data.map((c: any) => ({
+        subjectId: c.subjectId?._id || c.subjectId,
+        groupLetter: c.groupLetter || ''
+      })));
+    } catch (err) {
+      console.warn('Could not load subject config', err);
+    }
+  };
+
+  const fetchAllSubjects = async () => {
+    try {
+      const { data } = await api.get('/subjects');
+      setAllSubjects(data);
+    } catch (err) {
+      console.warn('Could not load subjects', err);
+    }
+  };
+
+  const saveSubjectConfig = async () => {
+    const valid = subjectConfigs.filter(c => c.subjectId);
+    if (valid.length === 0) {
+      error('Kamida bitta fan tanlang');
+      return;
+    }
+    setSavingConfig(true);
+    try {
+      await api.put(`/groups/${id}/subject-config`, { configs: valid });
+      success('Fan guruhlari saqlandi');
+      await fetchSubjectConfig();
+    } catch (err: any) {
+      error(err.response?.data?.message || 'Xatolik yuz berdi');
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const addConfigRow = () => {
+    setSubjectConfigs(prev => [...prev, { subjectId: '', groupLetter: '' }]);
+  };
+
+  const updateConfigRow = (idx: number, patch: Partial<SubjectConfig>) => {
+    setSubjectConfigs(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c));
+  };
+
+  const removeConfigRow = (idx: number) => {
+    setSubjectConfigs(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const fetchStudentLetters = async () => {
+    try {
+      const { data } = await api.get(`/groups/${id}/student-letters`);
+      const map: Record<string, string> = {};
+      data.forEach((d: any) => {
+        if (d.studentId && d.subjectId && d.groupLetter) {
+          map[`${d.studentId}:${d.subjectId}`] = d.groupLetter;
+        }
+      });
+      setStudentLetters(map);
+    } catch (err) {
+      console.warn('Could not load student letters', err);
+    }
+  };
+
+  const saveStudentLetters = async () => {
+    setSavingLetters(true);
+    try {
+      // Barcha harflarni yuborish (bo'sh qiymatlar ham — serverda $unset qilinadi)
+      const letters = Object.entries(studentLetters)
+        .map(([key, groupLetter]) => {
+          const [studentId, subjectId] = key.split(':');
+          return { studentId, subjectId, groupLetter };
+        });
+      await api.put(`/groups/${id}/student-letters`, { letters });
+      success('Bo\'limlar saqlandi');
+      // Serverdan qayta yuklash
+      await fetchStudentLetters();
+    } catch (err: any) {
+      error(err.response?.data?.message || 'Xatolik yuz berdi');
+    } finally {
+      setSavingLetters(false);
+    }
+  };
+
+  const setStudentLetter = (studentId: string, subjectId: string, letter: string) => {
+    setStudentLetters(prev => ({
+      ...prev,
+      [`${studentId}:${subjectId}`]: letter
+    }));
   };
 
   const fetchStudents = async () => {
@@ -83,46 +191,6 @@ export default function GroupDetailPage() {
     }
   };
 
-  const fetchAllStudents = async () => {
-    try {
-      // Получаем всех студентов филиала с этим предметом
-      const { data } = await api.get('/students', {
-        params: {
-          subjectId: group.subjectId?._id || group.subjectId,
-          classNumber: group.classNumber
-        }
-      });
-      setAllStudents(data);
-    } catch (err) {
-      console.error('Error fetching all students:', err);
-    }
-  };
-
-  const handleAddStudents = async () => {
-    if (selectedStudents.length === 0) {
-      error('Kamida bitta o\'quvchi tanlang');
-      return;
-    }
-
-    setAddingStudents(true);
-    try {
-      // Har bir o'quvchini qo'shish
-      await Promise.all(
-        selectedStudents.map(studentId =>
-          api.post(`/teacher/groups/${id}/students/${studentId}`)
-        )
-      );
-      
-      success(`${selectedStudents.length} ta o'quvchi qo'shildi!`);
-      setShowAddModal(false);
-      setSelectedStudents([]);
-      fetchStudents();
-    } catch (err: any) {
-      error(err.response?.data?.message || 'Xatolik yuz berdi');
-    } finally {
-      setAddingStudents(false);
-    }
-  };
 
   const handleRemoveStudent = async (studentId: string, studentName: string) => {
     if (!confirm(`${studentName} ni guruhdan chiqarmoqchimisiz?`)) return;
@@ -135,13 +203,6 @@ export default function GroupDetailPage() {
     }
   };
 
-  const toggleStudent = (studentId: string) => {
-    setSelectedStudents(prev =>
-      prev.includes(studentId)
-        ? prev.filter(id => id !== studentId)
-        : [...prev, studentId]
-    );
-  };
 
   const filteredStudents = students.filter(student =>
     student.fullName?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -193,120 +254,7 @@ export default function GroupDetailPage() {
             <p className="text-xs sm:text-sm text-slate-600 hidden sm:block">Guruh tafsilotlari va o'quvchilar</p>
           </div>
         </div>
-        <Button 
-          size="sm"
-          onClick={() => {
-            fetchAllStudents();
-            setShowAddModal(true);
-          }}
-          className="flex-shrink-0"
-        >
-          <Plus className="w-4 h-4 sm:mr-2" />
-          <span className="hidden sm:inline">O'quvchi qo'shish</span>
-        </Button>
       </div>
-
-      {/* Add Students Modal */}
-      <Dialog open={showAddModal} onClose={() => setShowAddModal(false)}>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <GraduationCap className="w-6 h-6 text-green-600" />
-            O'quvchilarni guruhga qo'shish
-          </DialogTitle>
-        </DialogHeader>
-        <DialogContent>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Guruhga qo'shmoqchi bo'lgan o'quvchilarni tanlang
-            </p>
-
-            <div className="max-h-96 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-3">
-              {allStudents.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">
-                  Bu fandan va sinfdan o'quvchilar yo'q.
-                </p>
-              ) : (
-                allStudents
-                  .filter(student => !students.find(s => s._id === student._id))
-                  .length === 0 ? (
-                    <p className="text-center text-gray-500 py-8">
-                      Barcha o'quvchilar allaqachon bu guruhda.
-                    </p>
-                  ) : (
-                    allStudents
-                      .filter(student => !students.find(s => s._id === student._id))
-                      .map((student) => {
-                        // Найти группу студента для этого предмета
-                        const studentGroupForSubject = student.groups?.find((g: any) => {
-                          const groupSubjectId = g.subjectId?._id || g.subjectId;
-                          const currentSubjectId = group.subjectId?._id || group.subjectId;
-                          return groupSubjectId?.toString() === currentSubjectId?.toString();
-                        });
-                        
-                        return (
-                          <label
-                            key={student._id}
-                            className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
-                          >
-                            <Checkbox
-                              checked={selectedStudents.includes(student._id)}
-                              onChange={() => toggleStudent(student._id)}
-                            />
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900">{student.fullName}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="text-sm text-gray-500">{student.classNumber}-sinf</p>
-                                {studentGroupForSubject && (
-                                  <Badge variant="warning" size="sm">
-                                    {studentGroupForSubject.name}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })
-                  )
-              )}
-            </div>
-
-            {selectedStudents.length > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm text-blue-800">
-                  <strong>{selectedStudents.length}</strong> ta o'quvchi tanlandi
-                </p>
-              </div>
-            )}
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-xs text-yellow-800">
-                ⚠️ <strong>Diqqat:</strong> Agar o'quvchi shu fandan boshqa guruhda bo'lsa, avtomatik ravishda o'sha guruhdan chiqariladi va bu guruhga qo'shiladi.
-              </p>
-            </div>
-
-            <div className="flex gap-2 pt-4">
-              <Button 
-                onClick={handleAddStudents} 
-                loading={addingStudents}
-                disabled={selectedStudents.length === 0}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                Qo'shish
-              </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => {
-                  setShowAddModal(false);
-                  setSelectedStudents([]);
-                }}
-              >
-                Bekor qilish
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Group Info Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -425,14 +373,175 @@ export default function GroupDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Subject Group Config */}
+      <Card className="border-0 shadow-soft">
+        <CardHeader
+          className="bg-gradient-to-r from-gray-50 to-gray-100 border-b cursor-pointer select-none"
+          onClick={() => setShowSubjectConfig(prev => !prev)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-blue-600" />
+              <CardTitle className="text-lg">Fan guruhlari</CardTitle>
+              {subjectConfigs.length > 0 && (
+                <Badge variant="info" size="sm">{subjectConfigs.length} ta fan</Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {showSubjectConfig ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        {showSubjectConfig && (
+          <CardContent className="p-4">
+            <div className="flex items-center justify-end gap-2 mb-3">
+              <Button size="sm" variant="outline" onClick={addConfigRow}>
+                <Plus className="w-4 h-4 mr-1" />
+                Fan qo'shish
+              </Button>
+              <Button size="sm" onClick={saveSubjectConfig} loading={savingConfig}>
+                Saqlash
+              </Button>
+            </div>
+            {subjectConfigs.length === 0 ? (
+              <div className="py-8 text-center text-gray-500">
+                <BookOpen className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                <p className="text-sm">Fan guruhlari belgilanmagan</p>
+                <p className="text-xs text-gray-400 mt-1">Blok test uchun fanlarni va guruh harfini belgilang</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {subjectConfigs.map((cfg, idx) => {
+                  const sub = allSubjects.find((s: any) => s._id === cfg.subjectId);
+                  return (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm flex-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        value={cfg.subjectId}
+                        onChange={(e) => updateConfigRow(idx, { subjectId: e.target.value })}
+                      >
+                        <option value="">Fanni tanlang</option>
+                        {allSubjects.map((s: any) => (
+                          <option key={s._id} value={s._id}>{s.nameUzb}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => removeConfigRow(idx)}
+                        className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-500 flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Per-student subject+letter assignment */}
+      {students.length > 0 && (() => {
+        // Build subject list: group's main subject + GroupSubjectConfig subjects
+        const seen = new Set<string>();
+        const letterSubjects: any[] = [];
+        if (group?.subjectId && typeof group.subjectId === 'object') {
+          const sid = group.subjectId._id || group.subjectId;
+          seen.add(sid.toString());
+          letterSubjects.push(group.subjectId);
+        }
+        subjectConfigs.forEach(cfg => {
+          if (cfg.subjectId && !seen.has(cfg.subjectId)) {
+            seen.add(cfg.subjectId);
+            const sub = allSubjects.find((s: any) => s._id === cfg.subjectId);
+            if (sub) letterSubjects.push(sub);
+          }
+        });
+        if (letterSubjects.length === 0) return null;
+        return (
+          <Card className="border-0 shadow-soft">
+            <CardHeader
+              className="bg-gradient-to-r from-gray-50 to-gray-100 border-b cursor-pointer select-none"
+              onClick={() => setShowStudentLetters(prev => !prev)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-indigo-600" />
+                  <CardTitle className="text-lg">O'quvchi bo'limlari</CardTitle>
+                  <Badge variant="info" size="sm">{students.length} ta</Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  {showStudentLetters ? (
+                    <ChevronUp className="w-5 h-5 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-500" />
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            {showStudentLetters && (
+              <CardContent className="p-0">
+                <div className="flex items-center justify-end gap-2 px-4 pt-3">
+                  <Button size="sm" onClick={saveStudentLetters} loading={savingLetters}>
+                    <Save className="w-4 h-4 mr-1" />
+                    Saqlash
+                  </Button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600 text-xs uppercase">O'quvchi</th>
+                        {letterSubjects.map((sub: any) => (
+                          <th key={sub._id} className="px-4 py-3 text-center font-semibold text-gray-600 text-xs uppercase whitespace-nowrap">
+                            {sub.nameUzb}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {students.map((student: any) => (
+                        <tr key={student._id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">{student.fullName}</td>
+                          {letterSubjects.map((sub: any) => {
+                            const key = `${student._id}:${sub._id}`;
+                            return (
+                              <td key={sub._id} className="px-4 py-2 text-center">
+                                <select
+                                  className="rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                  value={studentLetters[key] || ''}
+                                  onChange={(e) => setStudentLetter(student._id, sub._id, e.target.value)}
+                                >
+                                  <option value="">-</option>
+                                  {LETTERS.map(l => <option key={l} value={l}>{l}</option>)}
+                                </select>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-500 px-4 py-2 border-t">
+                  Har bir o'quvchiga fan bo'yicha guruh harfini belgilang. Blok test yaratilganda shu ma'lumot ishlatiladi.
+                </p>
+              </CardContent>
+            )}
+          </Card>
+        );
+      })()}
+
       {/* Students List */}
       <Card className="border-0 shadow-soft">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">O'quvchilar ro'yxati</CardTitle>
-            <Badge variant="info" size="md">
-              {students.length} ta o'quvchi
-            </Badge>
+            <Badge variant="info" size="md">{students.length} ta o'quvchi</Badge>
           </div>
         </CardHeader>
         <CardContent className="p-4">

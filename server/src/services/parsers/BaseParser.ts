@@ -550,40 +550,59 @@ export abstract class BaseParser {
    * Pandoc markdown'dagi jadvallarni ___TABLE_X___ marker bilan almashtirish
    */
   protected replaceTablesWithMarkers(markdown: string): string {
-    let result = markdown;
+    const lines = markdown.split('\n');
+    const result: string[] = [];
     let tableIndex = 1;
-    
-    // DEBUG: Save markdown to file
-    const fs = require('fs');
-    fs.writeFileSync('pandoc_markdown_debug.txt', markdown);
-    console.log('💾 [DEBUG] Saved Pandoc markdown to pandoc_markdown_debug.txt');
-    
-    // Pandoc создает таблицы в формате:
-    //   --- ---- ----
-    //   1   Text Ha
-    //   2   More Yo'q
-    //   --- ---- ----
-    
-    // Ищем строки с дефисами (границы таблиц) и все между ними
-    const tablePattern = /^\s*[-\s]{10,}\s*$[\s\S]*?^\s*[-\s]{10,}\s*$/gm;
-    
-    const matches = markdown.match(tablePattern);
-    console.log(`🔍 [PARSER] Found ${matches ? matches.length : 0} table patterns in markdown`);
-    
-    if (matches) {
-      matches.forEach((match, index) => {
-        console.log(`📋 [PARSER] Table ${index + 1} preview: ${match.substring(0, 100)}...`);
-      });
+    let inSimpleTable = false;
+    let inGridTable = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      // Simple table border: 10+ consecutive dashes (not "--- ---- ---" column separators)
+      const isSimpleBorder = /^\s*-{10,}\s*$/.test(line);
+      // Grid table border: +---+---+ format
+      const isGridBorder = /^\+[-=+:]+\+$/.test(trimmed);
+      // Grid table content row: starts with |
+      const isGridContent = /^\|/.test(trimmed);
+
+      if (isSimpleBorder) {
+        if (inSimpleTable) {
+          // Closing border → end simple table
+          const marker = `___TABLE_${tableIndex}___`;
+          tableIndex++;
+          result.push('', marker, '');
+          inSimpleTable = false;
+        } else {
+          // Opening border → start simple table
+          inSimpleTable = true;
+        }
+      } else if (inSimpleTable) {
+        // Inside simple table — skip content
+      } else if (isGridBorder || (inGridTable && isGridContent)) {
+        if (!inGridTable) inGridTable = true;
+        // Inside grid table — skip content
+      } else {
+        if (inGridTable) {
+          // First non-grid line → end grid table
+          const marker = `___TABLE_${tableIndex}___`;
+          tableIndex++;
+          result.push('', marker, '');
+          inGridTable = false;
+        }
+        result.push(line);
+      }
     }
-    
-    result = result.replace(tablePattern, (match) => {
+
+    // Handle unclosed tables at end of file
+    if (inSimpleTable || inGridTable) {
       const marker = `___TABLE_${tableIndex}___`;
       tableIndex++;
-      console.log(`🔄 [PARSER] Replaced table with ${marker}`);
-      return `\n${marker}\n\n`;
-    });
-    
-    return result;
+      result.push('', marker, '');
+    }
+
+    console.log(`🔄 [PARSER] Replaced ${tableIndex - 1} tables with markers`);
+    return result.join('\n');
   }
 
   /**
@@ -604,6 +623,9 @@ export abstract class BaseParser {
     // $\frac{3}{2}\$ → $\frac{3}{2}$ , $2^{x+1}\$ni → $2^{x+1}$ni
     // LEKIN $\$ ni buzmaslik uchun — faqat $ dan keyin bo'lmagan \$ ni almashtirish
     cleaned = cleaned.replace(/([^$])\\\$/g, '$1$');
+
+    // Remove pandoc hard line break: "word\↵" → "word↵" (handles CRLF too)
+    cleaned = cleaned.replace(/\\\r?\n/g, '\n');
 
     // Remove escape characters
     cleaned = cleaned.replace(/\\\'/g, "'");  // \' → '
@@ -673,7 +695,8 @@ export abstract class BaseParser {
     const questions: ParsedQuestion[] = [];
     
     // Match question numbers more flexibly: 1) or 1. at start of line or after newline
-    const questionPattern = /(?:^|\n)(?:\*\*|__)?(\d+)(?:\*\*|__)?[.)]\s+/g;
+    // Allow optional space between number and bold-period (e.g. "17 **.**") and zero-space after period (e.g. "27.$\")
+    const questionPattern = /(?:^|\n)(?:\*\*|__)?(\d+)\s*(?:\*\*|__)?[.)]\s*/g;
     const matches = Array.from(text.matchAll(questionPattern));
     
     console.log(`🔍 [PARSER] Found ${matches.length} question markers`);
@@ -753,11 +776,25 @@ export abstract class BaseParser {
     if (matches.length <= 1) return matches;
 
     const nums = matches.map(m => parseInt(m[1]));
+    const maxNum = Math.max(...nums);
 
-    // Find the start index giving the longest ascending subsequence
+    // Strategy 1: For each n=1..maxNum, pick first occurrence after previous selection.
+    // This correctly skips false markers (e.g. sub-items with high numbers that appear early).
+    const s1: RegExpExecArray[] = [];
+    let si = 0;
+    for (let n = 1; n <= maxNum; n++) {
+      for (let i = si; i < matches.length; i++) {
+        if (parseInt(matches[i][1]) === n) {
+          s1.push(matches[i]);
+          si = i + 1;
+          break;
+        }
+      }
+    }
+
+    // Strategy 2: Longest ascending subsequence from best start (original algorithm).
     let bestStart = 0;
     let bestLen = 0;
-
     for (let s = 0; s < nums.length; s++) {
       let len = 1;
       let last = nums[s];
@@ -766,24 +803,20 @@ export abstract class BaseParser {
       }
       if (len > bestLen) { bestLen = len; bestStart = s; }
     }
-
-    // Build filtered list from best start
-    const filtered: RegExpExecArray[] = [];
+    const s2: RegExpExecArray[] = [];
     let lastNum = 0;
-
     for (let i = bestStart; i < matches.length; i++) {
       const n = parseInt(matches[i][1]);
-      if (n > lastNum) {
-        filtered.push(matches[i]);
-        lastNum = n;
-      }
+      if (n > lastNum) { s2.push(matches[i]); lastNum = n; }
     }
 
-    if (filtered.length < matches.length) {
-      console.log(`📊 [PARSER] Sequential filter: ${matches.length} → ${filtered.length} (skipped ${matches.length - filtered.length} sub-items)`);
+    const result = s1.length >= s2.length ? s1 : s2;
+
+    if (result.length < matches.length) {
+      console.log(`📊 [PARSER] Sequential filter: ${matches.length} → ${result.length} (skipped ${matches.length - result.length} sub-items)`);
     }
 
-    return filtered;
+    return result;
   }
 
   /**
@@ -873,16 +906,24 @@ export abstract class BaseParser {
     const firstVariantMatch = cleanLine.match(/[A-D]\s*\)/);
     if (!firstVariantMatch) return null;
 
-    const variantStartIdx = firstVariantMatch.index!;
+    // Include "** " or "**" prefix before first variant letter
+    // preCleanText adds space: "**A)" → "** A)", so need 3-char lookback
+    let variantStartIdx = firstVariantMatch.index!;
+    if (variantStartIdx >= 3 && cleanLine.substring(variantStartIdx - 3, variantStartIdx) === '** ') {
+      variantStartIdx -= 3;
+    } else if (variantStartIdx >= 2 && cleanLine.substring(variantStartIdx - 2, variantStartIdx) === '**') {
+      variantStartIdx -= 2;
+    }
     const questionText = cleanLine.substring(0, variantStartIdx).trim();
     const variantsText = cleanLine.substring(variantStartIdx);
 
-    // Detect correct answer (bold variant)
-    const boldVariantPattern = /(?:\*\*\s*([A-D])\s*\)|([A-D])\s*\)\s*\*\*)/g;
+    // Detect correct answer: match complete bold span "** A) text**"
+    // [^*]* stops at next ** to avoid crossing into adjacent variants
+    const boldVariantPattern = /\*\*\s*([A-D])\s*\)[^*]*\*\*/g;
     const boldMatches = Array.from(variantsText.matchAll(boldVariantPattern));
-    let correctAnswer = 'A';
+    let correctAnswer = '';
     if (boldMatches.length > 0) {
-      correctAnswer = (boldMatches[0][1] || boldMatches[0][2]);
+      correctAnswer = boldMatches[0][1];
       console.log(`  🎯 Correct answer detected: ${correctAnswer}`);
     }
 
@@ -1069,10 +1110,11 @@ export abstract class BaseParser {
         const letter = variantMatch[2].toUpperCase();
         let text = variantMatch[4].trim();
         
-        const isBold = !!(variantMatch[1] || variantMatch[3]);
+        const textIsBold = text.startsWith('**') || text.startsWith('__');
+        const isBold = !!(variantMatch[1] || variantMatch[3] || textIsBold);
         if (isBold) {
           correctAnswer = letter;
-          text = text.replace(/^\*\*|\*\*$/g, '').replace(/^____|____$/g, '');
+          text = text.replace(/^\*\*|\*\*$/g, '').replace(/^__|__$/g, '');
         }
         
         text = this.restoreMath(text, mathBlocks);
@@ -1117,12 +1159,19 @@ export abstract class BaseParser {
    */
   protected finalCleanText(text: string, mathBlocks: string[]): string {
     let cleaned = text;
-    
+
     cleaned = cleaned.replace(/\*\*/g, '');
+    cleaned = cleaned.replace(/(?<!\*)\*(?!\*)/g, ''); // standalone * (correct answer markers)
     cleaned = cleaned.replace(/____/g, '');
+    // Escape bare < > outside LaTeX so TipTap doesn't treat them as HTML tags
+    // Protect LaTeX blocks first, escape, then restore
+    const latexParts: string[] = [];
+    cleaned = cleaned.replace(/\\?\([\s\S]*?\\?\)/g, (m) => { latexParts.push(m); return `\x00L${latexParts.length - 1}\x00`; });
+    cleaned = cleaned.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    cleaned = cleaned.replace(/\x00L(\d+)\x00/g, (_, i) => latexParts[parseInt(i)]);
     cleaned = cleaned.replace(/\s+/g, ' ');
     cleaned = cleaned.trim();
-    
+
     return cleaned;
   }
 

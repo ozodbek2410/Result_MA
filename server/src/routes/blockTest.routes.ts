@@ -4,12 +4,14 @@ import Student from '../models/Student';
 import StudentGroup from '../models/StudentGroup';
 import StudentVariant from '../models/StudentVariant';
 import StudentTestConfig from '../models/StudentTestConfig';
+import GroupSubjectConfig from '../models/GroupSubjectConfig';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import { PDFExportService } from '../services/pdfExportService';
 import { PDFGeneratorService } from '../services/pdfGeneratorService';
 import { PandocDocxService } from '../services/pandocDocxService';
 import { convertTiptapJsonToText } from '../utils/textUtils';
+import { convertVariantText } from '../utils/tiptapConverter';
 import wordExportQueue from '../services/queue/wordExportQueue';
 import { S3Service } from '../services/s3Service';
 
@@ -20,7 +22,7 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
   try {
     console.log('📥 Import request body:', JSON.stringify(req.body, null, 2));
     
-    const { questions, classNumber, subjectId, groupLetter, periodMonth, periodYear } = req.body;
+    const { questions, classNumber, subjectId, groupLetter, periodMonth, periodYear, groupId, blockTestId } = req.body;
 
     if (!questions || questions.length === 0) {
       return res.status(400).json({ message: 'Savollar topilmadi' });
@@ -56,26 +58,35 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
       classNumber: classNumberNum
     });
 
-    // Ищем существующий блок-тест для этого класса и периода (месяц+год)
-    const searchQuery = {
-      branchId: req.user?.branchId,
-      classNumber: classNumberNum,
-      periodMonth: periodMonthNum,
-      periodYear: periodYearNum
-    };
-    
-    console.log('🔍 Searching for existing block test with query:', JSON.stringify(searchQuery));
-    
-    let blockTest = await BlockTest.findOne(searchQuery);
-    
-    console.log('🔍 Search result:', blockTest ? `Found: ${blockTest._id}` : 'Not found - will create new');
+    // Edit rejimi: blockTestId bo'lsa ID bo'yicha topish, aks holda qidiruv
+    let blockTest;
+    if (blockTestId) {
+      blockTest = await BlockTest.findById(blockTestId);
+      console.log('🔍 Edit mode - found by ID:', blockTest ? blockTest._id : 'not found');
+    } else {
+      const searchQuery: Record<string, unknown> = {
+        branchId: req.user?.branchId,
+        classNumber: classNumberNum,
+        periodMonth: periodMonthNum,
+        periodYear: periodYearNum
+      };
+      if (groupId) {
+        searchQuery.groupId = groupId;
+      }
+      console.log('🔍 Searching for existing block test with query:', JSON.stringify(searchQuery));
+      blockTest = await BlockTest.findOne(searchQuery);
+      console.log('🔍 Search result:', blockTest ? `Found: ${blockTest._id}` : 'Not found - will create new');
+    }
 
     if (blockTest) {
-      console.log('📦 Found existing block test:', blockTest._id);
-      console.log('📦 Block test period:', blockTest.periodMonth, '/', blockTest.periodYear);
-      console.log('📦 Block test class:', blockTest.classNumber);
-      console.log('📦 Existing subjects:', blockTest.subjectTests.length);
-      
+      // Edit rejimida asosiy maydonlarni yangilash
+      if (blockTestId) {
+        blockTest.classNumber = classNumberNum;
+        blockTest.periodMonth = periodMonthNum;
+        blockTest.periodYear = periodYearNum;
+        if (groupId) blockTest.groupId = groupId;
+      }
+
       // Проверяем, нет ли уже ТОЧНО такого же предмета с такой же буквой
       const existingSubjectIndex = blockTest.subjectTests.findIndex((st: any) => {
         const sameSubject = st.subjectId.toString() === subjectId;
@@ -119,6 +130,7 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
       // Создаем новый блок-тест
       blockTest = new BlockTest({
         branchId: req.user?.branchId,
+        groupId: groupId || undefined,
         classNumber: classNumberNum,
         date: new Date(),
         periodMonth: periodMonthNum,
@@ -206,15 +218,23 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const fields = req.query.fields as string;
     const classNumber = req.query.classNumber as string;
     const date = req.query.date as string;
-    
+    const periodMonth = req.query.periodMonth as string;
+    const periodYear = req.query.periodYear as string;
+    const groupId = req.query.groupId as string;
+
     // Базовый фильтр по филиалу
     const filter: any = { branchId: req.user?.branchId };
-    
+
     // Добавляем фильтр по классу если указан
     if (classNumber) {
       filter.classNumber = parseInt(classNumber);
     }
-    
+
+    // Фильтр по periodMonth/periodYear (ishonchliroq)
+    if (periodMonth) filter.periodMonth = parseInt(periodMonth);
+    if (periodYear) filter.periodYear = parseInt(periodYear);
+    if (groupId) filter.groupId = groupId;
+
     // Добавляем фильтр по дате если указана
     if (date) {
       // Фильтруем по дате (начало и конец дня)
@@ -222,7 +242,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(date);
       endDate.setHours(23, 59, 59, 999);
-      
+
       filter.date = {
         $gte: startDate,
         $lte: endDate
@@ -233,19 +253,18 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     
     // Поддержка разных уровней детализации
     if (fields === 'minimal') {
-      // Минимальные данные для списка
-      query = query.select('classNumber date periodMonth periodYear createdAt _id');
+      query = query.select('classNumber groupId date periodMonth periodYear createdAt _id')
+        .populate('groupId', 'name classNumber letter');
     } else if (fields === 'full') {
-      // Полные данные с предметами И вопросами
-      query = query.populate('subjectTests.subjectId', 'nameUzb nameRu');
-      // НЕ используем .select() чтобы вернуть ВСЕ поля включая questions
+      query = query.populate('subjectTests.subjectId', 'nameUzb nameRu')
+        .populate('groupId', 'name classNumber letter');
     } else if (fields === 'basic') {
-      // Базовые данные с предметами но без вопросов
-      query = query.select('classNumber date periodMonth periodYear createdAt _id subjectTests.subjectId')
-        .populate('subjectTests.subjectId', 'nameUzb nameRu');
+      query = query.select('classNumber groupId date periodMonth periodYear createdAt _id subjectTests.subjectId')
+        .populate('subjectTests.subjectId', 'nameUzb nameRu')
+        .populate('groupId', 'name classNumber letter');
     } else {
-      // По умолчанию - минимальные данные
-      query = query.select('classNumber date periodMonth periodYear createdAt _id');
+      query = query.select('classNumber groupId date periodMonth periodYear createdAt _id')
+        .populate('groupId', 'name classNumber letter');
     }
     
     const blockTests = await query
@@ -279,28 +298,28 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
 router.get('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
-    console.log(`Fetching block test by ID: ${req.params.id}`);
-    
+    // Validate ObjectId format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: 'Noto\'g\'ri ID formati' });
+    }
+
     const blockTest = await BlockTest.findById(req.params.id)
       .populate('subjectTests.subjectId', 'nameUzb nameRu')
       .lean()
       .exec();
-    
+
     if (!blockTest) {
-      console.log('Block test not found');
       return res.status(404).json({ message: 'Blok test topilmadi' });
     }
-    
-    console.log(`Found block test: Class ${blockTest.classNumber}, ${blockTest.subjectTests.length} subjects`);
-    
-    // Отключаем кэширование
+
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    
+
     res.json(blockTest);
-  } catch (error) {
-    console.error('Error fetching block test:', error);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Error fetching block test:', req.params.id, errMsg);
     res.status(500).json({ message: 'Server xatosi' });
   }
 });
@@ -449,13 +468,44 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
 
     const blockTest = await BlockTest.findById(req.params.id)
       .populate('subjectTests.subjectId')
-      .lean();
-      
+      .lean() as any;
+
     if (!blockTest) {
       return res.status(404).json({ message: 'Blok test topilmadi' });
     }
-    
-    console.log(`📚 Block test loaded: ${blockTest.subjectTests?.length || 0} subjects`);
+
+    // Merge related block tests (same periodMonth/periodYear/groupId)
+    const mergeFilter: any = {
+      classNumber: blockTest.classNumber,
+      periodMonth: blockTest.periodMonth,
+      periodYear: blockTest.periodYear,
+      branchId: blockTest.branchId,
+    };
+    if (blockTest.groupId) mergeFilter.groupId = blockTest.groupId;
+
+    const relatedTests = await BlockTest.find(mergeFilter)
+      .populate('subjectTests.subjectId')
+      .lean();
+
+    // Merge all subjects from related tests (deduplicate by subjectId + groupLetter)
+    const seen = new Set<string>();
+    const allSubjectTests: any[] = [];
+    for (const rt of relatedTests) {
+      for (const st of (rt as any).subjectTests || []) {
+        if (!st.subjectId) continue;
+        const sid = (st.subjectId._id || st.subjectId).toString();
+        const key = `${sid}_${st.groupLetter || ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allSubjectTests.push(st);
+        }
+      }
+    }
+
+    // Replace subjectTests with merged set
+    blockTest.subjectTests = allSubjectTests;
+
+    console.log(`📚 Block test loaded + merged: ${blockTest.subjectTests?.length || 0} subjects from ${relatedTests.length} documents`);
     blockTest.subjectTests?.forEach((st: any) => {
       console.log(`  - ${st.subjectId?.nameUzb || 'Unknown'}: ${st.questions?.length || 0} questions, letter: ${st.groupLetter || 'umumiy'}`);
     });
@@ -481,6 +531,27 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
         [arr[i], arr[j]] = [arr[j], arr[i]];
       }
       return arr;
+    };
+
+    // Pinned savollar joylashuvini saqlab, qolganlarini shuffle qilish
+    const shuffleWithPinned = (array: any[]) => {
+      const pinned = new Map<number, any>(); // original index → question
+      const unpinned: any[] = [];
+      for (let i = 0; i < array.length; i++) {
+        if (array[i].pinned) pinned.set(i, array[i]);
+        else unpinned.push(array[i]);
+      }
+      if (pinned.size === 0) return shuffleArray(array);
+      const shuffled = shuffleArray(unpinned);
+      const result: any[] = new Array(array.length);
+      // Pinned savollarni original indekslariga joylashtirish
+      for (const [idx, q] of pinned) result[idx] = q;
+      // Bo'sh o'rinlarga shuffled savollarni to'ldirish
+      let si = 0;
+      for (let i = 0; i < result.length; i++) {
+        if (!result[i]) result[i] = shuffled[si++];
+      }
+      return result;
     };
 
     // Helper function to shuffle answer variants (A, B, C, D)
@@ -566,23 +637,61 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
       .populate('groupId')
       .lean();
     
-    // Создаем Map: studentId -> group
-    const studentGroupMap = new Map();
+    // Build per-student per-subject groupLetter map
+    // studentLetterMap: studentId → Map<subjectId, groupLetter>
+    const studentLetterMap = new Map<string, Map<string, string>>();
+    const studentGroupMap = new Map<string, any>();
+
+    // 1) Per-student assignment from StudentGroup (priority)
     studentGroups.forEach((sg: any) => {
-      // Проверяем что groupId существует
       if (sg.groupId) {
         studentGroupMap.set(sg.studentId.toString(), sg.groupId);
       }
+      if (sg.groupLetter && sg.subjectId) {
+        const sid = sg.studentId.toString();
+        if (!studentLetterMap.has(sid)) studentLetterMap.set(sid, new Map());
+        studentLetterMap.get(sid)!.set(sg.subjectId.toString(), sg.groupLetter);
+      }
     });
-    
+
+    // 2) Fallback: GroupSubjectConfig (group-level default)
+    const groupIds = [...new Set(studentGroups.map((sg: any) => sg.groupId?._id?.toString() || sg.groupId?.toString()).filter(Boolean))];
+    const groupConfigs = groupIds.length > 0
+      ? await GroupSubjectConfig.find({ groupId: { $in: groupIds } }).lean()
+      : [];
+
+    // For each student, fill missing subjects from GroupSubjectConfig
+    // BUT only if student has at least one explicit per-subject group letter
+    for (const student of students) {
+      const sid = student._id.toString();
+      if (!studentLetterMap.has(sid)) studentLetterMap.set(sid, new Map());
+      const letterMap = studentLetterMap.get(sid)!;
+      const sGroups = studentGroups.filter((sg: any) => sg.studentId.toString() === sid);
+
+      // Skip GroupSubjectConfig fallback for students with no per-subject assignments
+      const hasPerSubjectAssignment = sGroups.some(
+        (sg: any) => sg.subjectId && sg.groupLetter && sg.groupLetter !== '-'
+      );
+      if (!hasPerSubjectAssignment) continue;
+
+      const sGroupIds = sGroups.map((sg: any) => (sg.groupId?._id?.toString() || sg.groupId?.toString()));
+      for (const gc of groupConfigs) {
+        const subId = gc.subjectId.toString();
+        if (!letterMap.has(subId) && sGroupIds.includes(gc.groupId.toString())) {
+          letterMap.set(subId, gc.groupLetter);
+        }
+      }
+    }
+
     const studentMap = new Map();
     students.forEach(student => {
       const group = studentGroupMap.get(student._id.toString());
+      const letters = studentLetterMap.get(student._id.toString());
       studentMap.set(student._id.toString(), {
         ...student,
         groupId: group
       });
-      console.log(`📝 Student ${student.fullName}: groupId=${group?._id}, letter=${group?.letter || 'none'}`);
+      console.log(`📝 Student ${student.fullName}: group=${group?.letter || 'none'}, subjectLetters=${letters ? JSON.stringify(Object.fromEntries(letters)) : 'none'}`);
     });
 
     // Создаем Map для быстрого доступа по studentId
@@ -604,75 +713,106 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
       // Shuffle questions WITHIN each subject
       const shuffledQuestions: any[] = [];
 
+      // === Har bir fan uchun guruh harfi logikasi ===
+      // 1. Umumiy savollar → ALOHIDA shuffle (aralashmasdan)
+      // 2. Guruh savollar (A,B,C...) → ALOHIDA shuffle (aralashmasdan)
+      // 3. Ketma-ket: avval Umumiy, keyin guruh
+
+      const letters = studentLetterMap.get(studentId.toString()) || new Map();
+
+      // Fanlarni guruhlash (unique subjectId lar)
+      const subjectMap = new Map<string, typeof blockTest.subjectTests>();
+      for (const st of blockTest.subjectTests) {
+        if (!st.questions || st.questions.length === 0) continue;
+        const sid = (st.subjectId._id || st.subjectId).toString();
+        if (!subjectMap.has(sid)) subjectMap.set(sid, []);
+        subjectMap.get(sid)!.push(st);
+      }
+
       if (studentConfig && studentConfig.subjects && studentConfig.subjects.length > 0) {
-        // === Config mavjud — configdan foydalanish ===
+        // === Config mavjud ===
         for (const subjectConfig of studentConfig.subjects) {
           const subjectId = (subjectConfig.subjectId._id || subjectConfig.subjectId).toString();
           const questionCount = subjectConfig.questionCount;
-          const groupLetter = subjectConfig.groupLetter || null;
+          const studentLetter = subjectConfig.groupLetter || letters.get(subjectId) || null;
 
-          console.log(`🔍 Student config: subject=${subjectId}, groupLetter=${groupLetter || 'umumiy'}, questionCount=${questionCount}`);
+          const subjectTests = subjectMap.get(subjectId) || [];
 
-          const availableTests = blockTest.subjectTests.filter(
-            (st: any) => (st.subjectId._id || st.subjectId).toString() === subjectId
-          );
-
-          let subjectTest = null;
-
-          if (groupLetter) {
-            subjectTest = blockTest.subjectTests.find(
-              (st: any) => {
-                const matchSubject = (st.subjectId._id || st.subjectId).toString() === subjectId;
-                const matchLetter = st.groupLetter === groupLetter;
-                return matchSubject && matchLetter;
-              }
-            );
+          // Umumiy va guruh savollarini ALOHIDA-ALOHIDA aralshtirish
+          const generalTests: any[] = [];
+          const letterTests: any[] = [];
+          for (const st of subjectTests) {
+            if (!st.groupLetter) generalTests.push(st);
+            else if (studentLetter && st.groupLetter === studentLetter) letterTests.push(st);
           }
 
-          if (!subjectTest) {
-            subjectTest = blockTest.subjectTests.find(
-              (st: any) => {
-                const matchSubject = (st.subjectId._id || st.subjectId).toString() === subjectId;
-                const isGeneral = !st.groupLetter || st.groupLetter === null;
-                return matchSubject && isGeneral;
-              }
-            );
-          }
+          if (generalTests.length === 0 && letterTests.length === 0) continue;
 
-          if (!subjectTest && availableTests.length > 0) {
-            subjectTest = availableTests[0];
-          }
+          // Umumiy savollar — alohida shuffle
+          let generalQs: any[] = [];
+          for (const mt of generalTests) generalQs = generalQs.concat(mt.questions);
+          const shuffledGeneral = shuffleWithPinned(generalQs);
 
-          if (!subjectTest || !subjectTest.questions || subjectTest.questions.length === 0) {
-            continue;
-          }
+          // Guruh savollar — alohida shuffle
+          let letterQs: any[] = [];
+          for (const mt of letterTests) letterQs = letterQs.concat(mt.questions);
+          const shuffledLetter = shuffleWithPinned(letterQs);
 
-          const questionsToTake = Math.min(questionCount, subjectTest.questions.length);
-          const subjectQuestions = shuffleArray([...subjectTest.questions]).slice(0, questionsToTake);
+          // Ketma-ket: avval umumiy (alohida aralashgan), keyin guruh (alohida aralashgan)
+          const combined = [...shuffledGeneral, ...shuffledLetter];
+          const questionsToTake = Math.min(questionCount, combined.length);
 
-          for (const question of subjectQuestions) {
-            const shuffled = shuffleVariants(question);
-            shuffled.subjectId = subjectTest.subjectId;
+          for (let i = 0; i < questionsToTake; i++) {
+            const shuffled = shuffleVariants(combined[i]);
+            shuffled.subjectId = (generalTests[0] || letterTests[0]).subjectId;
+            shuffled.studentGroupLetter = studentLetter || null;
             shuffledQuestions.push(shuffled);
           }
         }
       } else {
-        // === Config yo'q — blok testning subjectTests dan to'g'ridan-to'g'ri foydalanish ===
-        console.log(`⚠️ No config for student ${studentId}, using all subjectTests directly`);
+        // === Config yo'q — barcha fanlarni tekshirish ===
 
-        for (const subjectTest of blockTest.subjectTests) {
-          if (!subjectTest.questions || subjectTest.questions.length === 0) continue;
+        for (const [subjectId, subjectTests] of subjectMap) {
+          const studentLetter = letters.get(subjectId) || null;
+          const matchingTests: any[] = [];
 
-          const subjectQuestions = shuffleArray([...subjectTest.questions]);
+          // Umumiy va guruh savollarini ALOHIDA ajratish
+          const generalTests: any[] = [];
+          const letterTests: any[] = [];
+          for (const st of subjectTests) {
+            if (!st.groupLetter) generalTests.push(st);
+            else if (studentLetter && st.groupLetter === studentLetter) letterTests.push(st);
+          }
 
-          for (const question of subjectQuestions) {
-            const shuffled = shuffleVariants(question);
-            shuffled.subjectId = subjectTest.subjectId;
-            shuffledQuestions.push(shuffled);
+          if (generalTests.length === 0 && letterTests.length === 0) continue;
+
+          // Avval Umumiy — alohida shuffle (pinned hurmat qilinadi)
+          for (const mt of generalTests) {
+            for (const question of shuffleWithPinned([...mt.questions])) {
+              const shuffled = shuffleVariants(question);
+              shuffled.subjectId = mt.subjectId;
+              shuffled.studentGroupLetter = studentLetter || null;
+              shuffledQuestions.push(shuffled);
+            }
+          }
+          // Keyin guruh — alohida shuffle (pinned hurmat qilinadi)
+          for (const mt of letterTests) {
+            for (const question of shuffleWithPinned([...mt.questions])) {
+              const shuffled = shuffleVariants(question);
+              shuffled.subjectId = mt.subjectId;
+              shuffled.studentGroupLetter = studentLetter || null;
+              shuffledQuestions.push(shuffled);
+            }
           }
         }
       }
       
+      // Skip empty variants (student has no matching subjects)
+      if (shuffledQuestions.length === 0) {
+        console.log(`⏭️ Skipping student ${studentId} — no matching subjects`);
+        continue;
+      }
+
       const qrPayload = variantCode;
 
       const variant = new StudentVariant({
@@ -811,34 +951,27 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
         }
       });
 
-      // Count total questions from all subjects
-      const totalSubjectQuestions = allSubjects.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0);
-      const shuffledMatch = allShuffledQuestions.length === totalSubjectQuestions;
+      // Check staleness: compare shuffled count against config totalQuestions (not raw subjectTests)
+      const expectedTotal = config?.totalQuestions || 0;
+      const hasShuffled = allShuffledQuestions.length > 0;
+      const shuffledMatch = hasShuffled && (expectedTotal === 0 || allShuffledQuestions.length === expectedTotal);
 
-      console.log(`📊 Student ${student.fullName}: ${allShuffledQuestions.length} shuffled, ${totalSubjectQuestions} total, match: ${shuffledMatch}, hasConfig: ${!!config}`);
+      console.log(`📊 Student ${student.fullName}: ${allShuffledQuestions.length} shuffled, expected: ${expectedTotal}, match: ${shuffledMatch}, hasConfig: ${!!config}`);
 
       const questions: any[] = [];
       let questionNumber = 1;
 
-      if (allShuffledQuestions.length > 0 && shuffledMatch) {
+      if (hasShuffled && shuffledMatch) {
         // Shuffled savollar to'liq — ularni ishlatish
-        allShuffledQuestions.forEach((q: any, idx: number) => {
-          const converted = convertQuestionForExport(q, questionNumber, '');
-          if (converted.options.some((o: string) => !o || o.trim() === '')) {
-            console.log(`⚠️ Q${idx + 1} EMPTY OPTIONS: raw variants=`, JSON.stringify(q.variants?.slice(0, 2)?.map((v: any) => ({ letter: v.letter, textType: typeof v.text, text: typeof v.text === 'string' ? v.text?.substring(0, 80) : JSON.stringify(v.text)?.substring(0, 80) }))));
-          }
+        allShuffledQuestions.forEach((q: any) => {
           questions.push(convertQuestionForExport(q, questionNumber++, ''));
         });
-      } else if (allShuffledQuestions.length > 0 && !shuffledMatch) {
-        // Shuffled stale (fan qo'shilgan) — raw subjectTests dan foydalanish
-        console.warn(`⚠️ Shuffled stale (${allShuffledQuestions.length} vs ${totalSubjectQuestions}), using raw subjectTests`);
-        for (const st of allSubjects) {
-          if (st.questions) {
-            st.questions.forEach((q: any) => {
-              questions.push(convertQuestionForExport(q, questionNumber++, ''));
-            });
-          }
-        }
+      } else if (hasShuffled && !shuffledMatch) {
+        // Shuffled stale — lekin mavjud bo'lsa ishlatamiz (faqat warning)
+        console.warn(`⚠️ Shuffled count mismatch (${allShuffledQuestions.length} vs expected ${expectedTotal}), using shuffled anyway`);
+        allShuffledQuestions.forEach((q: any) => {
+          questions.push(convertQuestionForExport(q, questionNumber++, ''));
+        });
       } else if (config && config.subjects && Array.isArray(config.subjects)) {
         // Config mavjud, lekin shuffle qilinmagan — original savollardan foydalanish
         console.warn('⚠️ No shuffled questions, using original from config subjects');
@@ -965,39 +1098,12 @@ function convertTiptapToLatex(json: any): string {
  * Savolni export formatiga o'girish (PDF/Word uchun umumiy helper)
  */
 function convertQuestionForExport(q: any, questionNumber: number, _subjectName: string) {
-  let questionText = '';
-  if (typeof q.text === 'string') {
-    try {
-      const parsed = JSON.parse(q.text);
-      questionText = convertTiptapToLatex(parsed);
-    } catch {
-      questionText = q.text;
-    }
-  } else if (q.text) {
-    questionText = convertTiptapToLatex(q.text);
-  }
+  const questionText = convertVariantText(q.text);
 
   const variantsArr = q.variants || q.options || [];
   const options = variantsArr.map((v: any) => {
-    if (typeof v === 'string') return v;
-    const rawText = v.text;
-    if (!rawText && rawText !== 0) return '';
-    if (typeof rawText === 'string') {
-      // Try parsing as Tiptap JSON
-      try {
-        const parsed = JSON.parse(rawText);
-        const result = convertTiptapToLatex(parsed);
-        if (result.trim()) return result;
-      } catch {
-        // Not JSON — use as-is (plain text or LaTeX)
-      }
-      return rawText;
-    }
-    // Object — Tiptap JSON
-    const result = convertTiptapToLatex(rawText);
-    if (result.trim()) return result;
-    // Fallback: try extracting text from nested content recursively
-    return extractAllText(rawText);
+    if (typeof v === 'string') return convertVariantText(v);
+    return convertVariantText(v.text);
   });
 
   // Deduplicate: collect unique image URLs only
@@ -1299,27 +1405,24 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
         }
       });
 
-      const totalSubjectQuestions = allSubjects.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0);
-      const shuffledMatch = allShuffledQuestions.length === totalSubjectQuestions;
+      const expectedTotal = config?.totalQuestions || 0;
+      const hasShuffled = allShuffledQuestions.length > 0;
+      const shuffledMatch = hasShuffled && (expectedTotal === 0 || allShuffledQuestions.length === expectedTotal);
 
-      console.log(`📊 Word: Student ${student.fullName}: ${allShuffledQuestions.length} shuffled, ${totalSubjectQuestions} total, match: ${shuffledMatch}`);
+      console.log(`📊 Word: Student ${student.fullName}: ${allShuffledQuestions.length} shuffled, expected: ${expectedTotal}, match: ${shuffledMatch}`);
 
       const questions: any[] = [];
       let questionNumber = 1;
 
-      if (allShuffledQuestions.length > 0 && shuffledMatch) {
+      if (hasShuffled && shuffledMatch) {
         allShuffledQuestions.forEach((q: any) => {
           questions.push(convertQuestionForExport(q, questionNumber++, ''));
         });
-      } else if (allShuffledQuestions.length > 0 && !shuffledMatch) {
-        console.warn(`⚠️ Word: Shuffled stale (${allShuffledQuestions.length} vs ${totalSubjectQuestions}), using raw subjectTests`);
-        for (const st of allSubjects) {
-          if (st.questions) {
-            st.questions.forEach((q: any) => {
-              questions.push(convertQuestionForExport(q, questionNumber++, ''));
-            });
-          }
-        }
+      } else if (hasShuffled && !shuffledMatch) {
+        console.warn(`⚠️ Word: Shuffled count mismatch (${allShuffledQuestions.length} vs expected ${expectedTotal}), using shuffled anyway`);
+        allShuffledQuestions.forEach((q: any) => {
+          questions.push(convertQuestionForExport(q, questionNumber++, ''));
+        });
       } else if (config && config.subjects && Array.isArray(config.subjects)) {
         console.warn('⚠️ No shuffled questions, using original from config subjects');
         for (const subjectConfig of config.subjects) {
@@ -1406,7 +1509,7 @@ router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReques
       return res.status(404).json({ message: 'Block test topilmadi' });
     }
 
-    // Get all block tests for this class/period to count total questions
+    // Get all block tests for this class/period
     const allTests = await BlockTest.find({
       branchId: blockTest.branchId,
       classNumber: blockTest.classNumber,
@@ -1414,16 +1517,7 @@ router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReques
       periodYear: blockTest.periodYear
     }).populate('subjectTests.subjectId', 'nameUzb').lean();
 
-    let totalQuestions = 0;
-    allTests.forEach((t: Record<string, unknown>) => {
-      const subjectTests = t.subjectTests as Array<Record<string, unknown>> | undefined;
-      subjectTests?.forEach((st) => {
-        const questions = st.questions as Array<unknown> | undefined;
-        totalQuestions += questions?.length || 0;
-      });
-    });
-
-    // Load students
+    // Load students first (needed for totalQuestions calculation)
     const allStudents = await Student.find({
       classNumber: blockTest.classNumber,
       branchId: blockTest.branchId
@@ -1432,6 +1526,29 @@ router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReques
     const selectedStudents = studentIds.length > 0
       ? allStudents.filter(s => studentIds.includes(s._id.toString()))
       : allStudents;
+
+    // Calculate totalQuestions: prefer StudentTestConfig, fallback to unique-subject max
+    const selectedStudentIds = selectedStudents.map(s => s._id);
+    const configs = await StudentTestConfig.find({ studentId: { $in: selectedStudentIds } })
+      .select('totalQuestions')
+      .lean();
+
+    let totalQuestions: number;
+    if (configs.length > 0) {
+      totalQuestions = Math.max(...configs.map(c => c.totalQuestions));
+    } else {
+      // Deduplicate subjects: count max questions per unique subject (ignore letter variants)
+      const subjectMax = new Map<string, number>();
+      allTests.forEach((t: Record<string, unknown>) => {
+        const sts = t.subjectTests as Array<Record<string, unknown>> | undefined;
+        sts?.forEach((st) => {
+          const sid = (st.subjectId as Record<string, unknown>)?._id?.toString();
+          const qLen = (st.questions as Array<unknown>)?.length || 0;
+          if (sid) subjectMax.set(sid, Math.max(subjectMax.get(sid) || 0, qLen));
+        });
+      });
+      totalQuestions = Array.from(subjectMax.values()).reduce((sum, q) => sum + q, 0);
+    }
 
     // Load variants for variant codes
     const variants = await StudentVariant.find({

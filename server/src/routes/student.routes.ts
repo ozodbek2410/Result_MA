@@ -129,9 +129,17 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       
       console.log('Found StudentGroup records (minimal):', studentGroups.length);
       
+      // Deduplicate by studentId (a student may have multiple StudentGroup records per subject)
+      const seenIds = new Set<string>();
       const students = studentGroups
         .map(sg => sg.studentId)
-        .filter(student => student != null);
+        .filter(student => {
+          if (!student) return false;
+          const id = (student as any)._id?.toString();
+          if (!id || seenIds.has(id)) return false;
+          seenIds.add(id);
+          return true;
+        });
       
       console.log('Fetched students for group (minimal):', groupId, 'count:', students.length);
       

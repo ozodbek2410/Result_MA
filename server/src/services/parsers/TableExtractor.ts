@@ -176,28 +176,126 @@ export class TableExtractor {
   }
 
   /**
-   * Paragrafdan matnni ajratish (oddiy matn, formatsiz)
+   * Paragrafdan matnni ajratish (oddiy matn + OMML formulalar)
    */
   private extractTextFromParagraph(para: any): string {
     let text = '';
-    
-    // Paragraf ichidagi run'larni topish (w:r)
-    const runs = para['w:r'] || [];
-    
-    for (const run of runs) {
-      // Text elementi (w:t)
-      const textElements = run['w:t'] || [];
-      
-      for (const textEl of textElements) {
-        if (typeof textEl === 'string') {
-          text += textEl;
-        } else if (textEl._) {
-          text += textEl._;
+
+    // Paragraf elementlarini tartibda ko'rib chiqish
+    // XML2JS: para keys = ['w:pPr', 'w:r', 'm:oMath', ...] — tartib saqlanmaydi
+    // Shuning uchun barcha elementlarni tekshiramiz
+    for (const key of Object.keys(para)) {
+      if (key === '$' || key === 'w:pPr') continue;
+
+      if (key === 'w:r') {
+        // Oddiy matn run'lari
+        for (const run of para[key]) {
+          const textElements = run['w:t'] || [];
+          for (const textEl of textElements) {
+            text += typeof textEl === 'string' ? textEl : (textEl._ || '');
+          }
+        }
+      } else if (key === 'm:oMath') {
+        // OMML formulalar (kimyo izotoplar, sub/superscript)
+        for (const math of para[key]) {
+          text += this.extractOmmlText(math);
+        }
+      } else if (key === 'm:oMathPara') {
+        // OMML formula paragrafi
+        for (const mathPara of para[key]) {
+          const oMaths = mathPara['m:oMath'] || [];
+          for (const math of oMaths) {
+            text += this.extractOmmlText(math);
+          }
         }
       }
     }
-    
+
     return text.trim();
+  }
+
+  /**
+   * OMML formuladan matn ajratish (sub/sup HTML taglari bilan)
+   * m:sPre → ₆¹³C, m:sSub → C₆, m:sSup → C²⁺
+   */
+  private extractOmmlText(node: any): string {
+    if (typeof node !== 'object' || node === null) return '';
+    if (Array.isArray(node)) return node.map(n => this.extractOmmlText(n)).join('');
+
+    let text = '';
+    for (const key of Object.keys(node)) {
+      if (key === '$' || key === 'w:rPr' || key === 'm:rPr' || key === 'm:ctrlPr'
+        || key === 'm:sPrePr' || key === 'm:sSubPr' || key === 'm:sSupPr'
+        || key === 'm:sSubSupPr' || key === 'm:fPr' || key === 'm:dPr'
+        || key === 'm:naryPr') continue;
+
+      const items = Array.isArray(node[key]) ? node[key] : [node[key]];
+
+      if (key === 'm:t') {
+        // Formula matn
+        for (const t of items) {
+          text += typeof t === 'string' ? t : (t._ || '');
+        }
+      } else if (key === 'm:r') {
+        // Formula run (m:t ichida)
+        for (const run of items) {
+          const tElements = run['m:t'] || [];
+          for (const t of tElements) {
+            text += typeof t === 'string' ? t : (t._ || '');
+          }
+        }
+      } else if (key === 'm:sPre') {
+        // Pre-sub/superscript: ₆¹³C
+        for (const spre of items) {
+          const sub = this.extractOmmlText(spre['m:sub'] || []);
+          const sup = this.extractOmmlText(spre['m:sup'] || []);
+          const base = this.extractOmmlText(spre['m:e'] || []);
+          text += `<sub>${sub}</sub><sup>${sup}</sup>${base}`;
+        }
+      } else if (key === 'm:sSub') {
+        // Subscript: H₂O
+        for (const ssub of items) {
+          const base = this.extractOmmlText(ssub['m:e'] || []);
+          const sub = this.extractOmmlText(ssub['m:sub'] || []);
+          text += `${base}<sub>${sub}</sub>`;
+        }
+      } else if (key === 'm:sSup') {
+        // Superscript: Ca²⁺
+        for (const ssup of items) {
+          const base = this.extractOmmlText(ssup['m:e'] || []);
+          const sup = this.extractOmmlText(ssup['m:sup'] || []);
+          text += `${base}<sup>${sup}</sup>`;
+        }
+      } else if (key === 'm:sSubSup') {
+        // Sub+Superscript combined
+        for (const sss of items) {
+          const base = this.extractOmmlText(sss['m:e'] || []);
+          const sub = this.extractOmmlText(sss['m:sub'] || []);
+          const sup = this.extractOmmlText(sss['m:sup'] || []);
+          text += `${base}<sub>${sub}</sub><sup>${sup}</sup>`;
+        }
+      } else if (key === 'm:d') {
+        // Delimiter (qavslar): (content)
+        for (const d of items) {
+          text += '(' + this.extractOmmlText(d['m:e'] || []) + ')';
+        }
+      } else if (key === 'm:f') {
+        // Fraction: numerator/denominator
+        for (const f of items) {
+          const num = this.extractOmmlText(f['m:num'] || []);
+          const den = this.extractOmmlText(f['m:den'] || []);
+          text += `${num}/${den}`;
+        }
+      } else if (key === 'm:e') {
+        // Base element
+        text += this.extractOmmlText(node[key]);
+      } else {
+        // Recurse into other elements
+        text += this.extractOmmlText(node[key]);
+      }
+    }
+
+    return text;
   }
 
   /**
@@ -225,15 +323,24 @@ export class TableExtractor {
   }
 
   /**
-   * HTML escape
+   * HTML escape (sub/sup taglarni saqlaydi)
    */
   private escapeHtml(text: string): string {
-    return text
+    // sub/sup taglarni vaqtincha saqlash
+    const preserved: string[] = [];
+    let safe = text.replace(/<\/?(sub|sup)>/g, (m) => {
+      preserved.push(m);
+      return `\x00${preserved.length - 1}\x00`;
+    });
+    safe = safe
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;')
       .replace(/\n/g, '<br>');
+    // sub/sup taglarni qaytarish
+    safe = safe.replace(/\x00(\d+)\x00/g, (_, i) => preserved[parseInt(i)]);
+    return safe;
   }
 }

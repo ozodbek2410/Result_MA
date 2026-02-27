@@ -1,6 +1,9 @@
 import express from 'express';
 import Group from '../models/Group';
 import StudentGroup from '../models/StudentGroup';
+import GroupSubjectConfig from '../models/GroupSubjectConfig';
+import BlockTest from '../models/BlockTest';
+import StudentVariant from '../models/StudentVariant';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
 import { invalidateCache } from '../middleware/cache';
@@ -347,6 +350,143 @@ router.get('/letters/:classNumber', authenticate, async (req: AuthRequest, res) 
   } catch (error) {
     console.error('Error fetching group letters:', error);
     res.status(500).json({ message: 'Server xatosi' });
+  }
+});
+
+// GET /groups/:id/subject-config — group-level subject+letter config
+router.get('/:id/subject-config', authenticate, async (_req: AuthRequest, res) => {
+  try {
+    const configs = await GroupSubjectConfig.find({ groupId: _req.params.id })
+      .populate('subjectId', 'nameUzb nameRu')
+      .lean();
+    res.json(configs);
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Server xatosi', error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// PUT /groups/:id/subject-config — save group-level subject+letter config (full replace)
+// Body: { configs: [{ subjectId, groupLetter }] }
+router.put('/:id/subject-config', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const groupId = req.params.id;
+    const { configs } = req.body as { configs: { subjectId: string; groupLetter: string }[] };
+
+    if (!Array.isArray(configs)) {
+      return res.status(400).json({ message: 'configs array kerak' });
+    }
+
+    // subjectId bo'lganlarini ajratish
+    const withSubject = configs.filter(c => c.subjectId);
+
+    // Ro'yxatda yo'q fanlarni o'chirish (subjectId bo'yicha)
+    const subjectIds = withSubject.map(c => c.subjectId);
+    if (subjectIds.length > 0) {
+      await GroupSubjectConfig.deleteMany({ groupId, subjectId: { $nin: subjectIds } });
+    }
+
+    // Barcha fanlarni upsert qilish (harfi bor/yo'q)
+    const ops = withSubject.map(({ subjectId, groupLetter }) => ({
+      updateOne: {
+        filter: { groupId, subjectId },
+        update: groupLetter
+          ? { $set: { groupLetter } }
+          : { $unset: { groupLetter: 1 } },
+        upsert: true
+      }
+    }));
+
+    if (ops.length > 0) await GroupSubjectConfig.bulkWrite(ops);
+
+    // Guruh konfiguratsiyasi o'zgardi — barcha blok test variantlarini o'chirish
+    try {
+      const blockTests = await BlockTest.find({ groupId }).select('_id').lean();
+      if (blockTests.length > 0) {
+        const btIds = blockTests.map(bt => bt._id);
+        const del = await StudentVariant.deleteMany({ testId: { $in: btIds } });
+        if (del.deletedCount > 0) {
+          console.log(`🗑️ Deleted ${del.deletedCount} stale variants (group subject-config changed)`);
+        }
+      }
+    } catch (e) {
+      console.error('Variant cleanup error:', e);
+    }
+
+    res.json({ message: 'Saqlandi' });
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Server xatosi', error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// GET /groups/:id/student-letters — per-student subject+letter assignments for this group
+router.get('/:id/student-letters', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const assignments = await StudentGroup.find({ groupId: req.params.id })
+      .select('studentId subjectId groupLetter')
+      .lean();
+    res.json(assignments);
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Server xatosi', error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// PUT /groups/:id/student-letters — bulk upsert per-student letters
+// Body: { letters: [{ studentId, subjectId, groupLetter }] }
+router.put('/:id/student-letters', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const groupId = req.params.id;
+    const { letters } = req.body as { letters: { studentId: string; subjectId: string; groupLetter: string }[] };
+
+    if (!Array.isArray(letters)) {
+      return res.status(400).json({ message: 'letters array kerak' });
+    }
+
+    const valid = letters.filter(l => l.studentId && l.subjectId);
+    const withLetter = valid.filter(l => l.groupLetter);
+    const withoutLetter = valid.filter(l => !l.groupLetter);
+
+    // Harfli yozuvlarni upsert
+    if (withLetter.length > 0) {
+      await StudentGroup.bulkWrite(withLetter.map(({ studentId, subjectId, groupLetter }) => ({
+        updateOne: {
+          filter: { studentId, groupId, subjectId },
+          update: { $set: { groupLetter } },
+          upsert: true
+        }
+      })));
+    }
+
+    // Bo'sh harflar — mavjud yozuvdan groupLetter ni olib tashlash
+    for (const { studentId, subjectId } of withoutLetter) {
+      await StudentGroup.updateOne(
+        { studentId, groupId, subjectId },
+        { $unset: { groupLetter: 1 } }
+      );
+    }
+
+    // O'zgargan o'quvchilar uchun eskirgan variantlarni o'chirish
+    try {
+      const affectedStudentIds = [...new Set(letters.filter(l => l.studentId).map(l => l.studentId))];
+      if (affectedStudentIds.length > 0) {
+        const blockTests = await BlockTest.find({ groupId }).select('_id').lean();
+        if (blockTests.length > 0) {
+          const btIds = blockTests.map(bt => bt._id);
+          const del = await StudentVariant.deleteMany({
+            testId: { $in: btIds },
+            studentId: { $in: affectedStudentIds }
+          });
+          if (del.deletedCount > 0) {
+            console.log(`🗑️ Deleted ${del.deletedCount} stale variants for ${affectedStudentIds.length} students (letters changed)`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Variant cleanup error:', e);
+    }
+
+    res.json({ message: 'Saqlandi' });
+  } catch (error: unknown) {
+    res.status(500).json({ message: 'Server xatosi', error: error instanceof Error ? error.message : String(error) });
   }
 });
 
