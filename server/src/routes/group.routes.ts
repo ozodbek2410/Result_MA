@@ -451,15 +451,31 @@ router.put('/:id/student-letters', authenticate, async (req: AuthRequest, res) =
     const withLetter = valid.filter(l => l.groupLetter);
     const withoutLetter = valid.filter(l => !l.groupLetter);
 
-    // Harfli yozuvlarni upsert (fan bo'yicha alohida record)
-    if (withLetter.length > 0) {
-      await StudentGroup.bulkWrite(withLetter.map(({ studentId, subjectId, groupLetter }) => ({
-        updateOne: {
-          filter: { studentId, groupId, subjectId },
-          update: { $set: { groupLetter } },
-          upsert: true
-        }
-      })));
+    // Harfli yozuvlarni saqlash — mavjud recordni yangilash, yangi yaratmaslik
+    for (const { studentId, subjectId, groupLetter } of withLetter) {
+      // 1) Try exact match (studentId + groupId + subjectId)
+      const exact = await StudentGroup.updateOne(
+        { studentId, groupId, subjectId },
+        { $set: { groupLetter } }
+      );
+      if (exact.matchedCount > 0) continue;
+
+      // 2) Try base record (no subjectId) — set subjectId on it
+      const base = await StudentGroup.updateOne(
+        { studentId, groupId, subjectId: { $exists: false } },
+        { $set: { subjectId, groupLetter } }
+      );
+      if (base.matchedCount > 0) continue;
+
+      // 3) Try base record with null subjectId
+      const baseNull = await StudentGroup.updateOne(
+        { studentId, groupId, subjectId: null },
+        { $set: { subjectId, groupLetter } }
+      );
+      if (baseNull.matchedCount > 0) continue;
+
+      // 4) No record found — create new (shouldn't normally happen)
+      await StudentGroup.create({ studentId, groupId, subjectId, groupLetter });
     }
 
     // Bo'sh harflar — mavjud yozuvdan groupLetter ni olib tashlash
