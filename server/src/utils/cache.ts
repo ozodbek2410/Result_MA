@@ -20,8 +20,8 @@ class CacheService {
       deleteOnExpire: true,
     });
 
-    // Enable cache only in production or when explicitly enabled
-    this.isEnabled = process.env.NODE_CACHE_ENABLED === 'true' || process.env.NODE_ENV === 'production';
+    // Cache disabled
+    this.isEnabled = false;
   }
 
   /**
