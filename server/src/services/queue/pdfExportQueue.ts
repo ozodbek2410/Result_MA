@@ -171,7 +171,7 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     await job.updateProgress(85);
     
     const timestamp = Date.now();
-    const fileName = `exports/${userId}/${job.id}-${timestamp}.pdf`;
+    const fileName = `${userId}/${job.id}-${timestamp}.pdf`;
     
     let fileUrl: string;
     

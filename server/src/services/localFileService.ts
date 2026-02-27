@@ -12,7 +12,7 @@ export class LocalFileService {
    * Get base URL from environment
    */
   private static getBaseUrl(): string {
-    return process.env.BASE_URL || 'http://localhost:5000';
+    return process.env.BASE_URL || '';
   }
   
   /**

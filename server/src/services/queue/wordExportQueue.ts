@@ -183,7 +183,7 @@ async function processWordExport(job: Job<WordExportJobData>): Promise<WordExpor
     await job.updateProgress(85);
     
     const timestamp = Date.now();
-    const fileName = `exports/${userId}/${job.id}-${timestamp}.docx`;
+    const fileName = `${userId}/${job.id}-${timestamp}.docx`;
     
     let fileUrl: string;
     
