@@ -40,12 +40,46 @@ SYMBOL_MAP = {
     0x2260: '\\neq',
     0x2264: '\\leq',
     0x2265: '\\geq',
+    0x2248: '\\approx',
+    0x2261: '\\equiv',
     0x03B1: '\\alpha',
     0x03B2: '\\beta',
     0x03B3: '\\gamma',
     0x03B4: '\\delta',
+    0x03B5: '\\varepsilon',
+    0x03B6: '\\zeta',
+    0x03B7: '\\eta',
+    0x03B8: '\\theta',
+    0x03BB: '\\lambda',
+    0x03BC: '\\mu',
+    0x03BD: '\\nu',
     0x03C0: '\\pi',
+    0x03C1: '\\rho',
     0x03C3: '\\sigma',
+    0x03C4: '\\tau',
+    0x03C6: '\\varphi',
+    0x03C9: '\\omega',
+    0x0393: '\\Gamma',
+    0x0394: '\\Delta',
+    0x03A3: '\\Sigma',
+    0x03A9: '\\Omega',
+    0x2202: '\\partial',
+    0x2205: '\\varnothing',
+    0x2208: '\\in',
+    0x2209: '\\notin',
+    0x2229: '\\cap',
+    0x222A: '\\cup',
+    0x2282: '\\subset',
+    0x2283: '\\supset',
+    0x22C5: '\\cdot',
+    0x2026: '\\ldots',
+    0x2192: '\\to',
+    0x2190: '\\leftarrow',
+    0x21D2: '\\Rightarrow',
+    0x21D4: '\\Leftrightarrow',
+    0x2200: '\\forall',
+    0x2203: '\\exists',
+    0x00AC: '\\neg',
 }
 
 
@@ -106,7 +140,47 @@ class MTEFParser:
             remaining = self.data[self.pos:]
             if all(b == 0 for b in remaining):
                 break
-        return ''.join(parts).strip()
+        raw = ''.join(parts).strip()
+        return self._postprocess(raw)
+
+    @staticmethod
+    def _postprocess(latex: str) -> str:
+        """Clean up common MTEF parsing artifacts"""
+        import re
+        # Remove Private Use Area characters (U+E000-U+F8FF) — MTExtra font artifacts
+        latex = re.sub(r'[\uE000-\uF8FF]+', '', latex)
+        # Fix empty fence: \left\{\right. followed by content → \left\{content\right.
+        # Pattern: left brace immediately closed, then pile/content follows
+        latex = re.sub(r'\\left\\{\\right\.', r'\\left\\{', latex)
+        # If \left\{ without matching \right, add \right. at end
+        if '\\left\\{' in latex and '\\right' not in latex:
+            latex = latex + '\\right.'
+        # Remove stray { before \end{array/cases} (EE3 trailing fence delimiter)
+        latex = re.sub(r'\{(\\end\{)', r'\1', latex)
+        # Remove stray { after \end{cases}
+        latex = re.sub(r'\\end\{cases\}\{', r'\\end{cases}', latex)
+        # Convert \left\{\begin{array}{c}...\end{array}...\right. → \begin{cases}...\end{cases}...
+        latex = re.sub(
+            r'\\left\\{\\begin\{array\}\{c\}(.*?)\\end\{array\}(.*?)\\right\.',
+            r'\\begin{cases}\1\\end{cases}\2',
+            latex,
+            flags=re.DOTALL
+        )
+        # Wrap plain text after \end{cases/array} in \text{} for KaTeX
+        latex = re.sub(
+            r'(\\end\{(?:cases|array)[^}]*\})([a-zA-Z][a-zA-Z\',\s]*?)(\\)',
+            lambda m: f'{m.group(1)}\\text{{{m.group(2)}}}{m.group(3)}',
+            latex
+        )
+        # Convert literal ... to \ldots
+        latex = re.sub(r'(?<!\\)\.\.\.', r'\\ldots', latex)
+        # Clean up [sym:0xNNNN] artifacts (unmapped symbols)
+        latex = re.sub(r'\[sym:0x[0-9a-f]+\]', '', latex)
+        # Clean up [chr:0xNNNN] artifacts
+        latex = re.sub(r'\[chr:0x[0-9a-f]+\]', '', latex)
+        # Clean up [tmpl:0xNN]{...} artifacts
+        latex = re.sub(r'\[tmpl:0x[0-9a-f]+\]', '', latex)
+        return latex.strip()
 
     def parse_records(self) -> str:
         """Parse a sequence of records until END or EOF"""
@@ -183,8 +257,9 @@ class MTEFParser:
                     self.read_word()
                 if tag_flags & 0x2:
                     self.skip_ruler()
-                content = self.parse_records()
-                lines.append(content)
+                # Recurse: flatten nested LINE records (e.g. system of equations)
+                sub_lines = self._collect_lines()
+                lines.extend(sub_lines)
             elif tag_type == 2:  # CHAR
                 s = self.parse_char(tag_flags)
                 if lines:
@@ -322,16 +397,30 @@ class MTEFParser:
 
         elif selector in (0x00, 0x01, 0x02, 0x03, 0x04, 0x05):
             # Fence templates: angle, paren, brace, bracket, bar, dbar
-            fence_map = {0: ('\\langle ', '\\rangle'), 1: ('(', ')'), 2: ('\\{', '\\}'),
-                        3: ('[', ']'), 4: ('|', '|'), 5: ('\\|', '\\|')}
-            left, right = fence_map.get(selector, ('(', ')'))
-            content = self.parse_records()
+            fence_map = {0: ('\\langle ', '\\rangle'), 1: ('\\left(', '\\right)'), 2: ('\\left\\{', '\\right\\}'),
+                        3: ('\\left[', '\\right]'), 4: ('\\left|', '\\right|'), 5: ('\\left\\|', '\\right\\|')}
+            left, right = fence_map.get(selector, ('\\left(', '\\right)'))
+            self.parse_records()  # slot 1 (empty)
+
+            if selector == 0x02:
+                # Brace fence — may contain system of equations (PILE + LINEs)
+                lines = self._collect_lines()
+                if len(lines) > 1:
+                    # System of equations → \begin{cases}...\end{cases}
+                    return '\\begin{cases}' + ' \\\\ '.join(lines) + '\\end{cases}'
+                content = lines[0] if lines else ''
+            else:
+                content_raw = self.parse_records()  # slot 2 (content + trailing delim chars)
+                delim_pair = {0: '<>', 1: '()', 3: '[]', 4: '||', 5: '||'}
+                dp = delim_pair.get(selector, '')
+                content = content_raw[:-len(dp)] if dp and content_raw.endswith(dp) else content_raw
+
             if variation == 0:  # Both
                 return f'{left}{content}{right}'
             elif variation == 1:  # Left only
-                return f'{left}{content}'
+                return f'{left}{content}\\right.'
             else:  # Right only
-                return f'{content}{right}'
+                return f'\\left.{content}{right}'
 
         elif selector in (0x10, 0x11, 0x12, 0x13, 0x14, 0x15):
             # Big operators: integral, sum, prod, etc.
