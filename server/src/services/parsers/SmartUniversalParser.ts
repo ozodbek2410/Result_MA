@@ -180,6 +180,9 @@ export class SmartUniversalParser extends BaseParser {
     // 0. Strip HTML tags from pandoc output (<p>, <br>, <div>)
     cleaned = cleaned.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '');
 
+    // 0. Strip pandoc blockquote markers ("> " at line start)
+    cleaned = cleaned.replace(/^>\s?/gm, '');
+
     // 0. Remove pandoc trailing backslash line breaks (hard line breaks)
     // "gulukogen\" → "gulukogen", "a-1,4,6; b-2,3,5\" → "a-1,4,6; b-2,3,5"
     cleaned = cleaned.replace(/\\$/gm, '');
@@ -198,18 +201,24 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/\u0412(\s*\))/g, 'B$1');
     cleaned = cleaned.replace(/\u0421(\s*\))/g, 'C$1');
 
-    // 0.2. Normalize **D**) → **D)** (bold wraps only letter, paren outside → move inside)
+    // 0.2. Preserve escaped asterisks FIRST (pandoc \* = real asterisk like 13468*)
+    cleaned = cleaned.replace(/\\\*/g, '___ASTERISK___');
+
+    // 0.3. Normalize **D**) → **D)** (bold wraps only letter, paren outside → move inside)
     cleaned = cleaned.replace(/\*\*([A-D])\*\*(\s*\))/g, '**$1)** ');
 
-    // 0.3. Strip pandoc italic: *text* → text (preserve **bold**)
+    // 0.4. Strip pandoc italic: *text* → text (preserve **bold**)
     // *A) 2;6 **D**) 3;7* → A) 2;6 **D**) 3;7
     // *1, 3,7* → 1, 3,7 , *6*) → 6)
     cleaned = cleaned.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/gs, '$1');
 
-    // 0.4. Strip remaining standalone * (DOCX correct answer markers)
+    // 0.5. Strip remaining standalone * (DOCX correct answer markers)
     // "3 va 6*" → "3 va 6", "aniqlang. *" → "aniqlang.", "E*" → "E"
     // Won't touch **bold** markers since each * has adjacent *
     cleaned = cleaned.replace(/(?<!\*)\*(?!\*)/g, '');
+
+    // 0.6. Restore preserved asterisks
+    cleaned = cleaned.replace(/___ASTERISK___/g, '*');
 
     // 1. Basic Pandoc cleanup (safe for ALL subjects)
     cleaned = cleaned.replace(/\\`/g, '`');
@@ -284,6 +293,8 @@ export class SmartUniversalParser extends BaseParser {
     // 10. Normalize question numbers: "1." → "1)"
     // (?!\d) — o'nli sonlarni buzmaslik uchun (32.8 → 32.8, 1. → 1))
     cleaned = cleaned.replace(/(^|\s|\n)(\*\*|__)?(\d+)(\*\*|__)?\.(?!\d)\s*/g, '$1$2$3$4) ');
+    // 10b. "24 Why" (number + space + uppercase, no dot/paren) → "24) Why"
+    cleaned = cleaned.replace(/(\n)(\d{1,3})\s+(?=[A-Z])/g, '$1$2) ');
     cleaned = cleaned.replace(/([^\s\n])(\*\*|__)?([A-D])(\*\*|__)?\)/g, '$1 $2$3$4)');
     cleaned = cleaned.replace(/(\d+|[A-D])(\*\*|__)?\)([^\s\n])/g, '$1$2) $3');
 
@@ -295,6 +306,11 @@ export class SmartUniversalParser extends BaseParser {
     // Only at line start or after whitespace: "a. His dad" → "A) His dad"
     cleaned = cleaned.replace(/(^|\n)(\s*)(\*\*)?([a-d])\.\s+/gm, (_, pre, ws, bold, letter) => {
       return pre + ws + (bold || '') + letter.toUpperCase() + ') ';
+    });
+
+    // 12b. Normalize lowercase variant letters with paren: "a) text" → "A) text", "**c)** text" → "**C)** text"
+    cleaned = cleaned.replace(/(^|\s)(\*\*|__)?([a-d])(\*\*|__)?\)/gm, (_, pre, b1, letter, b2) => {
+      return pre + (b1 || '') + letter.toUpperCase() + (b2 || '') + ')';
     });
 
     // 13. Variant format without paren: "A text **B text** C text D text" → "A) text **B) text** C) text D) text"
@@ -329,9 +345,8 @@ export class SmartUniversalParser extends BaseParser {
       const latexNum = num.replace(/,/g, '{,}');
       return `\\(${latexNum} \\cdot ${base}^${exp}\\)`;
     });
-    // Remaining middle dots → \cdot (only useful inside existing LaTeX)
-    cleaned = cleaned.replace(/∙/g, '\\cdot ');
-    cleaned = cleaned.replace(/·/g, '\\cdot ');
+    // Remaining middle dots → unicode middle dot (safe for plain text display)
+    cleaned = cleaned.replace(/∙/g, '·');
 
     // CHEMISTRY-SPECIFIC: Only when chemistry detected
     if (this.detectedType === 'chemistry') {

@@ -755,8 +755,10 @@ export default function TestPrintPage() {
                               {sg.questions.map((question: any, qi: number) => {
                                 const currentIndex = globalIndex++;
                                 const questionText = convertTiptapJsonToText(question.text);
+                                const optsLen = (question.variants || []).reduce((s: number, v: any) => s + (convertTiptapJsonToText(v.text) || '').length, 0);
+                                const isLongQ = questionText.length + optsLen > 600;
                                 return (
-                                  <div key={qi} className={`page-break-inside-avoid ${spacingClasses.question}`}>
+                                  <div key={qi} className={`${isLongQ ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
                                     <div className="mb-1">
                                       <span className="font-bold">{currentIndex + 1}. </span>
                                       <span><MathText text={questionText} /></span>
@@ -791,8 +793,10 @@ export default function TestPrintPage() {
                         <div className={spacingClasses.questions}>
                           {questionsToRender?.map((question: any, index: number) => {
                             const questionText = convertTiptapJsonToText(question.text);
+                            const optsLen2 = (question.variants || []).reduce((s: number, v: any) => s + (convertTiptapJsonToText(v.text) || '').length, 0);
+                            const isLongQ2 = questionText.length + optsLen2 > 600;
                             return (
-                              <div key={index} className={`page-break-inside-avoid ${spacingClasses.question}`}>
+                              <div key={index} className={`${isLongQ2 ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
                                 <div className="mb-1">
                                   <span className="font-bold">{index + 1}. </span>
                                   <span><MathText text={questionText} /></span>
