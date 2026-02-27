@@ -637,8 +637,10 @@ export abstract class BaseParser {
     cleaned = cleaned.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '');
 
     // Pandoc {.mark} span — Word highlight → bold (correct answer detection uchun)
-    // [C)]{.mark} → **C)** yoki [C) 33]{.mark} → **C) 33**
     cleaned = cleaned.replace(/\[([^\]]+)\]\{\.mark\}/g, '**$1**');
+
+    // Strip pandoc underline: [text]{.underline} → text
+    cleaned = cleaned.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
 
     // Pandoc raw inline — `<!-- -->`{=html} va boshqa raw blocklar
     cleaned = cleaned.replace(/`[^`]*`\{=[a-z]+\}/g, '');
@@ -1170,11 +1172,31 @@ export abstract class BaseParser {
   }
 
   /**
+   * Clean common LaTeX conversion errors from Pandoc/MTEF
+   */
+  protected cleanLatex(latex: string): string {
+    let cleaned = latex;
+    // \bullet → \cdot (common Pandoc MTEF error)
+    cleaned = cleaned.replace(/\\bullet/g, '\\cdot');
+    // Double braces: ^{{2}} → ^{2}, _{{{n}}} → _{n}
+    cleaned = cleaned.replace(/\{\{(\d+)\}\}/g, '{$1}');
+    cleaned = cleaned.replace(/\{\{([^{}]+)\}\}/g, '{$1}');
+    // Fix \frac with missing denominator: \frac{A}{B}{C} → detect and warn
+    // Common pattern: \frac{(x-3)^{2}}{x}{2} should be \frac{(x-3)^{2}}{x^{2}}
+    // \frac followed by more than 2 brace groups — try to merge
+    cleaned = cleaned.replace(/\\frac(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})\{(\w)\}\{(\d+)\}/g, (_, num, varName, exp) => {
+      return `\\frac${num}{${varName}^{${exp}}}`;
+    });
+    return cleaned;
+  }
+
+  /**
    * Restore math blocks in text
    */
   protected restoreMath(text: string, mathBlocks: string[]): string {
     return text.replace(/___MATH_(\d+)___/g, (_, idx) => {
-      return mathBlocks[parseInt(idx)] || '';
+      const raw = mathBlocks[parseInt(idx)] || '';
+      return this.cleanLatex(raw);
     });
   }
 
