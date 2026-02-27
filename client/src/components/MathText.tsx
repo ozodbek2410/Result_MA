@@ -61,6 +61,8 @@ function renderMathToHtml(text: string): string {
     return '$' + decoded + '$';
   });
   cleanedText = cleanedText.replace(/<[^>]+>/g, '');
+  // Strip pandoc underline markers: [text]{.underline} → text
+  cleanedText = cleanedText.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
   // Unescape HTML entities (TipTap escapes & inside formulas)
   cleanedText = cleanedText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
   cleanedText = cleanedText.trim();

@@ -189,6 +189,9 @@ export class SmartUniversalParser extends BaseParser {
     // [C)]{.mark} → **C)** , [C) 33]{.mark} → **C) 33**
     cleaned = cleaned.replace(/\[([^\]]+)\]\{\.mark\}/g, '**$1**');
 
+    // 0.1b. Strip pandoc underline: [text]{.underline} → text
+    cleaned = cleaned.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
+
     // 0.1. Normalize Cyrillic variant markers to Latin
     // С) → C), В) → B), А) → A) (Cyrillic look-alikes)
     cleaned = cleaned.replace(/\u0410(\s*\))/g, 'A$1');
