@@ -131,9 +131,11 @@ function renderMathToHtml(text: string): string {
       }
     } else if (part.startsWith('$') && part.endsWith('$')) {
       const math = part.slice(1, -1).trim();
+      // Multi-line environments should render in display mode even from inline $...$
+      const needsDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(math);
       try {
-        html += `<span class="katex-inline">${katex.renderToString(math, {
-          displayMode: false, throwOnError: false, errorColor: '#cc0000', strict: false
+        html += `<span class="${needsDisplay ? 'katex-block' : 'katex-inline'}">${katex.renderToString(math, {
+          displayMode: needsDisplay, throwOnError: false, errorColor: '#cc0000', strict: false
         })}</span>`;
       } catch {
         html += `<span class="text-red-500">${escapeHtml(part)}</span>`;
