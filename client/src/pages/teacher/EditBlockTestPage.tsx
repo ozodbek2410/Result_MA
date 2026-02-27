@@ -27,6 +27,10 @@ export default function EditBlockTestPage() {
   const [periodMonth, setPeriodMonth] = useState('');
   const [periodYear, setPeriodYear] = useState('');
 
+  // Group selector
+  const [groups, setGroups] = useState<{ _id: string; name: string; classNumber: number; letter: string; subjectId?: { nameUzb: string }; studentsCount: number }[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+
   // Yangi fanlar qo'shish uchun state
   const [showAddForm, setShowAddForm] = useState(false);
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -57,6 +61,7 @@ export default function EditBlockTestPage() {
   useEffect(() => {
     loadBlockTest();
     loadSubjects();
+    loadGroups();
   }, [id]);
 
   const loadSubjects = async () => {
@@ -65,6 +70,18 @@ export default function EditBlockTestPage() {
       setSubjects(data);
     } catch (error) {
       console.error('Error loading subjects:', error);
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      const { data } = await api.get('/groups');
+      const sorted = (data || []).sort((a: { classNumber: number; letter: string }, b: { classNumber: number; letter: string }) =>
+        a.classNumber !== b.classNumber ? a.classNumber - b.classNumber : a.letter.localeCompare(b.letter)
+      );
+      setGroups(sorted);
+    } catch (error) {
+      console.error('Error loading groups:', error);
     }
   };
 
@@ -102,6 +119,8 @@ export default function EditBlockTestPage() {
 
       setBlockTest(mergedBlockTest);
       setClassNumber(data.classNumber?.toString() || '');
+      const gId = typeof data.groupId === 'object' ? data.groupId?._id : data.groupId;
+      if (gId) setSelectedGroupId(gId);
 
       if (data.periodMonth && data.periodYear) {
         setPeriodMonth(data.periodMonth.toString());
@@ -126,7 +145,8 @@ export default function EditBlockTestPage() {
       await api.put(`/block-tests/${id}`, {
         classNumber: parseInt(classNumber),
         periodMonth: parseInt(periodMonth),
-        periodYear: parseInt(periodYear)
+        periodYear: parseInt(periodYear),
+        groupId: selectedGroupId || undefined
       });
       alert('Test muvaffaqiyatli saqlandi');
       navigate('/teacher/block-tests');
@@ -284,6 +304,8 @@ export default function EditBlockTestPage() {
           groupLetter: row.groupLetter || null,
           periodMonth: parseInt(periodMonth),
           periodYear: parseInt(periodYear),
+          groupId: selectedGroupId || undefined,
+          blockTestId: id,
         });
       }
       resetAddForm();
@@ -339,6 +361,28 @@ export default function EditBlockTestPage() {
           <CardTitle>Asosiy ma'lumotlar</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Guruh <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedGroupId}
+              onChange={(e) => {
+                const g = groups.find(gr => gr._id === e.target.value);
+                setSelectedGroupId(e.target.value);
+                if (g) setClassNumber(String(g.classNumber));
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Guruhni tanlang</option>
+              {groups.map(g => (
+                <option key={g._id} value={g._id}>
+                  {g.classNumber}-{g.letter} {g.subjectId?.nameUzb || g.name} ({g.studentsCount})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Sinf <span className="text-red-500">*</span>

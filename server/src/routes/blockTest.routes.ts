@@ -173,6 +173,38 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// Reorder subjectTests
+router.put('/:id/reorder-subjects', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { order } = req.body; // [{ subjectId, groupLetter }]
+    if (!Array.isArray(order)) return res.status(400).json({ message: 'order array kerak' });
+
+    const blockTest = await BlockTest.findById(req.params.id);
+    if (!blockTest) return res.status(404).json({ message: 'Blok test topilmadi' });
+
+    const reordered: typeof blockTest.subjectTests = [];
+    for (const item of order) {
+      const found = blockTest.subjectTests.find((st: any) =>
+        st.subjectId.toString() === item.subjectId &&
+        (st.groupLetter || null) === (item.groupLetter || null)
+      );
+      if (found) reordered.push(found);
+    }
+    // Append any remaining that weren't in order
+    for (const st of blockTest.subjectTests) {
+      if (!reordered.includes(st)) reordered.push(st);
+    }
+
+    blockTest.subjectTests = reordered as any;
+    blockTest.markModified('subjectTests');
+    await blockTest.save();
+
+    res.json({ message: 'Tartib saqlandi' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Xatolik', error: error.message });
+  }
+});
+
 router.post('/', authenticate, async (req: AuthRequest, res) => {
   try {
     const { classNumber, periodMonth, periodYear, subjectTests } = req.body;
@@ -331,8 +363,8 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 // Update block test
 router.put('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
-    const { classNumber, periodMonth, periodYear, subjectTests } = req.body;
-    
+    const { classNumber, periodMonth, periodYear, subjectTests, groupId } = req.body;
+
     const blockTest = await BlockTest.findById(req.params.id);
     
     if (!blockTest) {
@@ -348,6 +380,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     if (classNumber) blockTest.classNumber = classNumber;
     if (periodMonth) blockTest.periodMonth = periodMonth;
     if (periodYear) blockTest.periodYear = periodYear;
+    if (groupId) blockTest.groupId = groupId;
     if (subjectTests) blockTest.subjectTests = subjectTests;
     
     await blockTest.save();

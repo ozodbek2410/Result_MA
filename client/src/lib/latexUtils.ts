@@ -164,8 +164,8 @@ export function convertTiptapJsonToText(json: any): string {
     try {
       json = JSON.parse(json);
     } catch {
-      // Если не JSON, возвращаем как есть
-      return json;
+      // Not JSON — strip <p>, <br>, <div> but keep <span> (formulas use data-latex)
+      return json.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '');
     }
   }
   

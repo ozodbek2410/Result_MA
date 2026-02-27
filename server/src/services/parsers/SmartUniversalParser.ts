@@ -177,6 +177,9 @@ export class SmartUniversalParser extends BaseParser {
   protected preCleanText(text: string): { cleanText: string; mathBlocks: string[] } {
     let cleaned = text;
 
+    // 0. Strip HTML tags from pandoc output (<p>, <br>, <div>)
+    cleaned = cleaned.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '');
+
     // 0. Remove pandoc trailing backslash line breaks (hard line breaks)
     // "gulukogen\" → "gulukogen", "a-1,4,6; b-2,3,5\" → "a-1,4,6; b-2,3,5"
     cleaned = cleaned.replace(/\\$/gm, '');
@@ -267,8 +270,8 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/(___MATH_\d+___)([a-zA-Z])/g, '$1 $2');
     cleaned = cleaned.replace(/([a-zA-Z])(___MATH_\d+___)/g, '$1 $2');
 
-    // 8. Clean escapes in text (including \< \> from pandoc)
-    cleaned = cleaned.replace(/\\([.\(\)\[\]<>])/g, '$1');
+    // 8. Clean escapes in text (including \< \> \_ from pandoc)
+    cleaned = cleaned.replace(/\\([.\(\)\[\]<>_])/g, '$1');
 
     // 9. Split inline questions BEFORE normalizing dots → parens
     // "D) variant_text 18. New question" → newline before 18.
@@ -367,6 +370,20 @@ export class SmartUniversalParser extends BaseParser {
       cleaned = cleaned.replace(/\\\(([\s\S]*?)\\\)\s*([_^](?:\{[^}]+\}|\d))/g, '\\($1$2\\)');
 
       cleaned = cleaned.replace(/\x00C(\d+)\x00/g, (_, i) => chemBlocks[parseInt(i)]);
+    }
+
+    // MATH/PHYSICS: Wrap bare expressions with ^{} or _{} in LaTeX blocks
+    if (this.detectedType === 'math' || this.detectedType === 'physics') {
+      // Protect existing \(...\) blocks
+      const exprBlocks: string[] = [];
+      cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (m) => { exprBlocks.push(m); return `\x00E${exprBlocks.length - 1}\x00`; });
+      // Wrap expressions with ^{} in LaTeX blocks: 10047^{6000006} → \(10047^{6000006}\)
+      // Matches: digits/letters/parens followed by ^{exp} with optional continuation
+      cleaned = cleaned.replace(/([\d(][\w+\-*\/^_{}(),.\s]*\^(?:\{[^}]+\}|\d)[\w+\-*\/^_{}(),.]*)/g, (match) => {
+        if (/^\d+$/.test(match)) return match; // plain number
+        return `\\(${match.trim()}\\)`;
+      });
+      cleaned = cleaned.replace(/\x00E(\d+)\x00/g, (_, i) => exprBlocks[parseInt(i)]);
     }
 
     // PHYSICS/MATH: Merge adjacent LaTeX blocks
