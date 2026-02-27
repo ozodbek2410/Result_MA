@@ -59,8 +59,14 @@ function renderMathToHtml(text: string): string {
 
   // Normalize format
   let normalizedText = cleanedText;
-  normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$1$$');
-  normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$$1$$$$');
+  // Convert \(...\) to $ or $$ based on content (multi-line environments → display mode)
+  normalizedText = normalizedText.replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula: string) => {
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(formula)) {
+      return '$$' + formula + '$$';
+    }
+    return '$' + formula + '$';
+  });
+  normalizedText = normalizedText.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
 
   // Split by formulas
   const parts: string[] = [];
