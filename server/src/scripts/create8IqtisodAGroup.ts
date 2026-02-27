@@ -119,17 +119,17 @@ async function run() {
         subjectIds: [],
         isActive: true,
       });
-      student = newStudent.toObject();
+      student = newStudent.toObject() as any;
       created++;
       console.log(`  CREATED: ${name}`);
     } else {
       found++;
-      console.log(`  FOUND:   ${student.fullName}`);
+      console.log(`  FOUND:   ${student!.fullName}`);
     }
 
     await StudentGroup.updateOne(
-      { studentId: student._id, groupId: group._id },
-      { $setOnInsert: { studentId: student._id, groupId: group._id } },
+      { studentId: student!._id, groupId: group._id },
+      { $setOnInsert: { studentId: student!._id, groupId: group._id } },
       { upsert: true }
     );
   }
