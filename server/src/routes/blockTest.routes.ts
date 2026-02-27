@@ -769,6 +769,24 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
             shuffledQuestions.push(shuffled);
           }
         }
+
+        // === Umumiy fanlar: config'da bo'lmasa ham barcha o'quvchilarga qo'shish ===
+        const configSubjectIds = new Set(
+          studentConfig.subjects.map((sc: any) => (sc.subjectId._id || sc.subjectId).toString())
+        );
+        for (const [subjectId, subjectTests] of subjectMap) {
+          if (configSubjectIds.has(subjectId)) continue; // already processed
+          const generalTests = subjectTests.filter((st: any) => !st.groupLetter);
+          if (generalTests.length === 0) continue;
+          console.log(`➕ Adding umumiy-only subject for student (not in config): ${subjectId}`);
+          for (const mt of generalTests) {
+            for (const question of shuffleWithPinned([...mt.questions])) {
+              const shuffled = shuffleVariants(question);
+              shuffled.subjectId = mt.subjectId;
+              shuffledQuestions.push(shuffled);
+            }
+          }
+        }
       } else {
         // === Config yo'q — barcha fanlarni tekshirish ===
 
