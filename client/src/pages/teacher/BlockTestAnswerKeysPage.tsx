@@ -26,16 +26,16 @@ export default function BlockTestAnswerKeysPage() {
       // Загружаем блок-тест
       const { data: testData } = await api.get(`/block-tests/${id}`);
       
-      // Загружаем все блок-тесты с таким же классом и датой (с полными данными!)
-      const { data: allTests } = await api.get('/block-tests', {
-        params: { fields: 'full' }
-      });
-      const testDate = new Date(testData.date).toISOString().split('T')[0];
-      
-      // Фильтруем тесты по классу и дате
-      const sameGroupTests = allTests.filter((t: any) => {
-        const tDate = new Date(t.date).toISOString().split('T')[0];
-        return t.classNumber === testData.classNumber && tDate === testDate;
+      // Barcha tegishli blok testlarni periodMonth/periodYear bo'yicha yuklash
+      const groupIdParam = typeof testData.groupId === 'object' ? testData.groupId?._id : testData.groupId;
+      const { data: sameGroupTests } = await api.get('/block-tests', {
+        params: {
+          classNumber: testData.classNumber,
+          periodMonth: testData.periodMonth,
+          periodYear: testData.periodYear,
+          ...(groupIdParam ? { groupId: groupIdParam } : {}),
+          fields: 'full'
+        }
       });
       
       console.log('📊 Found tests in same group:', sameGroupTests.length);
@@ -64,9 +64,10 @@ export default function BlockTestAnswerKeysPage() {
       
       setBlockTest(mergedBlockTest);
       
-      const { data: allStudents } = await api.get('/students', {
-        params: { classNumber: mergedBlockTest.classNumber }
-      });
+      const studentFetchParams = mergedBlockTest.groupId
+        ? { groupId: typeof mergedBlockTest.groupId === 'object' ? mergedBlockTest.groupId._id : mergedBlockTest.groupId }
+        : { classNumber: mergedBlockTest.classNumber };
+      const { data: allStudents } = await api.get('/students', { params: studentFetchParams });
       
       const selectedStudents = studentIds.length > 0
         ? allStudents.filter((s: any) => studentIds.includes(s._id))
@@ -90,92 +91,70 @@ export default function BlockTestAnswerKeysPage() {
 
       for (const student of selectedStudents) {
         try {
-          const { data: config } = await api.get(`/student-test-configs/${student._id}`);
-          
-          // Находим вариант для этого студента
-          const studentVariant = allVariants.find((v: any) => 
+          const studentVariant = allVariants.find((v: any) =>
             v.studentId._id === student._id || v.studentId === student._id
           );
-          
-          console.log(`🔍 Student ${student.fullName}:`, {
-            hasVariant: !!studentVariant,
-            variantCode: studentVariant?.variantCode,
-            hasShuffledQuestions: !!studentVariant?.shuffledQuestions,
-            shuffledQuestionsCount: studentVariant?.shuffledQuestions?.length
-          });
-          
-          if (studentVariant?.shuffledQuestions && studentVariant.shuffledQuestions.length > 0) {
-            console.log(`📦 First 3 shuffled questions for ${student.fullName}:`, 
-              studentVariant.shuffledQuestions.slice(0, 3).map((q: any, i: number) => ({
-                index: i,
-                correctAnswer: q.correctAnswer,
-                hasVariants: !!q.variants,
-                text: q.text?.substring(0, 30) || q.question?.substring(0, 30)
-              }))
-            );
-          }
-          
+
           const studentQuestions: any[] = [];
           let questionNumber = 1;
-          let shuffledIndex = 0; // Индекс для прохода по shuffledQuestions
 
-          for (const subjectConfig of config.subjects) {
-            const subjectId = subjectConfig.subjectId._id || subjectConfig.subjectId;
-            const subjectTest = mergedBlockTest.subjectTests.find(
-              (st: any) => (st.subjectId._id || st.subjectId) === subjectId
-            );
+          if (studentVariant?.shuffledQuestions?.length > 0) {
+            // Shuffled savollarni subjectId bo'yicha guruhlash
+            const subjectMap = new Map<string, { name: string; groupLetter: string | null; questions: any[] }>();
+            for (const q of studentVariant.shuffledQuestions) {
+              const sid = (q.subjectId?._id || q.subjectId || '').toString();
+              const name = q.subjectId?.nameUzb || 'Fan';
+              if (!subjectMap.has(sid)) subjectMap.set(sid, { name, groupLetter: q.studentGroupLetter || null, questions: [] });
+              subjectMap.get(sid)!.questions.push(q);
+            }
 
-            if (subjectTest && subjectTest.questions) {
-              const questionsToUse = subjectTest.questions.slice(0, subjectConfig.questionCount);
-              
-              const questions = questionsToUse.map((q: any, qIdx: number) => {
-                // Используем перемешанный вариант если есть
-                let questionData = q;
-                
-                if (studentVariant?.shuffledQuestions && studentVariant.shuffledQuestions.length > shuffledIndex) {
-                  // Берем вопрос по порядку из shuffledQuestions
-                  questionData = studentVariant.shuffledQuestions[shuffledIndex];
-                  shuffledIndex++;
-                  
-                  if (qIdx === 0) {
-                    console.log(`📝 Question ${questionNumber} for ${student.fullName}:`, {
-                      usingShuffled: true,
-                      originalAnswer: q.correctAnswer,
-                      shuffledAnswer: questionData.correctAnswer,
-                      hasVariants: !!questionData.variants
+            for (const [, group] of subjectMap) {
+              for (const q of group.questions) {
+                studentQuestions.push({
+                  number: questionNumber++,
+                  correctAnswer: q.correctAnswer || '?',
+                  subjectName: group.name,
+                  groupLetter: group.groupLetter
+                });
+              }
+            }
+          } else {
+            // Fallback: config yoki mergedBlockTest dan
+            try {
+              const { data: config } = await api.get(`/student-test-configs/${student._id}`);
+              for (const subjectConfig of config.subjects) {
+                const subjectId = subjectConfig.subjectId._id || subjectConfig.subjectId;
+                const subjectTest = mergedBlockTest.subjectTests.find(
+                  (st: any) => (st.subjectId._id || st.subjectId) === subjectId
+                );
+                if (subjectTest?.questions) {
+                  const questionsToUse = subjectTest.questions.slice(0, subjectConfig.questionCount);
+                  for (const q of questionsToUse) {
+                    studentQuestions.push({
+                      number: questionNumber++,
+                      correctAnswer: q.correctAnswer || '?',
+                      subjectName: subjectConfig.subjectId.nameUzb
                     });
                   }
-                } else {
-                  // Fallback к оригинальному вопросу
-                  if (qIdx === 0) {
-                    console.log(`⚠️ No shuffled question found, using original for ${student.fullName}`);
-                  }
                 }
-                
-                return {
-                  number: questionNumber++,
-                  question: questionData.text || questionData.question || '',
-                  correctAnswer: questionData.correctAnswer || '?', // Используем обновленный правильный ответ!
-                  subjectName: subjectConfig.subjectId.nameUzb
-                };
-              });
-              
-              studentQuestions.push(...questions);
+              }
+            } catch {
+              // Config yo'q — barcha savollar
+              for (const st of mergedBlockTest.subjectTests) {
+                for (const q of (st.questions || [])) {
+                  studentQuestions.push({
+                    number: questionNumber++,
+                    correctAnswer: q.correctAnswer || '?',
+                    subjectName: st.subjectId?.nameUzb || 'Fan'
+                  });
+                }
+              }
             }
           }
 
           answers.push({
             student,
             questions: studentQuestions,
-            variantCode: studentVariant?.variantCode
-          });
-          
-          console.log(`✅ Generated answers for ${student.fullName}:`, {
-            totalQuestions: studentQuestions.length,
-            first5Answers: studentQuestions.slice(0, 5).map(q => ({
-              num: q.number,
-              answer: q.correctAnswer
-            })),
             variantCode: studentVariant?.variantCode
           });
         } catch (err) {
@@ -254,15 +233,40 @@ export default function BlockTestAnswerKeysPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {item.questions.map((q: any) => (
-                  <div key={q.number} className="flex items-center gap-2 p-3 bg-gray-50 rounded border">
-                    <span className="font-bold text-gray-700 min-w-[35px]">{q.number}.</span>
-                    <span className="font-bold text-green-600 text-xl">{q.correctAnswer}</span>
-                    <span className="text-xs text-gray-500 ml-auto">{q.subjectName}</span>
+              {(() => {
+                // Fan bo'yicha guruhlash
+                const subjectGroups: { name: string; groupLetter?: string | null; questions: typeof item.questions }[] = [];
+                let currentSubject = '';
+                let currentGroup: typeof item.questions = [];
+                let currentLetter: string | null = null;
+                for (const q of item.questions) {
+                  const key = `${q.subjectName}_${q.groupLetter || ''}`;
+                  if (key !== currentSubject) {
+                    if (currentGroup.length > 0) subjectGroups.push({ name: currentGroup[0].subjectName, groupLetter: currentLetter, questions: currentGroup });
+                    currentSubject = key;
+                    currentGroup = [];
+                    currentLetter = q.groupLetter || null;
+                  }
+                  currentGroup.push(q);
+                }
+                if (currentGroup.length > 0) subjectGroups.push({ name: currentGroup[0].subjectName, groupLetter: currentLetter, questions: currentGroup });
+
+                return subjectGroups.map((sg, si) => (
+                  <div key={si} className="mb-4">
+                    <div className="font-bold text-sm text-gray-700 border-b pb-1 mb-2">
+                      {sg.name}{sg.groupLetter ? ` (${sg.groupLetter} guruh)` : ''} — {sg.questions.length} ta savol
+                    </div>
+                    <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-10 gap-2">
+                      {sg.questions.map((q: any) => (
+                        <div key={q.number} className="flex items-center gap-1 p-2 bg-gray-50 rounded border text-center">
+                          <span className="font-bold text-gray-700 text-sm">{q.number}.</span>
+                          <span className="font-bold text-green-600 text-lg">{q.correctAnswer}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                ));
+              })()}
             </div>
           ))}
         </div>

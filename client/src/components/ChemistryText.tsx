@@ -73,6 +73,11 @@ export default function ChemistryText({ text, className = '' }: ChemistryTextPro
       // X~3~(PO~4~)~2~ → X_3(PO_4)_2
       cleanedText = cleanedText.replace(/([A-Za-z0-9\(\)])~([^~\s]+)~/g, '$1_$2');
       cleanedText = cleanedText.replace(/([A-Za-z0-9])\^([^\^\s]+)\^/g, '$1^{$2}');
+
+      // 🧪 CHEMISTRY: Add braces to bare charge superscripts
+      // CrO_4^2- → CrO_4^{2-}, S^4+ → S^{4+}, Cr^+2 → Cr^{+2}
+      cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^(\d+[+-])/g, '$1^{$2}');
+      cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^([+-]\d+)/g, '$1^{$2}');
       
       // console.log('🧪 [CHEMISTRY] After Pandoc conversion:', cleanedText.substring(0, 200));
       
@@ -93,8 +98,8 @@ export default function ChemistryText({ text, className = '' }: ChemistryTextPro
         });
       }
       
-      // Step 2: Find simple formulas: CH_4, H_2SO_3 (but skip already wrapped)
-      const simplePattern = /((?:[A-Z][A-Za-z0-9]*_\d+)+)/g;
+      // Step 2: Find simple formulas with optional charge: CH_4, CrO_4^{2-}, H_2SO_4
+      const simplePattern = /((?:[A-Z][A-Za-z0-9]*_\d+)+(?:\^(?:\{[^}]+\}|\d+))?)/g;
       while ((match = simplePattern.exec(cleanedText)) !== null) {
         const start = match.index;
         const end = match.index + match[0].length;
@@ -106,16 +111,39 @@ export default function ChemistryText({ text, className = '' }: ChemistryTextPro
         }
       }
       
+      // Step 2.5: Find element with charge (no subscript): Cr^{+2}, Fe^{3+}, O^{2-}
+      const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+))/g;
+      while ((match = chargePattern.exec(cleanedText)) !== null) {
+        const start = match.index;
+        const end = match.index + match[0].length;
+        const isWrapped = wrapped.some(w => start >= w.start && end <= w.end);
+        if (!isWrapped) {
+          wrapped.push({ start, end, formula: match[0] });
+        }
+      }
+
       // Step 3: Find superscripts: 10^{23}
       const superPattern = /(\d+)\^(\d+|{[^}]+})/g;
       while ((match = superPattern.exec(cleanedText)) !== null) {
-        wrapped.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          formula: match[0]
-        });
+        const start = match.index;
+        const end = match.index + match[0].length;
+        const isWrapped = wrapped.some(w => start >= w.start && end <= w.end);
+        if (!isWrapped) {
+          wrapped.push({ start, end, formula: match[0] });
+        }
       }
-      
+
+      // Step 3.5: Isotope mass number: ^{14}N, ^{14}O, _{19}K^{39}
+      const isotopePattern = /(?:_(?:\{[^}]+\}|\d+))?\^(?:\{[^}]+\}|\d+)[A-Z][a-z]?/g;
+      while ((match = isotopePattern.exec(cleanedText)) !== null) {
+        const start = match.index;
+        const end = match.index + match[0].length;
+        const isWrapped = wrapped.some(w => start >= w.start && end <= w.end);
+        if (!isWrapped) {
+          wrapped.push({ start, end, formula: match[0] });
+        }
+      }
+
       // Step 4: Find LaTeX commands: \cdot
       const latexPattern = /(\\cdot)/g;
       while ((match = latexPattern.exec(cleanedText)) !== null) {

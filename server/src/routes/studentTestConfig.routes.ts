@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import StudentTestConfig from '../models/StudentTestConfig';
 import Student from '../models/Student';
 import StudentGroup from '../models/StudentGroup';
+import GroupSubjectConfig from '../models/GroupSubjectConfig';
 import Direction from '../models/Direction';
 import Subject from '../models/Subject';
 import { authenticate, AuthRequest } from '../middleware/auth';
@@ -132,33 +133,41 @@ router.post('/create-for-block-test/:studentId/:blockTestId', authenticate, asyn
       return res.status(400).json({ message: 'Blok testda fanlar topilmadi' });
     }
     
-    // Получаем букву группы студента
-    let studentGroupLetter = null;
-    try {
-      const studentGroup = await StudentGroup.findOne({ studentId: student._id })
-        .populate<{ groupId: { letter: string } }>('groupId', 'letter')
-        .lean();
-      
-      studentGroupLetter = studentGroup?.groupId?.letter || null;
-      console.log(`🔍 Creating config for student ${student.fullName}, group letter: ${studentGroupLetter || 'umumiy'}, studentGroup:`, studentGroup);
-    } catch (groupError) {
-      console.error('Error loading student group:', groupError);
-      // Продолжаем без буквы группы
+    // Load per-subject groupLetter: per-student first, then group-level fallback
+    const studentGroups = await StudentGroup.find({ studentId: student._id }).lean();
+
+    const subjectLetterMap = new Map<string, string>();
+
+    // 1) Per-student assignment (priority)
+    for (const sg of studentGroups) {
+      if (sg.groupLetter && sg.subjectId) {
+        subjectLetterMap.set(sg.subjectId.toString(), sg.groupLetter);
+      }
     }
-    
-    // Дефолтное общее количество вопросов
+
+    // 2) Fallback to group-level config for subjects without per-student letter
+    const groupIds = [...new Set(studentGroups.map(sg => sg.groupId.toString()))];
+    const groupConfigs = await GroupSubjectConfig.find({ groupId: { $in: groupIds } }).lean();
+    for (const gc of groupConfigs) {
+      if (!subjectLetterMap.has(gc.subjectId.toString())) {
+        subjectLetterMap.set(gc.subjectId.toString(), gc.groupLetter);
+      }
+    }
+
+    // Default total question count
     const DEFAULT_TOTAL_QUESTIONS = 90;
-    
-    // Равномерное распределение вопросов
+
+    // Distribute questions evenly across subjects
     const baseQuestions = Math.floor(DEFAULT_TOTAL_QUESTIONS / subjects.length);
     const remainder = DEFAULT_TOTAL_QUESTIONS % subjects.length;
-    
+
     const configSubjects = subjects.map((subject, index) => {
       const questionCount = baseQuestions + (index < remainder ? 1 : 0);
+      const letter = subjectLetterMap.get(subject.subjectId.toString());
       return {
         subjectId: subject.subjectId,
         questionCount: Math.min(questionCount, subject.maxQuestions),
-        groupLetter: studentGroupLetter || undefined, // Добавляем букву группы
+        groupLetter: letter || undefined,
         isAdditional: false
       };
     });

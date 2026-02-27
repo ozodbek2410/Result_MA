@@ -148,6 +148,23 @@ export function convertTiptapToLatex(json: any): string {
 }
 
 /**
+ * Convert HTML string with data-latex spans to LaTeX formatted text
+ * Input:  '<p>2 <span data-latex="\\frac{3}{7}" data-type="formula"></span></p>'
+ * Output: '2 $\\frac{3}{7}$'
+ */
+function convertHtmlWithLatex(html: string): string {
+  // Replace <span data-latex="..." ...></span> with $latex$
+  let result = html.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_m, latex) => {
+    return `$${latex}$`;
+  });
+  // Strip remaining HTML tags
+  result = result.replace(/<[^>]*>/g, '');
+  // Clean up whitespace
+  result = result.replace(/\s+/g, ' ').trim();
+  return result;
+}
+
+/**
  * Convert variant text (handles both string and TipTap JSON)
  * @param variantText - Variant text (string or TipTap JSON)
  * @returns LaTeX formatted string
@@ -160,15 +177,20 @@ export function convertVariantText(variantText: any): string {
   
   // If it's already a string, try to parse it
   if (typeof variantText === 'string') {
+    // HTML with data-latex attributes → extract LaTeX and plain text
+    if (variantText.includes('data-latex=')) {
+      return convertHtmlWithLatex(variantText);
+    }
+
     try {
       const parsed = JSON.parse(variantText);
       const result = convertTiptapToLatex(parsed);
-      
+
       if (!result || result.trim().length === 0) {
         console.log('⚠️ [VARIANT] Conversion returned empty, using original string');
         return variantText;
       }
-      
+
       return result;
     } catch {
       // Not JSON, return as is

@@ -282,8 +282,12 @@ export class PDFGeneratorService {
             
             <div class="questions">
               ${student.questions.map(q => {
-                const totalLength = q.options.reduce((sum, opt) => sum + opt.length, 0);
-                const optionsClass = totalLength < 80 ? 'options inline' : 'options';
+                const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim();
+                const cleanOptions = q.options.map(o => stripHtml(o));
+                const totalLength = cleanOptions.reduce((sum, opt) => sum + opt.length, 0);
+                const maxSingle = Math.max(...cleanOptions.map(o => o.length), 0);
+                // inline: sig'sa 1 qatorda, sig'masa 2x2 grid
+                const optionsClass = totalLength < 120 && maxSingle < 50 ? 'options inline' : 'options grid';
                 
                 return `
                 <div class="question">
@@ -453,12 +457,22 @@ export class PDFGeneratorService {
     .options.inline {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 4px 8px;
     }
-    
+
     .options.inline .option {
       display: inline-flex;
       margin-right: 8px;
+      margin-bottom: 0;
+    }
+
+    .options.grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px 8px;
+    }
+
+    .options.grid .option {
       margin-bottom: 0;
     }
     
@@ -676,12 +690,22 @@ export class PDFGeneratorService {
     .options.inline {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 4px 8px;
     }
-    
+
     .options.inline .option {
       display: inline-flex;
       margin-right: 8px;
+      margin-bottom: 0;
+    }
+
+    .options.grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px 8px;
+    }
+
+    .options.grid .option {
       margin-bottom: 0;
     }
     

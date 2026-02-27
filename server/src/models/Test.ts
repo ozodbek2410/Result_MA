@@ -25,6 +25,7 @@ export interface IQuestion {
   variants: IQuestionVariant[];
   correctAnswer?: 'A' | 'B' | 'C' | 'D' | ''; // Необязательно для вопросов без вариантов
   points: number;
+  pinned?: boolean; // Aralashtirganda joylashuvi o'zgarmaydi, faqat variantlari aralashadi
 }
 
 export interface ITest extends Document {

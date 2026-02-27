@@ -139,7 +139,11 @@ async function processWordExport(job: Job<WordExportJobData>): Promise<WordExpor
             number: index + 1,
             text: questionText,
             options,
-            correctAnswer: q.correctAnswer || ''
+            correctAnswer: q.correctAnswer || '',
+            imageUrl: q.imageUrl,
+            media: q.media,
+            imageWidth: q.imageWidth,
+            imageHeight: q.imageHeight,
           };
         });
         

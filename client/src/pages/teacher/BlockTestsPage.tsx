@@ -84,10 +84,11 @@ export default function BlockTestsPage() {
       // Загружаем блок-тест в фоне
       const { data: testData } = await api.get(`/block-tests/${testId}`);
       
-      // Загружаем студентов в фоне
-      const { data: studentsData } = await api.get('/students', {
-        params: { classNumber: testData.classNumber }
-      });
+      // Загружаем студентов в фоне (guruh bo'yicha yoki sinf bo'yicha)
+      const studentParams = testData.groupId
+        ? { groupId: typeof testData.groupId === 'object' ? testData.groupId._id : testData.groupId }
+        : { classNumber: testData.classNumber };
+      const { data: studentsData } = await api.get('/students', { params: studentParams });
       
       // Сохраняем в кэш
       prefetchCache.set(testId, {
@@ -184,10 +185,12 @@ export default function BlockTestsPage() {
       setShowConfigView(true); // Показываем сразу!
       setConfigLoading(false);
       
-      console.log('🔄 Loading students for class:', testData.classNumber);
-      
-      // ПРИОРИТЕТ 2: Загружаем студентов (показываем список)
-      api.get('/students', { params: { classNumber: testData.classNumber } })
+      // ПРИОРИТЕТ 2: Загружаем студентов (guruh bo'yicha yoki sinf bo'yicha)
+      const sp = testData.groupId
+        ? { groupId: typeof testData.groupId === 'object' ? testData.groupId._id : testData.groupId }
+        : { classNumber: testData.classNumber };
+      console.log('🔄 Loading students:', sp);
+      api.get('/students', { params: sp })
         .then(({ data: studentsData }) => {
           console.log('✅ Students loaded:', studentsData.length);
           setStudents(studentsData);
@@ -240,14 +243,16 @@ export default function BlockTestsPage() {
     console.log('📊 Grouping block tests:', blockTests.length);
     
     const groupedTests = filteredTests.reduce((acc: any, test) => {
-      // Группируем по классу и периоду (месяц+год), а не по дате создания
-      const key = `${test.classNumber}-${test.periodMonth}-${test.periodYear}`;
-      
-      console.log(`📝 Test: class=${test.classNumber}, period=${test.periodMonth}/${test.periodYear}, key=${key}`);
-      
+      // Группируем по классу/группе и периоду (месяц+год)
+      const gId = test.groupId?._id || test.groupId || '';
+      const key = `${test.classNumber}-${gId}-${test.periodMonth}-${test.periodYear}`;
+
+      console.log(`📝 Test: class=${test.classNumber}, group=${gId}, period=${test.periodMonth}/${test.periodYear}, key=${key}`);
+
       if (!acc[key]) {
         acc[key] = {
           classNumber: test.classNumber,
+          groupId: test.groupId,
           date: test.date,
           dateKey: new Date(test.date).toISOString().split('T')[0],
           periodMonth: test.periodMonth,
@@ -737,77 +742,83 @@ export default function BlockTestsPage() {
 
         {/* Block Tests Grid */}
         {groupedArray.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {groupedArray.map((group: any, groupIndex: number) => {
               const firstTest = group.tests[0];
-              const formattedDate = new Date(group.date).toLocaleDateString('uz-UZ', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              });
-              
+              const monthNames = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+              const monthName = monthNames[(group.periodMonth || 1) - 1];
+              const d = new Date(group.date);
+              const formattedDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+              const groupName = (group as any).groupId?.name
+                ? `${(group as any).groupId.classNumber}-${(group as any).groupId.letter} ${(group as any).groupId.name}`
+                : `${group.classNumber}-sinf`;
+              const totalQuestions = group.tests.reduce((s: number, t: any) => s + (t.subjectTests?.reduce((ss: number, st: any) => ss + (st.questions?.length || 0), 0) || 0), 0);
+
               return (
                 <div
                   key={`${group.classNumber}-${group.dateKey}`}
-                  style={{ animationDelay: `${groupIndex * 50}ms` }}
+                  style={{ animationDelay: `${groupIndex * 40}ms` }}
                   className="group animate-slide-in"
                   onMouseEnter={() => prefetchBlockTestData(firstTest._id)}
                 >
-                  <div 
-                    className="bg-gradient-to-br from-white via-purple-50/30 to-pink-50/30 border border-purple-100 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer p-6 relative"
+                  <div
+                    className="bg-white border border-slate-200 rounded-xl hover:border-purple-300 hover:shadow-md transition-all duration-200 cursor-pointer p-4 relative"
                     onClick={() => handleCardClick(firstTest)}
                   >
-                    {/* Icon & Actions */}
-                    <div className="flex items-start justify-between mb-5 relative z-10">
-                      <div className="w-16 h-16 bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <BookOpen className="w-8 h-8 text-white" />
+                    {/* Header: icon + title + actions */}
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <BookOpen className="w-5 h-5 text-white" />
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-900 text-sm truncate group-hover:text-purple-600 transition-colors">
+                          {groupName}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{monthName} blok testi</p>
+                      </div>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/teacher/block-tests/${firstTest._id}/edit`);
+                            navigate(`/teacher/block-tests/import?editId=${firstTest._id}`);
                           }}
-                          className="p-2.5 hover:bg-blue-100/80 backdrop-blur-sm rounded-xl transition-all duration-200 hover:scale-110 active:scale-95"
+                          className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Tahrirlash"
                         >
-                          <Edit2 className="w-4 h-4 text-slate-600" />
+                          <Edit2 className="w-3.5 h-3.5 text-slate-400" />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteTest(group);
                           }}
-                          className="p-2.5 hover:bg-red-100/80 backdrop-blur-sm rounded-xl transition-all duration-200 hover:scale-110 active:scale-95"
+                          className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
                           title="O'chirish"
                         >
-                          <Trash2 className="w-4 h-4 text-red-600" />
+                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
                         </button>
                       </div>
                     </div>
 
-                    {/* Block Test Info */}
-                    <div className="mb-4 relative z-10">
-                      <h3 className="text-xl font-bold text-slate-900 mb-3 group-hover:text-purple-600 transition-colors">
-                        {group.classNumber}-sinf
-                      </h3>
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        <span className="px-3 py-1.5 bg-purple-100/80 backdrop-blur-sm text-purple-700 rounded-full text-sm font-semibold border border-purple-200/50">
-                          {group.classNumber}-sinf
+                    {/* Info badges */}
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-xs font-medium">
+                        {monthName} {group.periodYear}
+                      </span>
+                      {totalQuestions > 0 && (
+                        <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs font-medium">
+                          {totalQuestions} savol
                         </span>
-                        <span className="px-3 py-1.5 bg-pink-100/80 backdrop-blur-sm text-pink-700 rounded-full text-sm font-semibold border border-pink-200/50">
-                          {group.periodMonth}/{group.periodYear}
-                        </span>
-                      </div>
+                      )}
                     </div>
 
-                    {/* Date & Arrow */}
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-200/50 relative z-10">
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <Calendar className="w-4 h-4" />
-                        <span className="text-sm font-medium">{formattedDate}</span>
+                    {/* Footer */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <div className="flex items-center gap-1.5 text-slate-400">
+                        <Calendar className="w-3 h-3" />
+                        <span className="text-xs">{formattedDate}</span>
                       </div>
-                      <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
+                      <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
                   </div>
                 </div>

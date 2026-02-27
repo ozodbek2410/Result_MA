@@ -1,181 +1,109 @@
-**KIMYO**
+1.Baliq(1) va baqada(2) qaysi organlar tovushni kuchaytirib beradi? A 1-kulrang pufakcha 2-o'rta quloq **B 1-kumushrang pufakcha 2-kulrang pufakcha** C 1-kulrang pufakcha 2- o'rta quloq D 1-kulrang pufakcha 2-ichki quloq
 
-1. 120 gr magniy necha mol.
+2. Chipor ilonga xos belgilarni juftlab ko'rsating. 1) uchta qovog'i mavjud; 2) tangachalilar turkumiga kiradi; 3) tullaganda terisi yaxlit ko'chib tushadi; 4) yuqorigi va pastki jag' cho'ziluvchan paylar bilan birikkan; 5) oyog'i bo'lmaydi; 6) tullaganda terisi parcha -- parcha bo'lib ko'chadi; 7) ayri tili tuyg'u va ta'm bilish organi hisoblanadi; 8) bosh skeletlilar kenja tipiga kiradi **A) 2,3,4,8** B) 1,5,6,7 C) 1,3,5,8 D) 2,4,6,8
 
-A)2 B)3 C)4 D)5
+3. Suyakli baliqlar sinfiga kiruvchi turkumlarni ular uchun xos bo'lgan xususiyatlar bilan juftlang.
 
-2. 2 mol litiy 3 mol kalsiydan qancha(gr) yengil.
+1) tanasini orqa, yon, qorin tomonidan 5 qator rombsimon plastinka o'tgan; 2) oq skleti bosh qutisi qisman suyakga aylangan; 3) skeleti tuzilishi quruqlikda yashovchi umurtqalilarga o'xshaydi; 4) tana skeleti suyakdan iborat; 5) tana tuzilishi suv tubida yashashga moslashgan, dumi xivchinga aylangan. a) lassosimonlar; b) karpsimonlar; c) bakra baliqlar; d) skatlar; e) panjaqanotlilar.
 
-A)102 B)104 C)106 D)108
+**A) a-2 b-4 c-1 e-3** B) a-2 b-4 c-1 d-5 e-3
 
-3. II valentli metal bromidining molyar massasi
+C) a-2 b-4 c-1 d-5 D) a-4 b-4 c-1 e-5
 
-200 gr/mol bo\`lsa metalni aniqlang.
+4. Yuragi ikki kamerali hayvonlar (a) va oshqozoni ikki bo'lmali hayvonlar (b) to'g'ri keltirilgan javobni aniqlang.
 
-A)magniy B)kalsiy C)temir D)mis
+A) a -- zorka, gulmoy, manta b -- omar, langust
 
-4. Berilganlardan qaysilari kimyoviy hodisalar.
+B) a -- dengiz tulkisi, cho'rtan b -- tok shillig'i, daryo qisqichbaqasi
 
-1)zanglash , 2)kondensatlash ,3)distillash,
+**C) a -- suv shillig'i, zog'ora baliq; b -- asalari, chumoli**
 
-4)yonish ,5)sublimatlanish, 6) cherish
+D) a -- perlovitsa, soxta kurakburun; b--zaxkash, krevetka
 
-A)1.2.3 B)1.3.5 C)1.4.6 D)4.5.6
+5. Tuxumini pilla ichiga qo'yadigan hayvonlar.
 
-5. Quyidagilardan fizikaviy hodisani aniqlang.
+A) yomg'ir chuvalchangi, zaxkash, zorka
 
-A)Shamning yonishi
+B) yalang'och shilliq, falanga, nereida
 
-B)temirning zanglashi
+C) qoraqurt, falanga, planariya
 
-C)havoning suyuqlanishi
+**D) yomg'ir chuvalchang, planariya, o'rgimchak**
 
-D)qizdirilgan shakarning qorayishi
+6. O'rgimchaksimonlar vakillarini ularga xos xususiyatlar bilan juftlab bering.
 
-6. 3.4 gr NH~3~ da nechta atom bor.
+a) falanga; b) chayon; с) kаnа 1) tanasi bosh, ko'krak. qorin qismlariga bo'lingan 2) oyoq paypaslagiehlari yurish oyoqlariga o'xshaydi 3) tanasi bosh-ko'krak va qorin qismlariga bo'lingan 4) o'pka orqali nafas oladi 5) o'pka va traxeya orqali nafas oladi 6) gavda bo'limlari qo'shilib ketgan 7) hidni yaxshi sezadi 8) oyoq paypaslagichlar yo'qolgan A) a- 3,5 b -- 1,4 с - 7,8
 
-A)3.01 \*10^23^ C)1.204\*10^23^
+B) а- 1,8 b - 3,4 с -- 6,7,8
 
-B)3.01\*10^24^ D)4.816\*10^24^
+**C) а - 1,2 b - 3,5 с - 6,7**
 
-7. Soni 3∙10^23^ dona bolgan CH~4~ molekulalarining massasini hisoblang?
+D) a - 1,2,5 b - 3,4 с - 6,7,5
 
-A)8 B)16 C)1.6 D)3.2
+7. Sariq falangaga xos bo'lmagan belgilarni ajrating 1.o'rgimchaklar turkumiga kiradi 2. eng yirik o'rgimchak 3. O'rta Osiyo cho'llarida tarqalgan , uzunligi 6-7sm 4. tanasi boshko'krak va qorindan iborat 5. kunduzi ov qiladi 6. zaxar bezi bo'lmaydi 7. kechasi ov qiladi 8. qorni yorilguncha o'ljani yeydi 9. kunduzi o'ljasini tutib, zaxarlab o'ldiradi 10. eng yirik o'rgimchaksimonlar hisoblanadi
 
-8. CH~4~ va C~3~H~8~ dan iborat 0.5 mol aralashmada 2.24l n.sh da metan bolsa , aralashma massasini(gr) da aniqlang.
+A)1,2,3,5,6 B)3,6,7,8,10 C)2,3,6,7,9 **D)2,4,5,1,9**
 
-A)9.6 B)19.2 C)98 D)32
+8. Oq planariya qaysi tip (a), nereida qaysi sinf (b) va podalariy qaysi turkum (c) vakili hisoblanadi? A) a -- tasmasimon chuvalchanglar b -- kam tuklilar c -- tangachaqanotlilar B) a -- yassi chuvalchanglar b -- kam tuklilar c -- tangachalilar C) a -- to'garak chuvalchanglar; b -- ko'p tuklilar; c -- tangachalilar **D) a -- yassi chuvalchanglar; b -- ko'p tuklilar; c -- tangachaqanotlilar**
 
-9. Qaysi moddalarda allotropiya hodisasi kuzatiladi?
+9. Og'iz apparati kemiruvchi (1), kemiruvchi-so'ruvchi (2) va sanchib-so'ruvchi (3) tipda bo'lgan bo'g'imoyoqlilarni aniqlang. a) beshiktervatar; b) chigirtka; c) ishchi asalari; d) uy pashshasi; e) kana A) 1-a,b 2-d 3-c,e **B) 1-a,b 2-c 3-e** C) 1-e 2-a,b 3-c D) 1-a,b 2-d 3-e
 
-1) brom 2) kislorod 3) uglerod 4) xlor 5) ftor 6) fosfor
+10. Quyidagi berilgan hasharotlar qanotining tuzilishi bilan mos ravishda juftlab ko'rsatilgan javobni toping. 1) kapalak; 2) qandala; 3) chigirtka 4) ninachi a) qanotlari taxlanmasdan ikki yoniga yoyilib turadi; b) oldingi qanotlari uzun va ensiz, orqa qanotlari yelpig'ichga o'xshab oldingi qanotlari ostiga taxlanib turadi; c) birinchi juft qanotlarining oldingi qismi qalinlashgan, keying qismi yupqa va shaffof; d) qanotlari mayda tangachalar bilan qoplangan A) 1-d 2-b 3-c 4-a B) 1-a 2-c 3-b 4-d **C) 1-d 2-c 3-b 4-a** D) 1-a 2-b 3-c 4-d 11. Kapalak (1) va kapalak qurti (2) ning og'iz organi qanday tipda tuzilgan? a) so'ruvchi; b) sanchib -- so'ruvchi; c) kemiruvchi; d) kemiruvchi -- so'ruvchi **A) 1-a; 2-c** B) 1-b; 2-c C) 1-a; 2-d D) 1-c; 2-d
 
-A)1.2.3 B)2.6 C)2.3.6 1.3.5
+12. Tanasi a) boshko'krak va qorin; b) bosh, ko'krak va qorindan iborat hayvonlarni farqlang. 1) krevetka; 2) biy; 3) falanga; 4) iskabtopar; 5)chayon; 6) qandala A) a-2,4,6; b-1,3,5 B) a-1,3,6; b-2,4,5 **C) a-1,2,5; b-3,4,6** D) a-1,2,3; b-4,5,6
+13. Vohalardagi suv havzalari yaqinida (1), tog'li hududlarda (2) hamda oqmaydigan suv havzalari yaqinida (3) hayot kechiruvchi ninachi turlarini ko'rsating. a) halqali ninachi; b) moviy ninachi; c) suluv ninachi A) 1-b 2-c 3-a B) 1-a; 2-c; 3-b C) 1-c; 2-b; 3-a **D) 1-b; 2-a; 3-c** 14. Quyidagi ma'lumotlar qaysi bo'g'imoyoqli hayvon uchun tegishli ekanligini aniqlang. a) tuproqdagi chuqurchalar ustiga, toshlar ostiga tutqich to'r to'qiydi; b) tuproqdagi maxsus ko'zachalarga tuxumini qo'yadi; c) tuproq ichida g'umbakka aylanadi; d) tuproqda in quradiva o'simlik yog'ochligi bilan oziqlanadi A) a -- butli o'rgimchak; b -- temirchak c -- Turkiston termiti; d -- kolorado qo'ng'izi B) a -- chayon; b -- Osiyo chigirtkasi; c -- uy pashshasi; d -- qizil chuvalchang C) a -- qoraqurt; b -- Osiyo chigirtkasi; c -- uy pashshasi; d -- nereida **D) a -- qoraqurt; b -- temirchak; c -- kolorado qo'ng'izi; d -- Turkiston termiti\**
+15. ,, Karpsimonlar " turkumi vakillarining yashash joyi bilan juftlang. a-Orol dengizi sohillarida, Sirdaryo, Amudaryo va Zarafshonning quyi oqimi; b-Orol dengizi va unga quyiladigan daryolar; c-Sirdaryo va Amudaryo; e-Orol dengizi, Zarafshon, Amudaryo va Sirdaryoning daryo va ko'llarida; f-Amudaryo etaklarida va uning o'rta oqimida. 1-qilquyruq; 2-oqcha; 3-laqqa; 4-moybaliq; 5-gulmoyi; 6-mo'ylov baliq A) a-2,4; b-3; c-5; e-6; f-1 B) c-5; b-4; a-3; f-1 **C) b-3; a-2; e-6** D) f-1; e-6,2; c-5; b-3
 
-10. H~2~SO~3~ tarkibidagi protonlar sonini toping.
+16. Qaysi javobda pashsha qurtlariga xos bo'lmagan xususiyatlar to'g'ri ko'rsatilgan? 1) tanasi sirtida kichik bo'rtmalar bor; 2) tuxumini barg ostiga qo'yadi; 3) quruq tuproqda g'umbakka aylanadi; 4) soxta oyoqlari ilmoqchali, yo'g'on bo'ladi; 5) boshi va oyog'i yo'q, harakatlanmaydi; 6) devorga chiqib g'umbakka aylanadi; 7) hayvonlar tezagi bilan oziqlanadi; 8) tuxumdan chiqqanda qanotlari rivojlanmagan bo'ladi A) 1,5,6,8 B) 1,3,7,8 C) 3,4,5,7 **D) 2,4,6**
 
-A)42 B)32 C)83 D)35
+17. Daryo qisqichbaqsida qaysi organlarning soni 2 ta (a), 4 ta (b), 6 ta (d), 8 ta (e), 10 ta (f), 1) jag'lar 2) jag'oyoqlar 3) qisqichlar 4) yurish oyoqlari 5) qorin oyoqlari 6) dum suzgichlari A) a-3 b-5 d-1,2 e-6 f-4 B) a-3 b-4 d-1,2 e-5 f-6
 
-11. Elementlar valentligiga asoslanib modda formulasini aniqlang.
+**C) a-3 b-6 d-1,2 e-4 f-5** D) a-3 b-6 d-1 e-2,4 f-5 18. Lososga xos bo'lgan belgilar ko'rsatilgan javobni aniqlang. 1) kamar suyaklari umurtqa pog'onasiga tutashmagan; 2) tana harorati tashqi muhitga bog'liq emas; 3) orqa suzgichining orqasida yana bitta suzgichi bor; 4) o'q skeleti va bosh qutisi qisman suyakga aylangan; 5) ko'payishi tashqi urug'lanish orqali amalga oshadi; 6) boshining oldingi tomoni uzun tumshuqni hosil qiladi A) 2, 6 B) 3, 6 **C) 1, 5** D) 2, 4 19. Baliqlarga xos bo'lgan xususiyatlar to'g'ri (a) va noto'g'ri (b) ko'rsatilgan javobni aniqlang. 1) baliqlarning ko'zi qovoqlar bilan o'ralgan bo'lib, yaqin masofadan yaxshi ko'radi; 2) baliqlarning mo'ylovlari tuyg'u va hid bilish vazifasini bajaradi; 3) dengiz tulkisi, manta va kit akulasi bir sinfga mansub; 4) qora baliq, tikan baliq va gulmoyi chuchuk suv havzalarida uchraydi A) a -- 1, 2; b -- 3, 4 B) a -- 2, 3; b -- 1, 4 C) a -- 1, 4; b -- 2, 3 **D) a -- 3, 4; b -- 1, 2**
 
+20. Suvarakning lichinkasi voyaga yetgan davridan qanday farq qiladi? 1) boshi va oyoqlari rivojlanmagan; 2) juda kichik; 3) qanotlari rivojlanmagan; 4) oziq turi farq qiladi A) 1,4 **B) 2,3** C) 1,3 D) 2,4
 
-___IMAGE_2___
+21. Hasharotlarning erkaklik (1) va urg'ochilik (2) jinsiy a'zolarini ko'rsating. a) bitta urug'don; b) bitta tuxumdon; c) bir juft urug'don; d) bir juft tuxumdon; e) ko'plab urug'don A) 1-e; 2-b B) 1-a; 2-b **C) 1-c; 2-d** D) 1-e; 2-d 22. Ko'l baqasining (a) va tuxumdan chiqqan itbaliqning (b) ozuqasi to'g'ri berilgan qatorni toping **A) a-qo'ng'iz, pashsha, chivin, o'rgimchak; b-tuxumdan qolgan oziq** B) a-qo'ng'iz , chigirtka, pashsha; b-suvo'tlari, bir hujayrali hayvonlar C) a-qo'ng'iz, o'rgimchak, qandala ; b-suvo'tlar sirtiga yopishgan mikroorganizmlar D) a-qo'ng'iz, chigirtka, qandala ; b-oziqlanmaydi
 
+23. Bosh miyaning ko'l baqasida kuchsiz rivojlangan (a) va agamada kuchli rivojlangan (b) qismi? **A) a-miyacha, b-miyacha** B) a-oldingi miya, b-miyacha C) a-miyacha, b-oldingi miya D) a-o'rta miya, b- bosh miya yarimsharlari
 
-A) MnO~2~ B) Mn~2~O~3~ C) Mn~2~O~7~ D) Mn~3~O~4~
+24. Terisi nafas olishda ishtirok etmaydigan turkumni belgilang **A) tangachalilar** B) kam tuklilar C) dumlilar D) dumsizlar
 
-12. III valentli element oksidining molyar massasi 76 g/mol bolsa, nomolum elementni aniqlang.
+25. Qorin qismi bo'g'imlarga bo'lingan (1) va bo'linmagan (2) bog'imoyoqlilar.
 
-A)P B)N C)Fe D)Cr
+a. zorka b. maxaon c. kana d. chayon e. butli o'rgimchak f. biy g.qoraqurt h. uy pashshasi
 
-13. XO ning molyar massasi 28g/mol bo\`lsa , X elementni aniqlang.
+A) bog'imoyoqlilarning barchasida qorin bo'limi bog'imlarga bo'lingan
 
-A)Be B)C C)Mg D)N
+B)1-a,b,d,e,f,g,h 2- c
 
-14. Suv 272 gradusda qanday agregat holatda bo\`ladi.
+C)1-d,e,f,g,h 2 -a,b,c
 
-A)gaz B)qattiq C)suyuq D)plazma
+**D) 1-a,b,d,h 2-c,e,f,g**
 
-15. 0.1 mol H~2~SO~4~ nechi gr keladi
+26. Temirchaklarning qanotlari qanday taxlanadi?
 
-A)19.6 B)23.4 C)49 D)9.8
+A) qanotlari tanasining ikki yoniga yoyilib turadi
 
-16. Quyidagi ma'lumotlar asosida XY birikmaning molyar massasini (g/mol) aniqlang.
+**B) orqa qanotlari oldingi qanotlari ostida taxlanib turadi**
 
--- X~2~Y ning molyar massasi 160 g/mol.
+C) qanotlari tanasi ustida tik bo'lib taxlanadi
 
--- X~2~Y~3~ ning molyar massasi 224 g/mol.
+D) oldingi qanotlari ostki qanotlari ostida taxlanib turadi
 
-A) 80 B) 96 C) 128 D)56
+27. To'shak qandalasi(I) va xasva qandalasining(II) qanoti tuzilishini belgilang
 
-17. X~3~(PO~4~)~2~ ning molyar massasi 454 g/mol bo'lsa, ''X'' nomalum elementni toping.
+A)I- 1-juft qanoti asosi qalin uchki qismi yupqa va shaffof; II - 1 juft qanoti uchki qismi qalin , asosi yupqa va shaffof
 
-A) Mg B) Sr C) Ba D) Ca
+B) I- 1 juft qanoti uchki qismi qalin , asosi yupqa va shaffof II- 1-juft qanoti asosi qalin uchki qismi yupqa va shaffof
 
-18. Moddaning qaynash temperaturasi 100^0^C bo'lsa, uning 453^0^K dagi agregat holatini toping (*P=1 atm*.)
+**C) I- qanotlari bo'lmaydi II- 1-juft qanoti asosi qalin uchki qismi yupqa va shaffof**
 
-A) suyuq B) gaz
+D) I- qanotlari bo'lmaydi II- 1 juft qanoti uchki qismi qalin , asosi yupqa va shaffof 28. Amudaryo etaklari va uning o'rta oqimlarida uchraydigan baliqni ko'rsating. **A) qilquyruq** B) qora baliq C) bakra D) forel
 
-C) qattiq D) plazma
+29. Qisqichbaqa(1) va kollorado qong'izining(2) ozig'i qayerda hazm bo'ladi a. ichak b. jigar
 
-19. Qaysi elementlar allotropik shakllarga ega emas?
+A)1-a; 2-b **B)1-b; 2-a**
 
-A) B, O, N B) O, C, P C) S, P, O D) F, Cl, Br
+C)1-a,b 2-a D)1-b; 2-b
 
-20. Quyidagi jarayonlarning qaysilari kimyoviy jarayon?\
-1) metanning yonishi
-
-2) aluminiy simining cho\`zilishi
-
-3) muzning erib suyuq holga o\`tishi
-
-4) temirning zanglashi
-
-5) suvning bug\`lanishi\
-A) 1, 2 B) 3, 4 C) 3, 5 D) 1, 4
-
-21. Quyidagilardan qaysilari fizikaviy jarayon?
-
-1) etilenning polimerlanishi;
-
-2) yodning sublimatlanishi;
-
-3) pentanning izomerlanishi;
-
-4) tropinning depozitsiyalanishi.
-
-A) 1, 4 B) 2, 3 C) 2, 4 D) 1, 3
-
-22. Uglerodning absolyut massasini toping (g)
-
-(1 u.b = 1,66\*10^-24^ g )
-
-A) 19,92\*10^-23^ B) 19,92\*10^-24^
-
-C) 18,26\*10^-23^ D) 18,26\*10^-24^
-
-23. Olmos qaysi elementning allotropik shakli hisoblanadi?
-
-A) kislorod B) fosfor
-
-C) uglerod D) oltingugurt
-
-24. 0,2 mol miqdorining massasi 8,8 gr bo'lgan moddaning molyar massasini toping
-
-A) 8,6 gr/mol B) 1,76 gr/mol
-
-C) 44 gr/mol D) 66 gr/mol
-
-25. X~2~O~3~ ning molyar massasi 110 g/mol bo'lsa, ''X'' nomalum elementni toping.
-
-A) As B) H C) P D) Cr
-
-26. Quyidagilardan qaysi oddiy modda
-
-A)O~2~ B)PH~3~ C)HCl D)NH~3~
-
-27. 8 gr geliyning mo\`lini hisoblang
-
-A)1.5 B)2 C)3 D)5
-
-28. Rombik oddiy moddamiz qaysi elementni allotropic shakli hisoblanadi.
-
-A) P B)C C)K D)S
-
-29. Kimyoviy elementga tegishli bo'lgan xossalarni toping.
-
-1) zichlik 2) rang 3) izotoplar
-
-4) qaynash va suyuqlanish temperaturasi
-
-5) elektron qobiq 6) yadro zaryadi
-
-A) 2,3,6 B) 1,2,4
-
-C) 1,5,6 D) 3,5,6
-
-30. Quyidagilardan qaysi biri oddiy moddaga tegishli emas?
-
-A) yadro zaryadi B) hid
-
-C) zichlik D) ta'm
+30. Suvarakning lichinkasi voyaga yetgan davridan qanday farq qiladi? 1) boshi va oyoqlari rivojlanmagan; 2) juda kichik; 3) qanotlari rivojlanmagan; 4) oziq turi farq qiladi A) 1,4 **B) 2,3** C) 1,3 D) 2,4

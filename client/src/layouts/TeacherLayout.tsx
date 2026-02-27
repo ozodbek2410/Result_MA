@@ -28,7 +28,6 @@ const GroupDetailPage = lazy(() => import('../pages/teacher/GroupDetailPage'));
 const TestsPage = lazy(() => import('../pages/teacher/TestsPage'));
 const CreateTestPage = lazy(() => import('../pages/teacher/CreateTestPage'));
 const BlockTestsPage = lazy(() => import('../pages/teacher/BlockTestsPage'));
-const ImportBlockTestPage = lazy(() => import('../pages/teacher/ImportBlockTestPage'));
 const UnifiedTestImportPage = lazy(() => import('../pages/teacher/Tests/TestImportPage'));
 const ConfigureBlockTestPage = lazy(() => import('../pages/teacher/ConfigureBlockTestPage'));
 const ConfigureTestPage = lazy(() => import('../pages/teacher/ConfigureTestPage'));

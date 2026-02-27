@@ -1,0 +1,82 @@
+1. 55453016+66663017 Berilgan ifodaning
+
+oxirgiraqamini toping.
+A)2 **B)3** C)1 D)0
+2. $1 \cdot 2 \cdot 3 \cdot \ldots \cdot 50 - 2 \cdot 4 \cdot 6 \cdot \ldots \cdot 50$ ning oxirgi raqamini
+
+toping.
+A)8 B)5 C)9 **D)0**
+3. $1!\  + \ 2!\  + \ 3!\  + \ \ldots\  + \ 999!\  + \ 1000!$ sonining
+
+oxirgi raqamini toping va 2 ga ko'paytiring natija
+
+nimaga teng.
+A)1 B)4 **C)6** D)3
+
+4. NBS(576) ni toping.
+
+A)42 B)48 **C)21** D)63
+
+5. 6 ga karrali uch xonali sonlar nechta.
+
+A)166 B)400 C)700 **D)150**
+
+6. Hisoblang.
+
+$83,22 - 3,201 + 9,006 - 18,667$
+
+A) 59,144 B) 72,568
+
+C) 63,47 **D) 70,358**
+
+7. Oddiy kasr ko'rnishida yozing; 0,008
+
+A) $\frac{8}{10}$ B) $\frac{8}{100}$ **C)** $\frac{\mathbf{8}}{\mathbf{1000}}$ D) $\frac{8}{10000}$
+
+8. 0,00001 sonini o'qing.
+
+A) 0 butun o'ndan 1
+
+B) 0 butun yuzdan 1
+
+**C) 0 butun yuzmingdan 1**
+
+D) 0 butun milliondan 1
+
+9. a=0,45(23), b=0,4(523) va c=0,(4523) o\`sish tartibida
+
+yozing.
+
+A) a\<b\<c **B) a\<c\<b**
+
+C) b\<c\<a D) c\<b\<a
+
+10.$\frac{7}{33}$cheksiz o\`nli davriy kasr ko\`rinishini toping
+
+**A) 0,(21) B) 0,(45)**
+
+C) 0,(66) D) 0,1(21)
+
+11. Hisoblang;
+
+21,233...+12,(9999)$-$15,(9)
+
+**A) 18,2(3)** B) 19 C) 18,(3) D) 19,2(3)
+
+12. 0,1(3) oddiy kasr ko\`rinishida yozing.
+
+A) $\frac{2}{17}$**B)** $\frac{\mathbf{2}}{\mathbf{15}}$C) $\frac{2}{3}$D) $\frac{5}{6}$
+
+13. 3, 4, 5 va 6 sonlariga qoldiqsiz bo'linadigan eng katta 3 xonali sonni toping.
+
+A)980 B)562 C)256 **D)960**
+
+14. **Hisoblang**.$\ (5 \bullet 8 - 4!):16 + 4!$
+
+A)50 B)29 **C)25** D)32
+
+15. $EKUK(a;b) \bullet EKUB(a;b) = 576$ bo'lsa $a \bullet b$ ni
+
+toping.
+
+A)234 **B)576** C)24 D)76

@@ -213,154 +213,97 @@ export function convertTiptapJsonToText(json: any): string {
 
 
 /**
- * Convert chemistry text with inline LaTeX (CH_4, 10^{23}, \cdot) to TipTap JSON
- * Kimyo uchun maxsus - oddiy LaTeX ni formula node ga aylantiradi
+ * Convert chemistry text with inline LaTeX (CH_4, CrO_4^{2-}, 10^{23}, \cdot) to TipTap JSON
+ * Handles BOTH \(...\) delimited formulas AND bare inline chemistry formulas
  */
 export function convertChemistryToTiptapJson(text: string): any {
   if (!text) {
-    return {
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [] }]
-    };
+    return { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
   }
 
-  // Agar \(...\) yoki \[...\] bor bo'lsa, oddiy convertLatexToTiptapJson ishlatamiz
-  if (text.includes('\\(') || text.includes('\\[')) {
-    return convertLatexToTiptapJson(text);
+  // Collect all formula regions (both \(...\) delimited and inline chemistry)
+  const regions: Array<{start: number; end: number; latex: string}> = [];
+
+  const isOverlapping = (s: number, e: number) =>
+    regions.some(r => (s >= r.start && s < r.end) || (e > r.start && e <= r.end));
+
+  let m: RegExpExecArray | null;
+
+  // 1. \(...\) and \[...\] delimited formulas
+  const latexDelimited = /\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/g;
+  while ((m = latexDelimited.exec(text)) !== null) {
+    const inner = m[0].slice(2, -2).trim();
+    if (inner) regions.push({ start: m.index, end: m.index + m[0].length, latex: inner });
   }
 
-  // Kimyo formulalarini topamiz: CH_4, H_2O, X_3(PO_4)_2, 10^{23}, \cdot
-  // Pattern 1: Murakkab formulalar (qavsli): X_3(PO_4)_2
-  // Pattern 2: Oddiy formulalar: CH_4, H_2O
-  // Pattern 3: Superscript: 10^{23}
-  // Pattern 4: LaTeX commands: \cdot
-  
-  // Birinchi navbatda murakkab formulalarni topamiz (butun formula bir node bo'lishi kerak)
-  // Masalan: X_3(PO_4)_2 → butun formula bir FormulaNode
-  // Fixed regex: [A-Z][A-Za-z0-9]* to match PO, SO4, etc. (capital letters in compound)
-  const complexFormulaPattern = /([A-Z][A-Za-z0-9]*_\d+\([A-Z][A-Za-z0-9]*_\d+\)_\d+)/g;
-  
-  // Agar murakkab formula bor bo'lsa, uni butunlay formula node qilamiz
-  let hasComplexFormula = false;
-  const complexMatches: Array<{ start: number; end: number; latex: string }> = [];
-  
-  let complexMatch;
-  while ((complexMatch = complexFormulaPattern.exec(text)) !== null) {
-    hasComplexFormula = true;
-    complexMatches.push({
-      start: complexMatch.index,
-      end: complexMatch.index + complexMatch[0].length,
-      latex: complexMatch[0]
-    });
+  // 2. Complex formulas: X_3(PO_4)_2
+  const complexPattern = /[A-Z][A-Za-z0-9]*_\d+\([A-Z][A-Za-z0-9]*_\d+\)_\d+/g;
+  while ((m = complexPattern.exec(text)) !== null) {
+    if (!isOverlapping(m.index, m.index + m[0].length))
+      regions.push({ start: m.index, end: m.index + m[0].length, latex: m[0] });
   }
-  
-  if (hasComplexFormula) {
-    // Murakkab formulalar bilan ishlash
-    const paragraphContent: any[] = [];
-    let currentIndex = 0;
-    
-    complexMatches.forEach((match) => {
-      // Matnni formula oldidan qo'shamiz
-      if (match.start > currentIndex) {
-        const beforeText = text.substring(currentIndex, match.start);
-        if (beforeText) {
-          paragraphContent.push({
-            type: 'text',
-            text: beforeText
-          });
-        }
-      }
-      
-      // Formula qo'shamiz
-      paragraphContent.push({
-        type: 'formula',
-        attrs: { latex: match.latex }
-      });
-      
-      currentIndex = match.end;
-    });
-    
-    // Qolgan matnni qo'shamiz
-    if (currentIndex < text.length) {
-      const remainingText = text.substring(currentIndex);
-      if (remainingText) {
-        paragraphContent.push({
-          type: 'text',
-          text: remainingText
-        });
-      }
-    }
-    
-    return {
-      type: 'doc',
-      content: [{
-        type: 'paragraph',
-        content: paragraphContent
-      }]
-    };
+
+  // 3. Simple formulas with optional charge: CH_4, CrO_4^{2-}, H_2SO_4
+  const simplePattern = /(?:[A-Z][A-Za-z0-9]*_\d+)+(?:\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+))?/g;
+  while ((m = simplePattern.exec(text)) !== null) {
+    if (!isOverlapping(m.index, m.index + m[0].length))
+      regions.push({ start: m.index, end: m.index + m[0].length, latex: m[0] });
   }
-  
-  // Oddiy formulalar uchun (CH_4, H_2SO_3, C_3H_8, etc.)
-  // Match full formula: one or more element_number pairs
-  // Example: CH_4 → C + H_4, H_2SO_3 → H_2 + SO_3, C_3H_8 → C_3 + H_8
-  // Pattern: ([A-Z][A-Za-z0-9]*_\d+)+ to match consecutive element_number pairs
-  const chemistryPattern = /((?:[A-Z][A-Za-z0-9]*_\d+)+)|(\d+)\^(\d+|{[^}]+})|\\cdot/g;
-  
+
+  // 4. Element + charge (no subscript): Cr^{2+}, Fe^{3+}, O^{2-}
+  const chargePattern = /[A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+)/g;
+  while ((m = chargePattern.exec(text)) !== null) {
+    if (!isOverlapping(m.index, m.index + m[0].length))
+      regions.push({ start: m.index, end: m.index + m[0].length, latex: m[0] });
+  }
+
+  // 5. Superscripts: 10^{23}, 6\cdot10^{23}
+  const superPattern = /\d+\^(?:\d+|\{[^}]+\})/g;
+  while ((m = superPattern.exec(text)) !== null) {
+    if (!isOverlapping(m.index, m.index + m[0].length))
+      regions.push({ start: m.index, end: m.index + m[0].length, latex: m[0] });
+  }
+
+  // 5.5. Isotope mass number: ^{14}N, ^{14}O, _{19}K^{39}
+  const isotopePattern = /(?:_(?:\{[^}]+\}|\d+))?\^(?:\{[^}]+\}|\d+)[A-Z][a-z]?/g;
+  while ((m = isotopePattern.exec(text)) !== null) {
+    if (!isOverlapping(m.index, m.index + m[0].length))
+      regions.push({ start: m.index, end: m.index + m[0].length, latex: m[0] });
+  }
+
+  // 6. LaTeX commands: \cdot, \times, \div
+  const latexCmdPattern = /\\(?:cdot|times|div)/g;
+  while ((m = latexCmdPattern.exec(text)) !== null) {
+    if (!isOverlapping(m.index, m.index + m[0].length))
+      regions.push({ start: m.index, end: m.index + m[0].length, latex: m[0] });
+  }
+
+  // Sort by position
+  regions.sort((a, b) => a.start - b.start);
+
+  if (regions.length === 0) {
+    return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] };
+  }
+
+  // Build TipTap content
   const paragraphContent: any[] = [];
-  let currentIndex = 0;
-  let match;
-  
-  while ((match = chemistryPattern.exec(text)) !== null) {
-    // Matnni formula oldidan qo'shamiz
-    if (match.index > currentIndex) {
-      const beforeText = text.substring(currentIndex, match.index);
-      if (beforeText) {
-        paragraphContent.push({
-          type: 'text',
-          text: beforeText
-        });
-      }
+  let lastEnd = 0;
+
+  regions.forEach(r => {
+    if (r.start > lastEnd) {
+      const before = text.substring(lastEnd, r.start);
+      if (before) paragraphContent.push({ type: 'text', text: before });
     }
-    
-    // Formula qo'shamiz
-    const fullMatch = match[0];
-    paragraphContent.push({
-      type: 'formula',
-      attrs: { latex: fullMatch }
-    });
-    
-    currentIndex = match.index + fullMatch.length;
+    paragraphContent.push({ type: 'formula', attrs: { latex: r.latex } });
+    lastEnd = r.end;
+  });
+
+  if (lastEnd < text.length) {
+    const remaining = text.substring(lastEnd);
+    if (remaining) paragraphContent.push({ type: 'text', text: remaining });
   }
-  
-  // Qolgan matnni qo'shamiz
-  if (currentIndex < text.length) {
-    const remainingText = text.substring(currentIndex);
-    if (remainingText) {
-      paragraphContent.push({
-        type: 'text',
-        text: remainingText
-      });
-    }
-  }
-  
-  // Agar hech qanday formula topilmasa, oddiy matn qaytaramiz
-  if (paragraphContent.length === 0) {
-    return {
-      type: 'doc',
-      content: [{
-        type: 'paragraph',
-        content: [{ type: 'text', text }]
-      }]
-    };
-  }
-  
-  return {
-    type: 'doc',
-    content: [{
-      type: 'paragraph',
-      content: paragraphContent
-    }]
-  };
+
+  return { type: 'doc', content: [{ type: 'paragraph', content: paragraphContent }] };
 }
 
 

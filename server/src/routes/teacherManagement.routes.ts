@@ -4,6 +4,8 @@ import User, { UserRole } from '../models/User';
 import Student from '../models/Student';
 import Group from '../models/Group';
 import StudentGroup from '../models/StudentGroup';
+import BlockTest from '../models/BlockTest';
+import StudentVariant from '../models/StudentVariant';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { createActivityLog } from './studentActivityLog.routes';
 
@@ -295,6 +297,20 @@ router.delete('/groups/:groupId/students/:studentId', authenticate, async (req: 
     }
 
     await StudentGroup.deleteOne({ studentId, groupId });
+
+    // O'quvchining eskirgan blok test variantlarini o'chirish
+    try {
+      const blockTests = await BlockTest.find({ groupId }).select('_id').lean();
+      if (blockTests.length > 0) {
+        const btIds = blockTests.map(bt => bt._id);
+        const del = await StudentVariant.deleteMany({ testId: { $in: btIds }, studentId });
+        if (del.deletedCount > 0) {
+          console.log(`🗑️ Deleted ${del.deletedCount} variants for student ${studentId} (removed from group)`);
+        }
+      }
+    } catch (e) {
+      console.error('Variant cleanup error:', e);
+    }
 
     // Создаем лог активности
     const groupWithSubject = await Group.findById(groupId).populate('subjectId', 'nameUzb');

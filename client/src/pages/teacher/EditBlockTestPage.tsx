@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ArrowLeft, Save, Trash2, Edit2, Plus, Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { convertLatexToTiptapJson, convertChemistryToTiptapJson, convertPhysicsToTiptapJson } from '@/lib/latexUtils';
 
 function getParserKeyFromSubject(subjectName: string): string {
   const lower = subjectName.toLowerCase();
@@ -222,7 +223,39 @@ export default function EditBlockTestPage() {
         });
 
         if (data.questions && data.questions.length > 0) {
-          updateRow(row.rowId, { parsedQuestions: data.questions, status: 'done' });
+          const isChemistry = parserKey === 'chemistry';
+          const isPhysics = parserKey === 'physics';
+
+          const converted = data.questions.map((q: any) => {
+            const hasFormulas = q.text?.includes('\\(') || q.text?.includes('\\[') ||
+              (isChemistry && (q.text?.includes('_') || q.text?.includes('^') || q.text?.includes('\\cdot'))) ||
+              (isPhysics && (q.text?.includes('_') || q.text?.includes('^') || q.text?.includes('\\times')));
+
+            let questionText = q.text;
+            if (hasFormulas) {
+              const json = isChemistry ? convertChemistryToTiptapJson(q.text)
+                : isPhysics ? convertPhysicsToTiptapJson(q.text)
+                : convertLatexToTiptapJson(q.text);
+              if (json) questionText = JSON.stringify(json);
+            }
+
+            const variants = (q.variants || []).map((v: any) => {
+              const vHas = v.text?.includes('\\(') || v.text?.includes('\\[') ||
+                (isChemistry && (v.text?.includes('_') || v.text?.includes('^') || v.text?.includes('\\cdot'))) ||
+                (isPhysics && (v.text?.includes('_') || v.text?.includes('^') || v.text?.includes('\\times')));
+              if (vHas) {
+                const json = isChemistry ? convertChemistryToTiptapJson(v.text)
+                  : isPhysics ? convertPhysicsToTiptapJson(v.text)
+                  : convertLatexToTiptapJson(v.text);
+                return { ...v, text: json ? JSON.stringify(json) : v.text };
+              }
+              return v;
+            });
+
+            return { ...q, text: questionText, variants };
+          });
+
+          updateRow(row.rowId, { parsedQuestions: converted, status: 'done' });
         } else {
           updateRow(row.rowId, { error: 'Faylda savollar topilmadi', status: 'error' });
         }
@@ -442,10 +475,9 @@ export default function EditBlockTestPage() {
                       disabled={uploading || row.status === 'done'}
                     >
                       <option value="">Umumiy</option>
-                      <option value="A">A guruh</option>
-                      <option value="B">B guruh</option>
-                      <option value="C">C guruh</option>
-                      <option value="D">D guruh</option>
+                      {['A', 'B', 'C', 'D', 'E', 'F'].map(l => (
+                        <option key={l} value={l}>{l} guruh</option>
+                      ))}
                     </select>
 
                     {/* Fayl */}
