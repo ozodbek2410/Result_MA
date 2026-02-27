@@ -974,21 +974,35 @@ export class PDFGeneratorService {
       }
     }
 
+    // Timing mark rows: first, last, every 5th
+    const timingMarkSize = 3; // mm
+    const timingMarkRows = new Set<number>([0, questionsPerColumn - 1]);
+    for (let i = 5; i < questionsPerColumn; i += 5) timingMarkRows.add(i);
+
     const sheetsHtml = students.map((student) => {
       const qrDataUrl = qrCodeMap.get(student.variantCode) || '';
-      // Build bubble grid columns
       let gridHtml = '';
       for (let col = 0; col < layout.columns; col++) {
         const start = col * questionsPerColumn + 1;
         const count = Math.min(questionsPerColumn, totalQuestions - col * questionsPerColumn);
         let colHtml = `<div class="grid-col">`;
+        // Header row with timing mark + letters
+        colHtml += `<div class="q-row q-header">`;
+        colHtml += `<div class="timing-mark-area"><div class="timing-mark"></div></div>`;
+        colHtml += `<div class="q-num"></div><div class="q-bubbles">`;
+        for (const letter of ['A','B','C','D']) {
+          colHtml += `<div class="bubble-label">${letter}</div>`;
+        }
+        colHtml += `</div></div>`;
         for (let i = 0; i < count; i++) {
           const qNum = start + i;
+          const showMark = col === 0 && timingMarkRows.has(i);
           colHtml += `<div class="q-row">`;
+          colHtml += `<div class="timing-mark-area">${showMark ? '<div class="timing-mark"></div>' : ''}</div>`;
           colHtml += `<div class="q-num">${qNum}.</div>`;
           colHtml += `<div class="q-bubbles">`;
-          for (const letter of ['A','B','C','D']) {
-            colHtml += `<div class="bubble">${letter}</div>`;
+          for (const _letter of ['A','B','C','D']) {
+            colHtml += `<div class="bubble"></div>`;
           }
           colHtml += `</div></div>`;
         }
@@ -999,10 +1013,10 @@ export class PDFGeneratorService {
       return `
       <div class="sheet">
         <!-- Corner Marks for OMR -->
-        <div class="corner-mark" style="top:1mm;left:1mm"></div>
-        <div class="corner-mark" style="top:1mm;right:1mm"></div>
-        <div class="corner-mark" style="bottom:1mm;left:1mm"></div>
-        <div class="corner-mark" style="bottom:1mm;right:1mm"></div>
+        <div class="corner-mark" style="top:2mm;left:2mm"></div>
+        <div class="corner-mark" style="top:2mm;right:2mm"></div>
+        <div class="corner-mark" style="bottom:2mm;left:2mm"></div>
+        <div class="corner-mark" style="bottom:2mm;right:2mm"></div>
 
         <!-- Academy Header -->
         <div class="academy-header">
@@ -1043,11 +1057,7 @@ export class PDFGeneratorService {
           ${gridHtml}
         </div>
 
-        <!-- Footer -->
-        <div class="sheet-footer">
-          <div>Imzo: ___________________</div>
-          <div>Sana: ____/____/________</div>
-        </div>
+        <!-- Footer removed -->
       </div>`;
     }).join('\n');
 
@@ -1068,7 +1078,7 @@ export class PDFGeneratorService {
 
   /* Corner marks */
   .corner-mark {
-    position: absolute; width: 10mm; height: 10mm;
+    position: absolute; width: 5mm; height: 5mm;
     background: #000; box-sizing: border-box;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
@@ -1135,18 +1145,24 @@ export class PDFGeneratorService {
   .bubble {
     width: ${layout.bubbleSize}mm; height: ${layout.bubbleSize}mm;
     border: ${layout.borderWidth}px solid #000; border-radius: 50%;
-    background: #fff; display: flex; align-items: center; justify-content: center;
-    font-size: ${layout.bubbleFontSize}pt; font-weight: bold;
-    box-sizing: border-box; color: #222;
+    background: #fff; box-sizing: border-box;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .bubble-label {
+    width: ${layout.bubbleSize}mm; text-align: center;
+    font-size: ${layout.bubbleFontSize}pt; font-weight: bold; color: #333;
+  }
+  .q-header { margin-bottom: ${layout.rowMargin + 0.5}mm; }
+  .timing-mark-area {
+    width: ${timingMarkSize + 1}mm; flex-shrink: 0;
+    display: flex; align-items: center;
+  }
+  .timing-mark {
+    width: ${timingMarkSize}mm; height: ${timingMarkSize}mm;
+    background: #000;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 
-  /* Footer */
-  .sheet-footer {
-    position: absolute; bottom: 14mm; left: 12mm; right: 12mm;
-    display: flex; justify-content: space-between;
-    font-size: 9pt; color: #555; border-top: 1px solid #ddd; padding-top: 2mm;
-  }
 </style>
 </head><body>${sheetsHtml}</body></html>`;
   }
@@ -1165,7 +1181,7 @@ export class PDFGeneratorService {
       return { columns: 3, bubbleSize: 7, bubbleGap: 2, rowMargin: 0.8, columnGap: 5, numberWidth: 8, fontSize: 8, bubbleFontSize: 7, borderWidth: 2 };
     }
     if (totalQuestions <= 100) {
-      return { columns: 4, bubbleSize: 6.5, bubbleGap: 1.5, rowMargin: 0.6, columnGap: 4, numberWidth: 7, fontSize: 7.5, bubbleFontSize: 6.5, borderWidth: 1.5 };
+      return { columns: 4, bubbleSize: 5.5, bubbleGap: 2.5, rowMargin: 1.0, columnGap: 4, numberWidth: 7, fontSize: 7.5, bubbleFontSize: 6.5, borderWidth: 1.5 };
     }
     return { columns: 5, bubbleSize: 5.5, bubbleGap: 1.2, rowMargin: 0.4, columnGap: 3, numberWidth: 6, fontSize: 7, bubbleFontSize: 6, borderWidth: 1.5 };
   }

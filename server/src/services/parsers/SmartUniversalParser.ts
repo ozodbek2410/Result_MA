@@ -372,22 +372,19 @@ export class SmartUniversalParser extends BaseParser {
       cleaned = cleaned.replace(/\x00C(\d+)\x00/g, (_, i) => chemBlocks[parseInt(i)]);
     }
 
-    // MATH/PHYSICS: Wrap bare expressions with ^{} or _{} in LaTeX blocks
-    if (this.detectedType === 'math' || this.detectedType === 'physics') {
-      // Protect existing \(...\) blocks
+    // PHYSICS/MATH: Wrap bare ^/_ expressions and merge adjacent LaTeX blocks
+    if (this.detectedType === 'physics' || this.detectedType === 'math') {
+      // Protect existing \(...\) blocks from modification
       const exprBlocks: string[] = [];
       cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (m) => { exprBlocks.push(m); return `\x00E${exprBlocks.length - 1}\x00`; });
-      // Wrap expressions with ^{} in LaTeX blocks: 10047^{6000006} → \(10047^{6000006}\)
-      // Matches: digits/letters/parens followed by ^{exp} with optional continuation
-      cleaned = cleaned.replace(/([\d(][\w+\-*\/^_{}(),.\s]*\^(?:\{[^}]+\}|\d)[\w+\-*\/^_{}(),.]*)/g, (match) => {
-        if (/^\d+$/.test(match)) return match; // plain number
-        return `\\(${match.trim()}\\)`;
-      });
-      cleaned = cleaned.replace(/\x00E(\d+)\x00/g, (_, i) => exprBlocks[parseInt(i)]);
-    }
 
-    // PHYSICS/MATH: Merge adjacent LaTeX blocks
-    if (this.detectedType === 'physics' || this.detectedType === 'math') {
+      // Wrap bare superscript/subscript: 120^9, 10^{23}, 2^{x+1}, n! etc.
+      // Match: digits/letters followed by ^ and digit or {braced content}, optionally with more terms
+      cleaned = cleaned.replace(/(\d[\d.]*)\^(\{[^}]+\}|\d+)/g, '\\($1^$2\\)');
+
+      // Restore protected blocks
+      cleaned = cleaned.replace(/\x00E(\d+)\x00/g, (_, i) => exprBlocks[parseInt(i)]);
+
       // number \operator \(expr\) → \(number \operator expr\)
       cleaned = cleaned.replace(/([\d,\.]+)\s*\\(cdot|times|div)\s*\\\((.*?)\\\)/g, '\\($1 \\$2 $3\\)');
       cleaned = cleaned.replace(/\\\((.*?)\\\)\s*\\(cdot|times|div)\s*([\d,\.]+)/g, '\\($1 \\$2 $3\\)');

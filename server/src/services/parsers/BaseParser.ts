@@ -556,6 +556,8 @@ export abstract class BaseParser {
     let inSimpleTable = false;
     let inGridTable = false;
 
+    let gridTableLines: string[] = [];
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
@@ -581,14 +583,33 @@ export abstract class BaseParser {
         // Inside simple table — skip content
       } else if (isGridBorder || (inGridTable && isGridContent)) {
         if (!inGridTable) inGridTable = true;
-        // Inside grid table — skip content
+        // Collect grid table lines for later analysis
+        gridTableLines.push(line);
       } else {
         if (inGridTable) {
-          // First non-grid line → end grid table
-          const marker = `___TABLE_${tableIndex}___`;
-          tableIndex++;
-          result.push('', marker, '');
+          // Grid table ended — check if it contains question/variant content
+          const tableContent = gridTableLines
+            .filter(l => /^\|/.test(l.trim()))
+            .map(l => l.trim().replace(/^\|\s*/, '').replace(/\s*\|$/, '').trim())
+            .filter(l => l);
+          const hasQuestionContent = tableContent.some(l =>
+            /[A-D]\s*\)/.test(l) || /^\*?\*?\d+[.)]/.test(l)
+          );
+
+          if (hasQuestionContent) {
+            // Table contains question text — extract content as plain text
+            console.log(`📋 [PARSER] Grid table contains question content, extracting text`);
+            for (const tl of tableContent) {
+              result.push(tl);
+            }
+          } else {
+            // Real data table — replace with marker
+            const marker = `___TABLE_${tableIndex}___`;
+            tableIndex++;
+            result.push('', marker, '');
+          }
           inGridTable = false;
+          gridTableLines = [];
         }
         result.push(line);
       }
@@ -931,7 +952,7 @@ export abstract class BaseParser {
     }
 
     // Remove bold markers
-    let cleanVariants = variantsText.replace(/\*\*/g, ' ').replace(/__([^_]+)__/g, '$1').replace(/\s+/g, ' ');
+    let cleanVariants = variantsText.replace(/\*\*/g, ' ').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').replace(/\s+/g, ' ');
 
     // Split by variant letters (uppercase only)
     const parts = cleanVariants.split(/(?=[A-D]\s*\))/);
@@ -1085,7 +1106,7 @@ export abstract class BaseParser {
         }
 
         // Remove bold markers first for easier parsing
-        let cleanLine = line.replace(/\*\*/g, ' ').replace(/__([^_]+)__/g, '$1').replace(/\s+/g, ' ');
+        let cleanLine = line.replace(/\*\*/g, ' ').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').replace(/\s+/g, ' ');
 
         // Split by variant letters (uppercase only)
         const parts = cleanLine.split(/(?=[A-D]\s*\))/);
@@ -1165,8 +1186,9 @@ export abstract class BaseParser {
 
     cleaned = cleaned.replace(/\*\*/g, '');
     cleaned = cleaned.replace(/(?<!\*)\*(?!\*)/g, ''); // standalone * (correct answer markers)
-    // Remove markdown bold underscores (__text__) but preserve fill-in-the-blank underscores (_____)
-    cleaned = cleaned.replace(/__([^_]+)__/g, '$1');
+    // Remove markdown bold underscores (__text__) but preserve ___MATH_N___ placeholders and fill-in-the-blank _____
+    // (?<!_) and (?!_) prevent matching when __ is part of ___ (3+ underscores)
+    cleaned = cleaned.replace(/(?<!_)__([^_]+)__(?!_)/g, '$1');
     // Escape bare < > outside LaTeX so TipTap doesn't treat them as HTML tags
     // Protect LaTeX blocks first, escape, then restore
     const latexParts: string[] = [];
