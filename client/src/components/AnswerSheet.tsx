@@ -64,12 +64,11 @@ function getGridLayout(totalQuestions: number) {
     };
   }
   if (totalQuestions <= 100) {
-    // 4 ustun — 90 savol = 23 qator, 100 savol = 25 qator
     return {
       columns: 4,
-      bubbleSize: 6.5,
-      bubbleGap: 1.5,
-      rowMargin: 0.6,
+      bubbleSize: 5.5,
+      bubbleGap: 2.5,
+      rowMargin: 1.0,
       columnGap: 4,
       numberWidth: 7,
       fontSize: 7.5,
@@ -117,6 +116,9 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
   const layout = getGridLayout(totalQuestions);
 
   const questionsPerColumn = Math.ceil(totalQuestions / layout.columns);
+  const timingMarkSize = 3; // mm
+  const timingMarkRows = new Set<number>([0, questionsPerColumn - 1]);
+  for (let i = 5; i < questionsPerColumn; i += 5) timingMarkRows.add(i);
 
   const getColumnQuestions = (columnIndex: number) => {
     const start = columnIndex * questionsPerColumn;
@@ -132,46 +134,94 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
     return `${months[month - 1]} ${year}`;
   };
 
-  const renderQuestionRow = (questionNumber: number) => {
+  const renderColumnHeader = () => (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      marginBottom: `${layout.rowMargin + 0.5}mm`,
+    }}>
+      <div style={{
+        width: `${timingMarkSize + 1}mm`,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+      }}>
+        <div style={{
+          width: `${timingMarkSize}mm`,
+          height: `${timingMarkSize}mm`,
+          background: '#000',
+          WebkitPrintColorAdjust: 'exact' as const,
+          printColorAdjust: 'exact' as const,
+        }} />
+      </div>
+      <div style={{ width: `${layout.numberWidth}mm` }} />
+      <div style={{
+        display: 'flex',
+        gap: `${layout.bubbleGap}mm`,
+        flex: 1,
+      }}>
+        {['A', 'B', 'C', 'D'].map((letter) => (
+          <div key={letter} style={{
+            width: `${layout.bubbleSize}mm`,
+            textAlign: 'center',
+            fontSize: `${layout.bubbleFontSize}pt`,
+            fontWeight: 'bold',
+            color: '#333',
+          }}>
+            {letter}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderQuestionRow = (questionNumber: number, colIndex: number, localRowIndex: number) => {
+    const showMark = colIndex === 0 && timingMarkRows.has(localRowIndex);
     return (
       <div style={{
         display: 'flex',
         alignItems: 'center',
         margin: `${layout.rowMargin}mm 0`,
-        padding: '0'
       }}>
+        <div style={{
+          width: `${timingMarkSize + 1}mm`,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+        }}>
+          {showMark && (
+            <div style={{
+              width: `${timingMarkSize}mm`,
+              height: `${timingMarkSize}mm`,
+              background: '#000',
+              WebkitPrintColorAdjust: 'exact' as const,
+              printColorAdjust: 'exact' as const,
+            }} />
+          )}
+        </div>
         <div style={{
           width: `${layout.numberWidth}mm`,
           fontWeight: 'bold',
           fontSize: `${layout.fontSize}pt`,
-          textAlign: 'left'
+          textAlign: 'left',
         }}>
           {questionNumber}.
         </div>
         <div style={{
           display: 'flex',
           gap: `${layout.bubbleGap}mm`,
-          flex: 1
+          flex: 1,
         }}>
           {['A', 'B', 'C', 'D'].map((letter) => (
             <div key={letter} style={{ display: 'inline-block' }}>
-              <div
-                style={{
-                  width: `${layout.bubbleSize}mm`,
-                  height: `${layout.bubbleSize}mm`,
-                  border: `${layout.borderWidth}px solid #000000`,
-                  borderRadius: '50%',
-                  backgroundColor: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: `${layout.bubbleFontSize}pt`,
-                  fontWeight: 'bold',
-                  boxSizing: 'border-box'
-                }}
-              >
-                {letter}
-              </div>
+              <div style={{
+                width: `${layout.bubbleSize}mm`,
+                height: `${layout.bubbleSize}mm`,
+                border: `${layout.borderWidth}px solid #000000`,
+                borderRadius: '50%',
+                backgroundColor: '#ffffff',
+                boxSizing: 'border-box',
+              }} />
             </div>
           ))}
         </div>
@@ -220,55 +270,21 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
           </div>
         </div>
 
-        {/* Corner Marks */}
-        <div style={{
-          position: 'absolute',
-          top: '1mm',
-          left: '1mm',
-          width: '12mm',
-          height: '12mm',
-          background: 'black',
-          border: '6mm solid black',
-          boxSizing: 'border-box',
-          WebkitPrintColorAdjust: 'exact',
-          printColorAdjust: 'exact'
-        }} />
-        <div style={{
-          position: 'absolute',
-          top: '1mm',
-          right: '1mm',
-          width: '12mm',
-          height: '12mm',
-          background: 'black',
-          border: '6mm solid black',
-          boxSizing: 'border-box',
-          WebkitPrintColorAdjust: 'exact',
-          printColorAdjust: 'exact'
-        }} />
-        <div style={{
-          position: 'absolute',
-          bottom: '1mm',
-          left: '1mm',
-          width: '12mm',
-          height: '12mm',
-          background: 'black',
-          border: '6mm solid black',
-          boxSizing: 'border-box',
-          WebkitPrintColorAdjust: 'exact',
-          printColorAdjust: 'exact'
-        }} />
-        <div style={{
-          position: 'absolute',
-          bottom: '1mm',
-          right: '1mm',
-          width: '12mm',
-          height: '12mm',
-          background: 'black',
-          border: '6mm solid black',
-          boxSizing: 'border-box',
-          WebkitPrintColorAdjust: 'exact',
-          printColorAdjust: 'exact'
-        }} />
+        {/* Corner Marks (5mm) */}
+        {(['top', 'bottom'] as const).map(v =>
+          (['left', 'right'] as const).map(h => (
+            <div key={`${v}-${h}`} style={{
+              position: 'absolute',
+              [v]: '2mm',
+              [h]: '2mm',
+              width: '5mm',
+              height: '5mm',
+              background: 'black',
+              WebkitPrintColorAdjust: 'exact' as const,
+              printColorAdjust: 'exact' as const,
+            }} />
+          ))
+        )}
 
       {/* Header */}
       <div style={{
@@ -361,11 +377,12 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
 
           return (
             <div key={`column-${colIndex}`} style={{ flex: 1 }}>
+              {renderColumnHeader()}
               {Array.from({ length: columnQuestionsCount }, (_, i) => {
                 const questionNumber = startQuestion + i;
                 return (
                   <div key={`q-${questionNumber}`}>
-                    {renderQuestionRow(questionNumber)}
+                    {renderQuestionRow(questionNumber, colIndex, i)}
                   </div>
                 );
               })}
