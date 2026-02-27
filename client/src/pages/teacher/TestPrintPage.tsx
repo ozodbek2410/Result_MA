@@ -106,9 +106,7 @@ export default function TestPrintPage() {
         ? `/block-tests/${id}/export-answer-sheets-pdf`
         : `/tests/${id}/export-answer-sheets-pdf`;
 
-      const studentParam = selectedStudents.length > 0
-        ? `?students=${selectedStudents.map(s => s._id).join(',')}`
-        : '';
+      const studentIdsArray = selectedStudents.map(s => s._id);
 
       const studentCount = Math.max(selectedStudents.length, 1);
       const estimatedMs = studentCount * 1500;
@@ -120,7 +118,7 @@ export default function TestPrintPage() {
         setExportProgress(Math.round(simulated));
       }, 300);
 
-      const response = await api.get(`${endpoint}${studentParam}`, {
+      const response = await api.post(endpoint, { students: studentIdsArray }, {
         responseType: 'blob',
       });
 

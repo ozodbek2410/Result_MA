@@ -991,10 +991,15 @@ router.get('/pdf-export-status/:jobId', authenticate, async (req: AuthRequest, r
 // ANSWER SHEETS PDF EXPORT
 // ============================================================================
 
-router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
+router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
   try {
     const testId = req.params.id;
-    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+    const rawStudents = req.body?.students || req.query.students || '';
+    const studentIds = Array.isArray(rawStudents)
+      ? rawStudents as string[]
+      : typeof rawStudents === 'string' && rawStudents.length > 0
+        ? rawStudents.split(',')
+        : [];
 
     const test = await Test.findById(testId).populate('subjectId', 'nameUzb').lean();
     if (!test) {
