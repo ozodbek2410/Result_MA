@@ -149,7 +149,7 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     const testData = {
       title: test.name || 'Test',
       className: test.groupId
-        ? `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`
+        ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`)
         : '',
       subjectName: (test.subjectId as any)?.nameUzb || '',
       questions: [],

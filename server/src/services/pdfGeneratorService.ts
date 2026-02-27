@@ -270,14 +270,15 @@ export class PDFGeneratorService {
               </div>
             </div>
             <div class="header">
-              <h1>${student.studentName}</h1>
+              <h1>${testData.title}</h1>
               <div class="info">
                 ${[
-                  `Variant: ${student.variantCode}`,
+                  testData.className ? `${testData.className}` : '',
                   testData.subjectName,
-                  testData.className
+                  `Variant: ${student.variantCode}`,
                 ].filter(Boolean).join(' &bull; ')}
               </div>
+              <div class="info" style="margin-top:2px;font-weight:bold;">${student.studentName}</div>
             </div>
             
             <div class="questions">
@@ -286,8 +287,8 @@ export class PDFGeneratorService {
                 const cleanOptions = q.options.map(o => stripHtml(o));
                 const totalLength = cleanOptions.reduce((sum, opt) => sum + opt.length, 0);
                 const maxSingle = Math.max(...cleanOptions.map(o => o.length), 0);
-                // inline: sig'sa 1 qatorda, sig'masa 2x2 grid
-                const optionsClass = totalLength < 120 && maxSingle < 50 ? 'options inline' : 'options grid';
+                // inline: qisqa bo'lsa 1 qatorda, aks holda vertikal
+                const optionsClass = totalLength < 120 && maxSingle < 50 ? 'options inline' : 'options';
                 
                 return `
                 <div class="question">
