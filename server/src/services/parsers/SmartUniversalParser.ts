@@ -247,6 +247,8 @@ export class SmartUniversalParser extends BaseParser {
     // 4. Convert dollars to \(...\) (safe — no match if absent)
     cleaned = cleaned.replace(/\$\$(.*?)\$\$/gs, '\\($1\\)');
     cleaned = cleaned.replace(/\$(.*?)\$/gs, '\\($1\\)');
+    // 4.5. Fix \bullet → \cdot in math context (multiplication, not bullet point)
+    cleaned = cleaned.replace(/\\bullet/g, '\\cdot');
 
     // 5. Extract variant letters from inside formulas (safe — no match if absent)
     // Added ( to lookback to handle variant at start of math block: \(A){Cl}^{-1}...
@@ -381,6 +383,17 @@ export class SmartUniversalParser extends BaseParser {
       // Wrap bare superscript/subscript: 120^9, 10^{23}, 2^{x+1}, n! etc.
       // Match: digits/letters followed by ^ and digit or {braced content}, optionally with more terms
       cleaned = cleaned.replace(/(\d[\d.]*)\^(\{[^}]+\}|\d+)/g, '\\($1^$2\\)');
+
+      // Wrap algebraic equations with exponents: x^2+6x+4=0, (x^2+x+1)(x^2+x+2)=12
+      cleaned = cleaned.replace(
+        /(\(?[a-zA-Z]\^(?:\{[^}]+\}|\d+)[a-zA-Z\d+\-*^{}() ]*=[+\-]?\d+\)?)/g,
+        (match) => {
+          // Skip if contains multi-letter words (non-math text)
+          const stripped = match.replace(/\^\{[^}]+\}/g, '');
+          if (/[a-zA-Z]{2,}/.test(stripped)) return match;
+          return `\\(${match}\\)`;
+        }
+      );
 
       // Restore protected blocks
       cleaned = cleaned.replace(/\x00E(\d+)\x00/g, (_, i) => exprBlocks[parseInt(i)]);
