@@ -142,7 +142,9 @@ function MathText({ text, className = '' }: MathTextProps) {
   // Fast path: no math markers — render plain text
   if (!text) return null;
   if (!hasMathMarkers(text)) {
-    return <span className={className}>{text}</span>;
+    // Strip simple HTML tags (<p>, <br>, <div>) — no span (fast path has no math)
+    const clean = text.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '').trim();
+    return <span className={className}>{clean}</span>;
   }
 
   // useMemo: only re-render when text changes (replaces useEffect + ref approach)

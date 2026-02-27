@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import {
   Plus, X, Upload, CheckCircle, AlertCircle, Loader2,
-  Trash2, ImagePlus, Shuffle, Pin,
+  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
@@ -161,6 +161,7 @@ export function BlockTestImportForm({
               variants: (q.variants || []).map(v => ({ ...v })),
               correctAnswer: q.correctAnswer || '',
               points: q.points || 1,
+              pinned: q.pinned || false,
               image: undefined,
               imageUrl: q.imageUrl,
               imageWidth: q.imageWidth,
@@ -196,6 +197,17 @@ export function BlockTestImportForm({
       const f = prev.filter(t => t.id !== id);
       if (activeId === id) setActiveId(f[0].id);
       return f;
+    });
+  };
+
+  const moveTab = (id: string, dir: -1 | 1) => {
+    setTabs(prev => {
+      const i = prev.findIndex(t => t.id === id);
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
     });
   };
 
@@ -274,6 +286,14 @@ export function BlockTestImportForm({
           blockTestId: savedBlockTestId || undefined,
         });
         if (res.data?.blockTest?._id) savedBlockTestId = res.data.blockTest._id;
+      }
+      // Save subject order
+      if (savedBlockTestId && done.length > 1) {
+        try {
+          await api.put(`/block-tests/${savedBlockTestId}/reorder-subjects`, {
+            order: done.map(t => ({ subjectId: t.subjectId, groupLetter: t.groupLetter || null })),
+          });
+        } catch { /* optional */ }
       }
       if (shuffleAfterImport && savedBlockTestId) {
         try {
@@ -416,26 +436,40 @@ export function BlockTestImportForm({
 
       {/* Fan tablari */}
       <div className="flex items-center gap-2 overflow-x-auto">
-        {tabs.map(tab => {
+        {tabs.map((tab, tabIdx) => {
           const subName = subjects.find(s => s._id === tab.subjectId)?.nameUzb;
           const isAct = tab.id === activeId;
           return (
-            <button key={tab.id} onClick={() => setActiveId(tab.id)}
-              className={`relative flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${
-                isAct ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-              }`}>
-              {tab.status === 'done' && <span className="w-2 h-2 rounded-full bg-green-500" />}
-              {tab.status === 'loading' && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
-              {tab.status === 'error' && <span className="w-2 h-2 rounded-full bg-red-500" />}
-              <span>{subName || 'Yangi fan'}</span>
-              {tab.groupLetter && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">{tab.groupLetter}</span>}
-              {tab.status === 'done' && <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">{tab.questions.length}</span>}
+            <div key={tab.id} className="flex items-center gap-0.5 flex-shrink-0">
               {tabs.length > 1 && (
-                <span onClick={e => { e.stopPropagation(); removeTab(tab.id); }} className="ml-1 text-gray-400 hover:text-red-500">
-                  <X className="w-3.5 h-3.5" />
-                </span>
+                <button onClick={() => moveTab(tab.id, -1)} disabled={tabIdx === 0 || busy}
+                  className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default" title="Chapga">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
               )}
-            </button>
+              <button onClick={() => setActiveId(tab.id)}
+                className={`relative flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium whitespace-nowrap transition-all ${
+                  isAct ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                }`}>
+                {tab.status === 'done' && <span className="w-2 h-2 rounded-full bg-green-500" />}
+                {tab.status === 'loading' && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+                {tab.status === 'error' && <span className="w-2 h-2 rounded-full bg-red-500" />}
+                <span>{subName || 'Yangi fan'}</span>
+                {tab.groupLetter && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">{tab.groupLetter}</span>}
+                {tab.status === 'done' && <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">{tab.questions.length}</span>}
+                {tabs.length > 1 && (
+                  <span onClick={e => { e.stopPropagation(); removeTab(tab.id); }} className="ml-1 text-gray-400 hover:text-red-500">
+                    <X className="w-3.5 h-3.5" />
+                  </span>
+                )}
+              </button>
+              {tabs.length > 1 && (
+                <button onClick={() => moveTab(tab.id, 1)} disabled={tabIdx === tabs.length - 1 || busy}
+                  className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default" title="O'ngga">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           );
         })}
         <button onClick={addTab} disabled={busy}

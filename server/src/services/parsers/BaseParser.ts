@@ -612,6 +612,9 @@ export abstract class BaseParser {
   protected cleanPandocMarkdown(markdown: string): string {
     let cleaned = markdown;
 
+    // Strip HTML tags (<p>, <br>, <div>) from pandoc output
+    cleaned = cleaned.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '');
+
     // Pandoc {.mark} span — Word highlight → bold (correct answer detection uchun)
     // [C)]{.mark} → **C)** yoki [C) 33]{.mark} → **C) 33**
     cleaned = cleaned.replace(/\[([^\]]+)\]\{\.mark\}/g, '**$1**');
@@ -928,7 +931,7 @@ export abstract class BaseParser {
     }
 
     // Remove bold markers
-    let cleanVariants = variantsText.replace(/\*\*/g, ' ').replace(/____/g, ' ').replace(/\s+/g, ' ');
+    let cleanVariants = variantsText.replace(/\*\*/g, ' ').replace(/__([^_]+)__/g, '$1').replace(/\s+/g, ' ');
 
     // Split by variant letters (uppercase only)
     const parts = cleanVariants.split(/(?=[A-D]\s*\))/);
@@ -1082,7 +1085,7 @@ export abstract class BaseParser {
         }
 
         // Remove bold markers first for easier parsing
-        let cleanLine = line.replace(/\*\*/g, ' ').replace(/____/g, ' ').replace(/\s+/g, ' ');
+        let cleanLine = line.replace(/\*\*/g, ' ').replace(/__([^_]+)__/g, '$1').replace(/\s+/g, ' ');
 
         // Split by variant letters (uppercase only)
         const parts = cleanLine.split(/(?=[A-D]\s*\))/);
@@ -1162,7 +1165,8 @@ export abstract class BaseParser {
 
     cleaned = cleaned.replace(/\*\*/g, '');
     cleaned = cleaned.replace(/(?<!\*)\*(?!\*)/g, ''); // standalone * (correct answer markers)
-    cleaned = cleaned.replace(/____/g, '');
+    // Remove markdown bold underscores (__text__) but preserve fill-in-the-blank underscores (_____)
+    cleaned = cleaned.replace(/__([^_]+)__/g, '$1');
     // Escape bare < > outside LaTeX so TipTap doesn't treat them as HTML tags
     // Protect LaTeX blocks first, escape, then restore
     const latexParts: string[] = [];
