@@ -1593,10 +1593,16 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
  * Export Answer Sheets (bubble sheets) as PDF for Block Test
  * GET /block-tests/:id/export-answer-sheets-pdf
  */
-router.get('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
+router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
   try {
     const blockTestId = req.params.id;
-    const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
+    // Support both POST body and query string
+    const rawStudents = req.body?.students || req.query.students || '';
+    const studentIds = Array.isArray(rawStudents)
+      ? rawStudents as string[]
+      : typeof rawStudents === 'string' && rawStudents.length > 0
+        ? rawStudents.split(',')
+        : [];
 
     const blockTest = await BlockTest.findById(blockTestId)
       .populate('subjectTests.subjectId', 'nameUzb')
