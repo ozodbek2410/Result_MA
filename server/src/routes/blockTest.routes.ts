@@ -891,30 +891,26 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
     const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
     
     console.log('📄 Exporting block test to PDF with formulas:', blockTestId, 'Students:', studentIds.length);
-    
-    // Загружаем блок-тест
+
     const blockTest = await BlockTest.findById(blockTestId)
       .populate('subjectTests.subjectId', 'nameUzb')
       .lean();
-    
+
     if (!blockTest) {
       return res.status(404).json({ message: 'Block test topilmadi' });
     }
-    
-    // Проверка доступа
+
     if (req.user?.branchId && blockTest.branchId?.toString() !== req.user.branchId.toString()) {
-      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+      return res.status(403).json({ message: "Ruxsat yo'q" });
     }
-    
-    // Загружаем все блок-тесты с таким же классом и датой
+
     const allTests = await BlockTest.find({
       branchId: blockTest.branchId,
       classNumber: blockTest.classNumber,
       periodMonth: blockTest.periodMonth,
       periodYear: blockTest.periodYear
     }).populate('subjectTests.subjectId', 'nameUzb').lean();
-    
-    // Объединяем все предметы
+
     const allSubjects: any[] = [];
     allTests.forEach((test: any) => {
       test.subjectTests?.forEach((st: any) => {
@@ -923,22 +919,16 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
         }
       });
     });
-    
-    // Загружаем студентов
-    const allStudents = await Student.find({ 
-      classNumber: blockTest.classNumber,
-      branchId: blockTest.branchId
-    }).populate('directionId', 'nameUzb').lean();
-    
+
+    // Load students directly by ID
     const selectedStudents = studentIds.length > 0
-      ? allStudents.filter((s: any) => studentIds.includes(s._id.toString()))
+      ? await Student.find({ _id: { $in: studentIds } }).populate('directionId', 'nameUzb').lean()
       : [];
-    
+
     if (selectedStudents.length === 0) {
-      return res.status(400).json({ message: 'O\'quvchilar topilmadi' });
+      return res.status(400).json({ message: "O'quvchilar topilmadi" });
     }
-    
-    // Загружаем конфигурации
+
     const studentIdsArray = selectedStudents.map((s: any) => s._id.toString());
     const allConfigs = await StudentTestConfig.find({
       studentId: { $in: studentIdsArray }
@@ -1467,30 +1457,23 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
         }
       });
     });
-    
-    // Загружаем студентов
-    const allStudents = await Student.find({ 
-      classNumber: blockTest.classNumber,
-      branchId: blockTest.branchId
-    }).populate('directionId', 'nameUzb').lean();
-    
+
+    // Load students directly by ID
     const selectedStudents = studentIds.length > 0
-      ? allStudents.filter((s: any) => studentIds.includes(s._id.toString()))
+      ? await Student.find({ _id: { $in: studentIds } }).populate('directionId', 'nameUzb').lean()
       : [];
-    
+
     if (selectedStudents.length === 0) {
-      return res.status(400).json({ message: 'O\'quvchilar topilmadi' });
+      return res.status(400).json({ message: "O'quvchilar topilmadi" });
     }
-    
-    // Загружаем конфигурации
+
     const studentIdsArray = selectedStudents.map((s: any) => s._id.toString());
     const allConfigs = await StudentTestConfig.find({
       studentId: { $in: studentIdsArray }
     }).populate('subjects.subjectId', 'nameUzb').lean();
-    
+
     const configsMap = new Map(allConfigs.map((c: any) => [c.studentId.toString(), c]));
-    
-    // Загружаем варианты
+
     const allVariantsMap = new Map<string, any[]>();
     for (const test of allTests) {
       const variants = await StudentVariant.find({
