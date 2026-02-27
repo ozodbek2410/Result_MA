@@ -230,12 +230,8 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     }
 
     // DEBUG
-    const totalAll = await BlockTest.countDocuments({});
-    const dbName = BlockTest.db?.name;
-    const collName = BlockTest.collection?.collectionName;
-    const rawCount = await BlockTest.collection.countDocuments({});
-    const rawBranch = await BlockTest.collection.countDocuments({ branchId: new mongoose.Types.ObjectId(req.user?.branchId as string) });
-    console.log(`DEBUG blockTests: mongoose=${totalAll}, raw=${rawCount}, rawBranch=${rawBranch}, db=${dbName}, coll=${collName}, userBranch=${req.user?.branchId}`);
+    const allBts = await BlockTest.collection.find({}).project({branchId:1}).toArray();
+    console.log(`DEBUG all blockTests (${allBts.length}):`, JSON.stringify(allBts.map(b => ({id: b._id, bid: b.branchId}))));
 
     // Добавляем фильтр по классу если указан
     if (classNumber) {
