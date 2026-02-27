@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import BlockTest from '../models/BlockTest';
 import Student from '../models/Student';
 import StudentGroup from '../models/StudentGroup';
@@ -223,7 +224,10 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const groupId = req.query.groupId as string;
 
     // Базовый фильтр по филиалу
-    const filter: any = { branchId: req.user?.branchId };
+    const filter: any = {};
+    if (req.user?.branchId) {
+      filter.branchId = new mongoose.Types.ObjectId(req.user.branchId);
+    }
 
     // Добавляем фильтр по классу если указан
     if (classNumber) {
