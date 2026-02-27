@@ -6,6 +6,10 @@ class TelegramBotServiceClass {
   private bot: TelegramBot | null = null;
 
   init(): void {
+    if (process.env.TELEGRAM_ENABLED !== 'true') {
+      logger.info('Telegram bot disabled (TELEGRAM_ENABLED != true)', 'TELEGRAM');
+      return;
+    }
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
       logger.warn('TELEGRAM_BOT_TOKEN not set, bot disabled', 'TELEGRAM');
