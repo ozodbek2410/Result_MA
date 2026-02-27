@@ -229,10 +229,6 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       filter.branchId = new mongoose.Types.ObjectId(req.user.branchId);
     }
 
-    // DEBUG
-    const allBts = await BlockTest.collection.find({}).project({branchId:1}).toArray();
-    console.log(`DEBUG all blockTests (${allBts.length}):`, JSON.stringify(allBts.map(b => ({id: b._id, bid: b.branchId}))));
-
     // Добавляем фильтр по классу если указан
     if (classNumber) {
       filter.classNumber = parseInt(classNumber);
