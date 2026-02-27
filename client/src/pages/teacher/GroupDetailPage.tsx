@@ -166,11 +166,20 @@ export default function GroupDetailPage() {
     }
   };
 
-  const setStudentLetter = (studentId: string, subjectId: string, letter: string) => {
+  const setStudentLetter = async (studentId: string, subjectId: string, letter: string) => {
     setStudentLetters(prev => ({
       ...prev,
       [`${studentId}:${subjectId}`]: letter
     }));
+    // Auto-save immediately
+    try {
+      await api.put(`/groups/${id}/student-letters`, {
+        letters: [{ studentId, subjectId, groupLetter: letter }]
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Xatolik';
+      error(msg);
+    }
   };
 
   const fetchStudents = async () => {

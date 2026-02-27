@@ -36,7 +36,8 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const groupIds = filteredGroups.map(g => g._id);
     const studentCounts = await StudentGroup.aggregate([
       { $match: { groupId: { $in: groupIds } } },
-      { $group: { _id: '$groupId', count: { $sum: 1 } } }
+      { $group: { _id: { groupId: '$groupId', studentId: '$studentId' } } },
+      { $group: { _id: '$_id.groupId', count: { $sum: 1 } } }
     ]);
     
     const countMap = new Map(studentCounts.map(sc => [sc._id.toString(), sc.count]));
@@ -133,9 +134,16 @@ router.get('/:id/students', authenticate, async (req: AuthRequest, res) => {
     
     console.log('Found student-group relations:', studentGroups.length);
     
+    const seen = new Set<string>();
     const students = studentGroups
       .map(sg => sg.studentId)
-      .filter(student => student != null);
+      .filter((student: any) => {
+        if (!student) return false;
+        const sid = String(student._id);
+        if (seen.has(sid)) return false;
+        seen.add(sid);
+        return true;
+      });
     
     // Добавляем статистику по тестам для каждого студента
     const TestResult = (await import('../models/TestResult')).default;
@@ -443,7 +451,7 @@ router.put('/:id/student-letters', authenticate, async (req: AuthRequest, res) =
     const withLetter = valid.filter(l => l.groupLetter);
     const withoutLetter = valid.filter(l => !l.groupLetter);
 
-    // Harfli yozuvlarni upsert
+    // Harfli yozuvlarni upsert (fan bo'yicha alohida record)
     if (withLetter.length > 0) {
       await StudentGroup.bulkWrite(withLetter.map(({ studentId, subjectId, groupLetter }) => ({
         updateOne: {
