@@ -151,9 +151,10 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
             });
             
             let testName = 'Test';
+            let sheetTotalQuestions = 0;
             try {
               if (variantInfo.testType === 'BlockTest') {
-                const blockTest = await BlockTest.findById(variantInfo.testId).select('name date');
+                const blockTest = await BlockTest.findById(variantInfo.testId).select('name date subjectTests');
                 if (blockTest) {
                   const testDate = new Date(blockTest.date);
                   const formattedDate = testDate.toLocaleDateString('uz-UZ', {
@@ -162,6 +163,11 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
                     day: '2-digit'
                   });
                   testName = `Blok Test - ${formattedDate}`;
+                  if (blockTest.subjectTests) {
+                    sheetTotalQuestions = blockTest.subjectTests.reduce(
+                      (sum: number, st: any) => sum + (st.questions?.length || 0), 0
+                    );
+                  }
                 }
               } else {
                 const test = await Test.findById(variantInfo.testId).select('name');
@@ -172,11 +178,11 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
             } catch (err) {
               console.log('⚠️ Test nomini olishda xatolik');
             }
-            
-            const studentName = variantInfo.studentId?.fullName || 
+
+            const studentName = variantInfo.studentId?.fullName ||
                               `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
                               'Noma\'lum';
-            
+
             qrData = {
               variantCode: variantCode,
               testId: variantInfo.testId,
@@ -184,14 +190,16 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
               studentName: studentName,
               testName: testName,
               correctAnswers: correctAnswers,
-              totalQuestions: Object.keys(correctAnswers).length
+              totalQuestions: Object.keys(correctAnswers).length,
+              sheetTotalQuestions: sheetTotalQuestions || Object.keys(correctAnswers).length
             };
-            
+
             console.log('✅ Variant ma\'lumotlari olindi:', {
               variantCode,
               studentName: qrData.studentName,
               testName: qrData.testName,
-              totalQuestions: qrData.totalQuestions
+              totalQuestions: qrData.totalQuestions,
+              sheetTotalQuestions: qrData.sheetTotalQuestions
             });
           }
         } catch (apiError: any) {
@@ -206,14 +214,15 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
 
     // 2. HYBRID OMR bilan javoblarni aniqlash
     const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_hybrid.py');
-    const pythonCmd = process.env.PYTHON_PATH || 
+    const pythonCmd = process.env.PYTHON_PATH ||
                      (process.platform === 'win32' ? 'python' : 'python3');
-    
+
     let command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
-    
+
     let qrDataJson = '{}';
     if (qrFound && qrData && qrData.totalQuestions) {
-      qrDataJson = JSON.stringify({ totalQuestions: qrData.totalQuestions }).replace(/"/g, '\\"');
+      // Sheet total = all subjects in BlockTest (for grid layout)
+      qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
     }
     
     if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
@@ -249,13 +258,17 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
         throw new Error('Python script produced no output');
       }
 
-      result = JSON.parse(stdout);
+      // Extract JSON from stdout (skip any debug lines)
+      const trimmed = stdout.trim();
+      const jsonStart = trimmed.lastIndexOf('\n{');
+      const jsonStr = jsonStart >= 0 ? trimmed.substring(jsonStart + 1) : trimmed;
+      result = JSON.parse(jsonStr);
     } catch (execError: any) {
-      console.error('❌ FINAL Professional OMR error:', execError.message);
+      console.error('FINAL Professional OMR error:', execError.message);
       throw new Error(`FINAL Professional OMR failed: ${execError.message}`);
     }
-    
-    console.log('📊 FINAL Professional OMR natijasi:', JSON.stringify(result, null, 2));
+
+    console.log('FINAL Professional OMR natijasi:', JSON.stringify(result, null, 2));
     
     // QR-kod ma'lumotlarini qo'shish
     if (qrFound && qrData) {
@@ -366,9 +379,10 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
             });
             
             let testName = 'Test';
+            let sheetTotalQuestions = 0;
             try {
               if (variantInfo.testType === 'BlockTest') {
-                const blockTest = await BlockTest.findById(variantInfo.testId).select('name date');
+                const blockTest = await BlockTest.findById(variantInfo.testId).select('name date subjectTests');
                 if (blockTest) {
                   const testDate = new Date(blockTest.date);
                   const formattedDate = testDate.toLocaleDateString('uz-UZ', {
@@ -377,6 +391,11 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
                     day: '2-digit'
                   });
                   testName = `Blok Test - ${formattedDate}`;
+                  if (blockTest.subjectTests) {
+                    sheetTotalQuestions = blockTest.subjectTests.reduce(
+                      (sum: number, st: any) => sum + (st.questions?.length || 0), 0
+                    );
+                  }
                 }
               } else {
                 const test = await Test.findById(variantInfo.testId).select('name');
@@ -387,11 +406,11 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
             } catch (err) {
               console.log('⚠️ Test nomini olishda xatolik');
             }
-            
-            const studentName = variantInfo.studentId?.fullName || 
+
+            const studentName = variantInfo.studentId?.fullName ||
                               `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
                               'Noma\'lum';
-            
+
             qrData = {
               variantCode: variantCode,
               testId: variantInfo.testId,
@@ -399,14 +418,16 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
               studentName: studentName,
               testName: testName,
               correctAnswers: correctAnswers,
-              totalQuestions: Object.keys(correctAnswers).length
+              totalQuestions: Object.keys(correctAnswers).length,
+              sheetTotalQuestions: sheetTotalQuestions || Object.keys(correctAnswers).length
             };
-            
+
             console.log('✅ Variant ma\'lumotlari olindi:', {
               variantCode,
               studentName: qrData.studentName,
               testName: qrData.testName,
-              totalQuestions: qrData.totalQuestions
+              totalQuestions: qrData.totalQuestions,
+              sheetTotalQuestions: qrData.sheetTotalQuestions
             });
           }
         } catch (apiError: any) {
@@ -428,9 +449,9 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
     
     let qrDataJson = '{}';
     if (qrFound && qrData && qrData.totalQuestions) {
-      qrDataJson = JSON.stringify({ totalQuestions: qrData.totalQuestions }).replace(/"/g, '\\"');
+      qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
     }
-    
+
     if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
       const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
       command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
@@ -464,13 +485,17 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
         throw new Error('Python script produced no output');
       }
 
-      result = JSON.parse(stdout);
+      // Extract JSON from stdout (skip any debug lines)
+      const trimmed2 = stdout.trim();
+      const jsonStart2 = trimmed2.lastIndexOf('\n{');
+      const jsonStr2 = jsonStart2 >= 0 ? trimmed2.substring(jsonStart2 + 1) : trimmed2;
+      result = JSON.parse(jsonStr2);
     } catch (execError: any) {
-      console.error('❌ Professional OMR error:', execError.message);
+      console.error('Professional OMR error:', execError.message);
       throw new Error(`Professional OMR failed: ${execError.message}`);
     }
-    
-    console.log('📊 Professional OMR natijasi:', JSON.stringify(result, null, 2));
+
+    console.log('Professional OMR natijasi:', JSON.stringify(result, null, 2));
     
     // QR-kod ma'lumotlarini qo'shish
     if (qrFound && qrData) {
@@ -668,9 +693,10 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
               
               // Получаем название теста только для отображения
               let testName = 'Test';
+              let sheetTotalQuestions = 0;
               try {
                 if (variantInfo.testType === 'BlockTest') {
-                  const blockTest = await BlockTest.findById(variantInfo.testId).select('name date');
+                  const blockTest = await BlockTest.findById(variantInfo.testId).select('name date subjectTests');
                   if (blockTest) {
                     const testDate = new Date(blockTest.date);
                     const formattedDate = testDate.toLocaleDateString('uz-UZ', {
@@ -679,6 +705,11 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
                       day: '2-digit'
                     });
                     testName = `Blok Test - ${formattedDate}`;
+                    if (blockTest.subjectTests) {
+                      sheetTotalQuestions = blockTest.subjectTests.reduce(
+                        (sum: number, st: any) => sum + (st.questions?.length || 0), 0
+                      );
+                    }
                   }
                 } else {
                   const test = await Test.findById(variantInfo.testId).select('name');
@@ -689,11 +720,11 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
               } catch (err) {
                 console.log('⚠️ Test nomini olishda xatolik (davom etamiz)');
               }
-              
-              const studentName = variantInfo.studentId?.fullName || 
+
+              const studentName = variantInfo.studentId?.fullName ||
                                 `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
                                 'Noma\'lum';
-              
+
               qrData = {
                 variantCode: variantCode,
                 testId: variantInfo.testId,
@@ -702,7 +733,8 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
                 testName: testName,
                 correctAnswers: correctAnswers,
                 questionOrder: variantInfo.questionOrder,
-                totalQuestions: Object.keys(correctAnswers).length
+                totalQuestions: Object.keys(correctAnswers).length,
+                sheetTotalQuestions: sheetTotalQuestions || Object.keys(correctAnswers).length
               };
               
               console.log('✅ To\'liq ma\'lumotlar olindi:', {
@@ -771,9 +803,10 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     // Prepare QR data JSON (with totalQuestions)
     let qrDataJson = '{}';
     if (qrFound && qrData && qrData.totalQuestions) {
-      qrDataJson = JSON.stringify({ totalQuestions: qrData.totalQuestions }).replace(/"/g, '\\"');
+      // Sheet total = all subjects in BlockTest (for grid layout)
+      qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
     }
-    
+
     if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
       const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
       command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
@@ -827,39 +860,22 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
         throw new Error('Python script produced no output. Check if Python dependencies are installed.');
       }
 
-      // Parse Python natijasi
+      // Parse Python natijasi - stdout dan JSON ajratib olish
       try {
-        // Python debug loglarni o'tkazib yuborish, faqat JSON qismini olish
-        const lines = stdout.trim().split('\n');
-        
-        // JSON boshlanish va tugash indekslarini topish
-        let jsonStartIndex = -1;
-        let jsonEndIndex = -1;
-        
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (line === '{' && jsonStartIndex === -1) {
-            jsonStartIndex = i;
-          }
-          if (line === '}' && jsonStartIndex !== -1) {
-            jsonEndIndex = i;
-            break; // Birinchi to'liq JSON ni topgandan keyin to'xta
-          }
-        }
-        
-        if (jsonStartIndex === -1 || jsonEndIndex === -1) {
+        const trimmed = stdout.trim();
+        // Last line with JSON (Python prints debug to stderr, JSON to stdout)
+        const lastBrace = trimmed.lastIndexOf('}');
+        const firstBrace = trimmed.indexOf('{');
+        if (firstBrace === -1 || lastBrace === -1) {
           throw new Error('JSON not found in Python output');
         }
-        
-        // JSON qatorlarini birlashtirish
-        const jsonLines = lines.slice(jsonStartIndex, jsonEndIndex + 1);
-        const jsonString = jsonLines.join('\n');
-        
+        const jsonString = trimmed.substring(firstBrace, lastBrace + 1);
         result = JSON.parse(jsonString);
-      } catch (parseError: any) {
-        console.error('❌ Failed to parse Python output:', parseError.message);
+      } catch (parseError: unknown) {
+        const msg = parseError instanceof Error ? parseError.message : String(parseError);
+        console.error('❌ Failed to parse Python output:', msg);
         console.error('❌ stdout:', stdout);
-        throw new Error(`Invalid JSON from Python script: ${parseError.message}`);
+        throw new Error(`Invalid JSON from Python script: ${msg}`);
       }
     } catch (execError: any) {
       console.error('❌ Python execution error:', execError.message);
