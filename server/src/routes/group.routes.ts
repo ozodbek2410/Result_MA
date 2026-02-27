@@ -17,9 +17,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const filter: any = {};
     
     // Фильтрация по роли
-    if (req.user?.role === UserRole.TEACHER) {
-      filter.teacherId = req.user?.id;
-    } else if (req.user?.role !== UserRole.SUPER_ADMIN) {
+    if (req.user?.role !== UserRole.SUPER_ADMIN) {
       filter.branchId = req.user?.branchId;
     }
     
