@@ -14,6 +14,7 @@ import { PandocDocxService } from '../services/pandocDocxService';
 import { convertTiptapJsonToText } from '../utils/textUtils';
 import { convertVariantText } from '../utils/tiptapConverter';
 import wordExportQueue from '../services/queue/wordExportQueue';
+import pdfExportQueue from '../services/queue/pdfExportQueue';
 import { S3Service } from '../services/s3Service';
 
 const router = express.Router();
@@ -1067,6 +1068,96 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
   } catch (error: any) {
     console.error('❌ Error exporting PDF:', error);
     res.status(500).json({ message: 'PDF yaratishda xatolik', error: error.message });
+  }
+});
+
+/**
+ * Start PDF export job (async)
+ * POST /block-tests/:id/export-pdf-async
+ */
+router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { students, settings } = req.body;
+
+    if (process.env.REDIS_ENABLED !== 'true') {
+      return res.status(503).json({
+        message: 'Queue service mavjud emas, sync versiya ishlatiladi',
+        error: 'redis_disabled'
+      });
+    }
+
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({
+        message: "O'quvchilar tanlanmagan",
+        error: 'students array is required'
+      });
+    }
+
+    const blockTest = await BlockTest.findById(id).select('branchId classNumber').lean();
+    if (!blockTest) {
+      return res.status(404).json({ message: 'Block test topilmadi' });
+    }
+
+    if (req.user?.branchId && blockTest.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: "Ruxsat yo'q" });
+    }
+
+    const job = await pdfExportQueue.add('export', {
+      testId: id,
+      studentIds: students,
+      userId: req.user?.id || 'unknown',
+      isBlockTest: true,
+      settings
+    }, {
+      priority: students.length > 50 ? 2 : 1,
+      jobId: `pdf-blocktest-${id}-${Date.now()}`
+    });
+
+    console.log(`✅ [API] PDF Job ${job.id} queued for block test ${id} (${students.length} students)`);
+
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'PDF yaratilmoqda. Biroz kuting...',
+      estimatedTime: Math.ceil(students.length * 1.5)
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ [API] Error queueing PDF export:', msg);
+    res.status(500).json({ message: 'Xatolik yuz berdi', error: msg });
+  }
+});
+
+/**
+ * Check PDF export job status
+ * GET /block-tests/pdf-export-status/:jobId
+ */
+router.get('/pdf-export-status/:jobId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = await pdfExportQueue.getJob(jobId);
+
+    if (!job) {
+      return res.status(404).json({ status: 'not_found', message: 'Job topilmadi' });
+    }
+
+    const state = await job.getState();
+    const progress = job.progress;
+
+    if (state === 'completed') {
+      return res.json({ status: 'completed', progress: 100, result: job.returnvalue });
+    }
+
+    if (state === 'failed') {
+      return res.json({ status: 'failed', error: job.failedReason || 'Unknown error' });
+    }
+
+    res.json({ status: state, progress: progress || 0 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ [API] Error checking PDF job status:', msg);
+    res.status(500).json({ message: 'Status tekshirishda xatolik', error: msg });
   }
 });
 
