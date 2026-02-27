@@ -291,7 +291,13 @@ export class SmartUniversalParser extends BaseParser {
     // "D) variant_text 18) New question" → newline before 18)
     cleaned = cleaned.replace(/(D\)[^\n]*?[a-z0-9,;)\]'"*_}])\s+(\d{1,3})\)\s+/g, '$1\n$2) ');
 
-    // 12. Variant format without paren: "A text **B text** C text D text" → "A) text **B) text** C) text D) text"
+    // 12. Normalize lowercase variant letters with dot: "a. text" → "A) text", "**b. text**" → "**B) text**"
+    // Only at line start or after whitespace: "a. His dad" → "A) His dad"
+    cleaned = cleaned.replace(/(^|\n)(\s*)(\*\*)?([a-d])\.\s+/gm, (_, pre, ws, bold, letter) => {
+      return pre + ws + (bold || '') + letter.toUpperCase() + ') ';
+    });
+
+    // 13. Variant format without paren: "A text **B text** C text D text" → "A) text **B) text** C) text D) text"
     // Only when exactly 4 uppercase letters appear as variant markers at word boundaries
     cleaned = cleaned.replace(/^(.*?\?\s*)A\s+(.+?)\s+\*\*B\s+(.+?)\*\*\s+C\s+(.+?)\s+D\s+(.+)$/gm,
       '$1A) $2 **B) $3** C) $4 D) $5');

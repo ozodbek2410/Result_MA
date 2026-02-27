@@ -75,10 +75,14 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     await job.updateProgress(10);
     
     const Model = isBlockTest ? (await import('../../models/BlockTest')).default : Test;
-    const test: any = await (Model as any).findById(testId)
-      .populate('subjectId', 'nameUzb')
-      .populate('groupId', 'name classNumber letter')
-      .lean();
+    const query = (Model as any).findById(testId);
+    if (!isBlockTest) {
+      query.populate('subjectId', 'nameUzb');
+      query.populate('groupId', 'name classNumber letter');
+    } else {
+      query.populate('subjectTests.subjectId', 'nameUzb');
+    }
+    const test: any = await query.lean();
     
     if (!test) {
       throw new Error('Test topilmadi');
