@@ -118,21 +118,19 @@ export default function TestPrintPage() {
         setExportProgress(Math.round(simulated));
       }, 300);
 
-      const response = await api.post(endpoint, { students: studentIdsArray }, {
-        responseType: 'blob',
-      });
-
+      // Step 1: POST to generate PDF on server, get download URL
+      const { data } = await api.post(endpoint, { students: studentIdsArray });
       clearInterval(progressTimer);
       setExportProgress(100);
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      // Step 2: Download via browser navigation (no blob in memory)
+      const downloadUrl = data.url;
       const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `javob-varaqasi-${Date.now()}.pdf`);
+      link.href = downloadUrl;
+      link.setAttribute('download', data.filename || `javob-varaqasi-${Date.now()}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
 
       success('PDF yuklandi');
       setTimeout(() => {

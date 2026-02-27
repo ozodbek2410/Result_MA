@@ -876,6 +876,8 @@ function shuffleArray(array: any[]) {
  * POST /tests/:id/export-pdf-async
  */
 router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  req.setTimeout(0);
+  res.setTimeout(0);
   try {
     const { id } = req.params;
     const { students, settings } = req.body;
@@ -992,6 +994,8 @@ router.get('/pdf-export-status/:jobId', authenticate, async (req: AuthRequest, r
 // ============================================================================
 
 router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
+  req.setTimeout(0);
+  res.setTimeout(0);
   try {
     const testId = req.params.id;
     const rawStudents = req.body?.students || req.query.students || '';
@@ -1053,9 +1057,10 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
     });
 
     const filename = `javob-varaqasi-${classNumber}-sinf-${Date.now()}.pdf`;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(pdfBuffer);
+    const exportsDir = path.join(process.cwd(), 'exports');
+    fs.mkdirSync(exportsDir, { recursive: true });
+    fs.writeFileSync(path.join(exportsDir, filename), pdfBuffer);
+    res.json({ url: `/exports/${filename}`, filename });
   } catch (error: unknown) {
     const err = error as Error;
     console.error('Error exporting answer sheets PDF:', err);
@@ -1133,6 +1138,8 @@ router.post('/:id/export-answer-sheets-docx', authenticate, async (req: AuthRequ
 
 // Экспорт теста в PDF (с правильным рендером формул)
 router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
+  req.setTimeout(0);
+  res.setTimeout(0);
   try {
     const testId = req.params.id;
     const studentIds = req.query.students ? (req.query.students as string).split(',') : [];

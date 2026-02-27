@@ -16,6 +16,8 @@ import { convertVariantText } from '../utils/tiptapConverter';
 import wordExportQueue from '../services/queue/wordExportQueue';
 import pdfExportQueue from '../services/queue/pdfExportQueue';
 import { S3Service } from '../services/s3Service';
+import path from 'path';
+import fs from 'fs/promises';
 
 const router = express.Router();
 
@@ -886,6 +888,8 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
 
 // Экспорт блок-теста в PDF (с правильным рендером формул)
 router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
+  req.setTimeout(0);
+  res.setTimeout(0);
   try {
     const blockTestId = req.params.id;
     const studentIds = req.query.students ? (req.query.students as string).split(',') : [];
@@ -1066,6 +1070,8 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
  * POST /block-tests/:id/export-pdf-async
  */
 router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  req.setTimeout(0);
+  res.setTimeout(0);
   try {
     const { id } = req.params;
     const { students, settings } = req.body;
@@ -1612,13 +1618,16 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
       return res.status(404).json({ message: 'Block test topilmadi' });
     }
 
-    // Get all block tests for this class/period
-    const allTests = await BlockTest.find({
+    // Get block tests for this group (not all groups in the class)
+    const groupFilter: Record<string, unknown> = {
       branchId: blockTest.branchId,
       classNumber: blockTest.classNumber,
       periodMonth: blockTest.periodMonth,
-      periodYear: blockTest.periodYear
-    }).populate('subjectTests.subjectId', 'nameUzb').lean();
+      periodYear: blockTest.periodYear,
+    };
+    if (blockTest.groupId) groupFilter.groupId = blockTest.groupId;
+    const allTests = await BlockTest.find(groupFilter)
+      .populate('subjectTests.subjectId', 'nameUzb').lean();
 
     // Load students: filter by passed IDs, or by variant assignment
     let selectedStudents: any[];
@@ -1709,11 +1718,13 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
     });
 
     const filename = `javob-varaqasi-${blockTest.classNumber}-sinf-${Date.now()}.pdf`;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(pdfBuffer);
+    const exportsDir = path.join(process.cwd(), 'exports');
+    await fs.mkdir(exportsDir, { recursive: true });
+    const filePath = path.join(exportsDir, filename);
+    await fs.writeFile(filePath, pdfBuffer);
 
     console.log(`✅ Answer sheets PDF exported: ${pdfStudents.length} students, ${totalQuestions} questions`);
+    res.json({ url: `/exports/${filename}`, filename });
   } catch (error: unknown) {
     const err = error as Error;
     console.error('❌ Error exporting answer sheets PDF:', err);
