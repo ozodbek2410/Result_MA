@@ -606,6 +606,7 @@ export default function GroupDetailPage() {
                               {student.fullName?.charAt(0).toUpperCase()}
                             </div>
                             <span className="font-medium text-gray-900">{student.fullName}</span>
+                            {student.studentCode && <span className="ml-2 text-xs text-gray-400 font-mono">ID: {student.studentCode}</span>}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600">{student.phone || 'N/A'}</td>
@@ -670,6 +671,7 @@ export default function GroupDetailPage() {
                           <Badge variant="success" size="sm">Faol</Badge>
                         </div>
                         <h3 className="font-semibold text-gray-900 mb-1 truncate">{student.fullName}</h3>
+                        {student.studentCode && <p className="text-xs text-gray-400 font-mono">ID: {student.studentCode}</p>}
                         <p className="text-sm text-gray-600">{student.phone || 'Telefon yo\'q'}</p>
                       </div>
                       <div className="flex flex-col gap-1 flex-shrink-0">

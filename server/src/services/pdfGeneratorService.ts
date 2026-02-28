@@ -19,6 +19,7 @@ interface Question {
 interface StudentTest {
   studentName: string;
   variantCode: string;
+  studentCode?: number;
   questions: Question[];
 }
 
@@ -129,11 +130,11 @@ export class PDFGeneratorService {
    */
   private static async renderBatchPDF(browser: Browser, testData: TestData): Promise<Buffer> {
     const page = await browser.newPage();
-    page.setDefaultTimeout(60000);
+    page.setDefaultTimeout(0);
 
     try {
       const html = this.generateHTML(testData);
-      await page.setContent(html, { waitUntil: 'networkidle', timeout: 60000 });
+      await page.setContent(html, { waitUntil: 'networkidle', timeout: 0 });
 
       await page.waitForFunction(`
         () => {
@@ -141,7 +142,7 @@ export class PDFGeneratorService {
           if (elements.length === 0) return true;
           return Array.from(elements).every(el => el.querySelector('.katex') !== null);
         }
-      `, { timeout: 30000 }).catch(() => {
+      `, { timeout: 0 }).catch(() => {
         console.warn('⚠️ KaTeX render timeout, continuing anyway');
       });
 
@@ -924,6 +925,7 @@ export class PDFGeneratorService {
     students: Array<{
       fullName: string;
       variantCode: string;
+      studentCode?: number;
     }>;
     test: {
       classNumber: number;
@@ -944,17 +946,17 @@ export class PDFGeneratorService {
       });
 
       const page = await browser.newPage();
-      page.setDefaultTimeout(60000);
+      page.setDefaultTimeout(0);
 
       try {
         const html = await this.generateAnswerSheetsHTML(data);
-        await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
+        await page.setContent(html, { waitUntil: 'load', timeout: 0 });
         await page.waitForTimeout(300);
 
         const pdfResult = await page.pdf({
           format: 'A4',
           printBackground: true,
-          margin: { top: '0', right: '0', bottom: '0', left: '0' }
+          margin: { top: '10mm', right: '8mm', bottom: '10mm', left: '8mm' }
         });
 
         // Playwright may return Uint8Array instead of Buffer
@@ -975,7 +977,7 @@ export class PDFGeneratorService {
    * Generate answer sheets HTML
    */
   private static async generateAnswerSheetsHTML(data: {
-    students: Array<{ fullName: string; variantCode: string }>;
+    students: Array<{ fullName: string; variantCode: string; studentCode?: number }>;
     test: { classNumber: number; groupLetter: string; subjectName?: string; periodMonth?: number; periodYear?: number };
     totalQuestions: number;
     sheetsPerPage?: number;
@@ -1004,7 +1006,7 @@ export class PDFGeneratorService {
       } catch { /* skip */ }
     }
 
-    // Generate QR codes for all students
+    // Generate QR codes for all students (variantCode for OMR scanning)
     const qrCodeMap = new Map<string, string>();
     for (const student of students) {
       if (student.variantCode) {
@@ -1061,10 +1063,10 @@ export class PDFGeneratorService {
       return `
       <div class="sheet">
         <!-- Corner Marks for OMR -->
-        <div class="corner-mark" style="top:2mm;left:2mm"></div>
-        <div class="corner-mark" style="top:2mm;right:2mm"></div>
-        <div class="corner-mark" style="bottom:2mm;left:2mm"></div>
-        <div class="corner-mark" style="bottom:2mm;right:2mm"></div>
+        <div class="corner-mark" style="top:5mm;left:5mm"></div>
+        <div class="corner-mark" style="top:5mm;right:5mm"></div>
+        <div class="corner-mark" style="bottom:5mm;left:5mm"></div>
+        <div class="corner-mark" style="bottom:5mm;right:5mm"></div>
 
         <!-- Academy Header -->
         <div class="academy-header">
@@ -1087,7 +1089,7 @@ export class PDFGeneratorService {
               <tr><td class="info-label">O&#39;quvchi:</td><td class="info-value">${student.fullName}</td></tr>
               ${test.subjectName ? `<tr><td class="info-label">Fan:</td><td class="info-value">${test.subjectName}</td></tr>` : ''}
               ${periodText ? `<tr><td class="info-label">Davr:</td><td class="info-value">${periodText}</td></tr>` : ''}
-              <tr><td class="info-label">Variant:</td><td class="info-value" style="font-weight:bold">${student.variantCode}</td></tr>
+              <tr><td class="info-label">ID:</td><td class="info-value" style="font-weight:bold">${student.studentCode || student.variantCode}</td></tr>
               <tr><td class="info-label">Sinf:</td><td class="info-value">${test.classNumber}-${test.groupLetter} &nbsp;&nbsp; <span class="info-label">Savollar:</span> ${totalQuestions}</td></tr>
             </table>
           </div>
@@ -1117,8 +1119,8 @@ export class PDFGeneratorService {
   body { margin: 0; padding: 0; background: white; }
 
   .sheet {
-    width: 210mm; position: relative;
-    background: white; padding: 14mm 12mm 10mm 12mm;
+    width: 100%; position: relative;
+    background: white; padding: 4mm 2mm 2mm 2mm;
     font-family: Arial, Helvetica, sans-serif; color: #000;
     box-sizing: border-box; page-break-after: always;
   }

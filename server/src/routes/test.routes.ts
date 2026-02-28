@@ -1040,7 +1040,8 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
 
     const pdfStudents = selectedStudents.map((s: Record<string, unknown>) => ({
       fullName: (s.fullName as string) || '',
-      variantCode: variantMap.get((s._id as string).toString()) || ''
+      variantCode: variantMap.get((s._id as string).toString()) || '',
+      studentCode: s.studentCode as number | undefined
     }));
 
     const classNumber = (test as Record<string, unknown>).classNumber as number || 10;
