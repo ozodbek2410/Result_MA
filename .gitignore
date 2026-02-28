@@ -99,3 +99,30 @@ server/test-fixtures/*.png
 # Lock files (optional - uncomment if needed)
 # yarn.lock
 # pnpm-lock.yaml
+
+# Debug/test scripts (root)
+debug_*.js
+debug_*.ts
+fix_*.js
+test_*.js
+test_*.ts
+create_block_test.ts
+*_debug.txt
+*_cleaned.txt
+*_import.json
+*_math.json
+*_ast.json
+nul
+*_stderr*.txt
+pandoc_markdown_debug.txt
+
+# Server exports & media
+server/exports/
+server/media/
+server/scripts/
+
+# Test files
+test/*.jpg
+test/*.png
+test/*.xlsx
+guruhlar/
