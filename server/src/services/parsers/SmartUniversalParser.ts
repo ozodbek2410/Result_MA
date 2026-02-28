@@ -1,4 +1,5 @@
 import { BaseParser, ParsedQuestion } from './BaseParser';
+import { GroqService } from '../groqService';
 
 type DetectedContentType = 'math' | 'physics' | 'chemistry' | 'biology' | 'literature' | 'history' | 'english' | 'generic';
 
@@ -61,7 +62,10 @@ export class SmartUniversalParser extends BaseParser {
       // 10. Validate and report
       this.validateAndReportIssues(questions);
 
-      return questions;
+      // 11. AI validation — fix questions with < 4 variants
+      const fixedQuestions = await this.validateWithAI(questions, rawMarkdown);
+
+      return fixedQuestions;
     } catch (error) {
       console.error('❌ [SMART] Error:', error);
       throw new Error(
@@ -242,12 +246,12 @@ export class SmartUniversalParser extends BaseParser {
     });
     // Multi-char superscripts need braces: ^2-^ → ^{2-}, ^23^ → ^{23}
     // Unicode \p{L} handles Cyrillic letters too (О^2-^ → О^{2-})
-    cleaned = cleaned.replace(/([\p{L}\d])\^([^\^\s]+)\^/gu, (_, pre, content) => {
+    cleaned = cleaned.replace(/([\p{L}\d])\^([^\^\s{}]+)\^/gu, (_, pre, content) => {
       return content.length > 1 ? `${pre}^{${content}}` : `${pre}^${content}`;
     });
     // Superscript at start/after space/punctuation/bold: ^14^N → ^{14}N
     // Also handles 2.^14^N where . precedes ^ (before question number normalization)
-    cleaned = cleaned.replace(/(^|\s|[.\)*])(\^)([^\^\s]+)\^/gm, (_, pre, _caret, content) => {
+    cleaned = cleaned.replace(/(^|\s|[.\)*])(\^)([^\^\s{}]+)\^/gm, (_, pre, _caret, content) => {
       return content.length > 1 ? `${pre}^{${content}}` : `${pre}^${content}`;
     });
 
@@ -286,13 +290,18 @@ export class SmartUniversalParser extends BaseParser {
     // 8. Clean escapes in text (including \< \> \_ from pandoc)
     cleaned = cleaned.replace(/\\([.\(\)\[\]<>_])/g, '$1');
 
+    // 8.5. Split inline questions where text runs directly into question number (no space)
+    // "istak5. Qaysi" → "istak\n5. Qaysi", "ketdi**.2. Quyidagi" → "ketdi**.\n2. Quyidagi"
+    cleaned = cleaned.replace(/([a-zA-Z\u0400-\u04FF*_.)\]}])(\d{1,3})\.\s*([A-ZQ«"'(])/g, '$1\n$2. $3');
+
     // 9. Split inline questions BEFORE normalizing dots → parens
     // "D) variant_text 18. New question" → newline before 18.
     cleaned = cleaned.replace(/([A-D]\)[^\n]*?[a-z0-9,;)\]'"*_}])\s+(\d{1,3})\.\s*([A-ZQ«"'(])/g, '$1\n$2. $3');
 
     // 10. Normalize question numbers: "1." → "1)"
-    // (?!\d) — o'nli sonlarni buzmaslik uchun (32.8 → 32.8, 1. → 1))
-    cleaned = cleaned.replace(/(^|\s|\n)(\*\*|__)?(\d+)(\*\*|__)?\.(?!\d)\s*/g, '$1$2$3$4) ');
+    // Only at line start — prevents converting variant answers like "24." "72." to "24)" "72)"
+    // [^\S\n]* instead of \s* — preserves newlines between questions
+    cleaned = cleaned.replace(/(^|\n)([^\S\n]*)(\*\*|__)?(\d+)(\*\*|__)?\.(?!\d)[^\S\n]*/gm, '$1$2$3$4$5) ');
     // 10b. "24 Why" (number + space + uppercase, no dot/paren) → "24) Why"
     cleaned = cleaned.replace(/(\n)(\d{1,3})\s+(?=[A-Z])/g, '$1$2) ');
     cleaned = cleaned.replace(/([^\s\n])(\*\*|__)?([A-D])(\*\*|__)?\)/g, '$1 $2$3$4)');
@@ -428,6 +437,52 @@ export class SmartUniversalParser extends BaseParser {
   /**
    * Validate and report parsing issues
    */
+  /**
+   * AI validation — fix questions with < 4 variants using Groq AI
+   * Only sends the problematic questions' raw text to AI, not the entire document
+   */
+  private async validateWithAI(questions: ParsedQuestion[], rawText: string): Promise<ParsedQuestion[]> {
+    const failed = questions.filter(q => q.variants.length < 4 && q.variants.length > 0);
+    if (failed.length === 0) return questions;
+
+    console.log(`🤖 [AI] ${failed.length} ta muammoli savol topildi, AI bilan tuzatilmoqda...`);
+
+    try {
+      const aiQuestions = await GroqService.parseTestWithAI(rawText);
+      if (!aiQuestions || aiQuestions.length === 0) {
+        console.log('⚠️ [AI] AI natija qaytarmadi, original savollar saqlanadi');
+        return questions;
+      }
+
+      const aiConverted = GroqService.convertToOurFormat(aiQuestions);
+      let fixedCount = 0;
+
+      for (const failedQ of failed) {
+        // Find matching AI question by number
+        const aiMatch = aiConverted.find((_: ParsedQuestion, idx: number) => {
+          const aiNum = aiQuestions[idx]?.number;
+          return aiNum === failedQ.originalNumber;
+        });
+
+        if (aiMatch && aiMatch.variants.length >= 4) {
+          // Replace variants from AI, keep original text (AST text is more accurate)
+          failedQ.variants = aiMatch.variants;
+          if (!failedQ.correctAnswer && aiMatch.correctAnswer) {
+            failedQ.correctAnswer = aiMatch.correctAnswer;
+          }
+          fixedCount++;
+          console.log(`✅ [AI] Q${failedQ.originalNumber} tuzatildi: ${aiMatch.variants.length} variant`);
+        }
+      }
+
+      console.log(`🤖 [AI] ${fixedCount}/${failed.length} savol AI bilan tuzatildi`);
+    } catch (err) {
+      console.warn('⚠️ [AI] AI validation xato:', err instanceof Error ? err.message : err);
+    }
+
+    return questions;
+  }
+
   private validateAndReportIssues(questions: ParsedQuestion[]): void {
     const issues: Array<{
       number: number;
