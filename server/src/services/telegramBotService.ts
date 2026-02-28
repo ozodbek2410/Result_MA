@@ -31,9 +31,15 @@ class TelegramBotServiceClass {
     if (!this.bot) return;
 
     // /start command
-    this.bot.onText(/\/start/, (msg) => {
+    this.bot.onText(/\/start/, async (msg) => {
+      const chatId = msg.chat.id;
+      const student = await Student.findOne({ telegramChatId: chatId }).lean();
+      if (student) {
+        await this.showMainMenu(chatId, student);
+        return;
+      }
       this.bot!.sendMessage(
-        msg.chat.id,
+        chatId,
         "Assalomu alaykum! ResultMA botiga xush kelibsiz.\n\n" +
           "O'z kodingizni yuboring (5 xonali raqam).\nMasalan: 12345"
       );
