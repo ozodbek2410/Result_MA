@@ -10,6 +10,50 @@ import { TableRenderer } from './TableRenderer';
 
 const execFileAsync = promisify(execFile);
 
+// Pandoc JSON AST types for DOCX parsing
+type PandocAttr = [string, string[], [string, string][]];
+
+type PandocInline =
+  | { t: 'Str'; c: string }
+  | { t: 'Space' }
+  | { t: 'SoftBreak' }
+  | { t: 'LineBreak' }
+  | { t: 'Strong'; c: PandocInline[] }
+  | { t: 'Emph'; c: PandocInline[] }
+  | { t: 'Underline'; c: PandocInline[] }
+  | { t: 'Strikeout'; c: PandocInline[] }
+  | { t: 'Subscript'; c: PandocInline[] }
+  | { t: 'Superscript'; c: PandocInline[] }
+  | { t: 'Math'; c: [{ t: string }, string] }
+  | { t: 'Image'; c: [PandocAttr, PandocInline[], [string, string]] }
+  | { t: 'Span'; c: [PandocAttr, PandocInline[]] }
+  | { t: 'Quoted'; c: [{ t: string }, PandocInline[]] }
+  | { t: 'Link'; c: [PandocAttr, PandocInline[], [string, string]] }
+  | { t: 'Code'; c: [PandocAttr, string] }
+  | { t: 'RawInline'; c: [string, string] }
+  | { t: 'Note'; c: PandocBlock[] };
+
+type PandocBlock =
+  | { t: 'Para'; c: PandocInline[] }
+  | { t: 'Plain'; c: PandocInline[] }
+  | { t: 'Table'; c: unknown[] }
+  | { t: 'BlockQuote'; c: PandocBlock[] }
+  | { t: 'Header'; c: [number, PandocAttr, PandocInline[]] }
+  | { t: 'BulletList'; c: PandocBlock[][] }
+  | { t: 'OrderedList'; c: [unknown, PandocBlock[][]] }
+  | { t: 'Div'; c: [PandocAttr, PandocBlock[]] }
+  | { t: 'LineBlock'; c: PandocInline[][] }
+  | { t: 'CodeBlock'; c: [PandocAttr, string] }
+  | { t: 'RawBlock'; c: [string, string] }
+  | { t: 'HorizontalRule' }
+  | { t: 'Null' };
+
+interface PandocDocument {
+  'pandoc-api-version': number[];
+  meta: Record<string, unknown>;
+  blocks: PandocBlock[];
+}
+
 export interface MediaItem {
   type: 'image' | 'table';
   url: string;
@@ -37,6 +81,7 @@ export abstract class BaseParser {
   protected extractedTables: Map<string, string> = new Map();
   protected imageDimensions: Map<string, { widthPx: number; heightPx: number }> = new Map();
   protected extractedFormulas: Map<string, string> = new Map(); // imageNum -> LaTeX
+  protected astTableIndex = 1;
   protected tableExtractor: TableExtractor;
   protected tableRenderer: TableRenderer;
   
@@ -49,7 +94,120 @@ export abstract class BaseParser {
    * Main parsing method - must be implemented by subclasses
    */
   abstract parse(filePath: string): Promise<ParsedQuestion[]>;
-  
+
+  // ─── Pandoc JSON AST Serializer ───────────────────────────────────────
+
+  /**
+   * Serialize Pandoc AST blocks to clean text.
+   * Images become separate lines, math becomes \(...\), bold becomes **...**
+   */
+  protected serializeAstBlocks(blocks: PandocBlock[]): string {
+    return blocks
+      .map(block => this.serializeBlock(block))
+      .filter(s => s !== '')
+      .join('\n');
+  }
+
+  protected serializeBlock(block: PandocBlock): string {
+    switch (block.t) {
+      case 'Para':
+      case 'Plain':
+        return this.serializeInlines(block.c);
+      case 'Table':
+        return `___TABLE_${this.astTableIndex++}___`;
+      case 'BlockQuote':
+        return block.c.map(b => this.serializeBlock(b)).join('\n');
+      case 'Header':
+        return this.serializeInlines(block.c[2]);
+      case 'BulletList':
+        return block.c.map(items => items.map(b => this.serializeBlock(b)).join('\n')).join('\n');
+      case 'OrderedList':
+        return block.c[1].map(items => items.map(b => this.serializeBlock(b)).join('\n')).join('\n');
+      case 'Div':
+        return block.c[1].map(b => this.serializeBlock(b)).join('\n');
+      case 'LineBlock':
+        return block.c.map(il => this.serializeInlines(il)).join('\n');
+      default:
+        return '';
+    }
+  }
+
+  protected serializeInlines(inlines: PandocInline[]): string {
+    return inlines.map(il => {
+      switch (il.t) {
+        case 'Str': return il.c;
+        case 'Space': return ' ';
+        case 'SoftBreak':
+        case 'LineBreak': return '\n';
+        case 'Strong': return '**' + this.serializeInlines(il.c) + '**';
+        case 'Emph':
+        case 'Underline':
+        case 'Strikeout': return this.serializeInlines(il.c);
+        case 'Math': {
+          let latex = il.c[1];
+          // Strip \mathbf/\boldsymbol — bold info comes from Strong node
+          latex = latex.replace(/\\(?:mathbf|boldsymbol|bf)\{([^{}]*)\}/g, '$1');
+          return `\\(${latex}\\)`;
+        }
+        case 'Image': {
+          const attrs = il.c[0];
+          const url = il.c[2][0];
+          const imgMatch = url.match(/image(\d+)/);
+          if (imgMatch) {
+            const imgNum = imgMatch[1];
+            // Extract dimensions from AST attributes
+            const kvPairs = attrs[2];
+            if (kvPairs) {
+              let width = '', height = '';
+              for (const [key, val] of kvPairs) {
+                if (key === 'width') width = val;
+                if (key === 'height') height = val;
+              }
+              if (width && height) {
+                const widthPx = this.parseDimensionToPixels(width);
+                const heightPx = this.parseDimensionToPixels(height);
+                if (widthPx > 0 && heightPx > 0) {
+                  this.imageDimensions.set(imgNum, { widthPx, heightPx });
+                }
+              }
+            }
+            return `\n___IMAGE_${imgNum}___\n`;
+          }
+          return '';
+        }
+        case 'Superscript': {
+          const content = this.serializeInlines(il.c);
+          return content.length > 1 ? `^{${content}}` : `^${content}`;
+        }
+        case 'Subscript': {
+          const content = this.serializeInlines(il.c);
+          return content.length > 1 ? `_{${content}}` : `_${content}`;
+        }
+        case 'Span': {
+          const classes: string[] = il.c[0][1];
+          const spanInlines = il.c[1];
+          // {.mark} = Word highlight → bold (correct answer)
+          if (classes.includes('mark')) {
+            return '**' + this.serializeInlines(spanInlines) + '**';
+          }
+          return this.serializeInlines(spanInlines);
+        }
+        case 'Quoted': {
+          const quoteType = il.c[0].t;
+          const inner = this.serializeInlines(il.c[1]);
+          return quoteType === 'DoubleQuote' ? `"${inner}"` : `'${inner}'`;
+        }
+        case 'Link': return this.serializeInlines(il.c[1]);
+        case 'Code': return il.c[1];
+        case 'RawInline':
+        case 'Note': return '';
+        default: return '';
+      }
+    }).join('');
+  }
+
+  // ─── End AST Serializer ───────────────────────────────────────────────
+
   /**
    * Subject-specific text cleaning - can be overridden
    */
@@ -492,58 +650,59 @@ export abstract class BaseParser {
    * Jadval markerlarini qo'yadi
    */
   protected async extractTextWithPandoc(filePath: string): Promise<string> {
-    try {
-      const pandocPaths = [
-        'pandoc',
-        'C:\\Program Files\\Pandoc\\pandoc.exe',
-        '/usr/local/bin/pandoc',
-        '/usr/bin/pandoc',
-      ];
+    const pandocPaths = [
+      'pandoc',
+      'C:\\Program Files\\Pandoc\\pandoc.exe',
+      '/usr/local/bin/pandoc',
+      '/usr/bin/pandoc',
+    ];
 
-      // Temporary directory for extracted media
-      const tempMediaDir = path.join(path.dirname(filePath), `media_${Date.now()}`);
+    const tempMediaDir = path.join(path.dirname(filePath), `media_${Date.now()}`);
+    let lastError: unknown;
 
-      let lastError: any;
-      for (const pandocPath of pandocPaths) {
+    for (const pandocPath of pandocPaths) {
+      // 1) Try JSON AST first — structured, no regex artifacts
+      try {
+        const { stdout } = await execFileAsync(pandocPath, [
+          filePath, '-f', 'docx', '-t', 'json',
+        ], { maxBuffer: 50 * 1024 * 1024 });
+
         try {
-          const { stdout } = await execFileAsync(pandocPath, [
-            filePath,
-            '-f',
-            'docx',
-            '-t',
-            'markdown',
-            '--wrap=none',
-            '--extract-media=' + tempMediaDir,
-          ]);
-          
-          // Clean up temp media directory (we already extract images via adm-zip)
-          try {
-            if (fsSync.existsSync(tempMediaDir)) {
-              fsSync.rmSync(tempMediaDir, { recursive: true, force: true });
-            }
-          } catch {}
-
-          // Clean Pandoc escape characters and fix formatting
-          let cleaned = this.cleanPandocMarkdown(stdout);
-
-          // Jadval markerlarini qo'yish
-          cleaned = this.replaceTablesWithMarkers(cleaned);
-
-          return cleaned;
-        } catch (err) {
-          lastError = err;
-          // Clean up on error too
-          try {
-            if (fsSync.existsSync(tempMediaDir)) {
-              fsSync.rmSync(tempMediaDir, { recursive: true, force: true });
-            }
-          } catch {}
+          const doc: PandocDocument = JSON.parse(stdout);
+          this.astTableIndex = 1;
+          const serialized = this.serializeAstBlocks(doc.blocks);
+          console.log('✅ [PARSER] Pandoc JSON AST serialized successfully');
+          return serialized;
+        } catch (parseErr) {
+          console.warn('⚠️ [PARSER] JSON parse/serialize failed, falling back to markdown');
         }
+
+        // 2) Markdown fallback (pandoc works but JSON parse failed)
+        const { stdout: mdOut } = await execFileAsync(pandocPath, [
+          filePath, '-f', 'docx', '-t', 'markdown', '--wrap=none',
+          '--extract-media=' + tempMediaDir,
+        ], { maxBuffer: 50 * 1024 * 1024 });
+
+        try {
+          if (fsSync.existsSync(tempMediaDir)) {
+            fsSync.rmSync(tempMediaDir, { recursive: true, force: true });
+          }
+        } catch {}
+
+        let cleaned = this.cleanPandocMarkdown(mdOut);
+        cleaned = this.replaceTablesWithMarkers(cleaned);
+        console.log('⚠️ [PARSER] Used markdown fallback pipeline');
+        return cleaned;
+      } catch (err) {
+        lastError = err;
+        try {
+          if (fsSync.existsSync(tempMediaDir)) {
+            fsSync.rmSync(tempMediaDir, { recursive: true, force: true });
+          }
+        } catch {}
       }
-      throw lastError;
-    } catch (error) {
-      throw error;
     }
+    throw lastError;
   }
 
   /**
