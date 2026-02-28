@@ -77,10 +77,15 @@ app.set('trust proxy', 1);
 
 // Включаем сжатие ответов
 app.use(compression({
-  level: 6, // Уровень сжатия (0-9)Ц
-  threshold: 1024, // Минимальный размер для сжатия (1KB)
+  level: 6,
+  threshold: 1024,
   filter: (req, res) => {
     if (req.headers['x-no-compression']) {
+      return false;
+    }
+    // Skip compression for PDF/binary — large gzip causes ERR_FAILED
+    const ct = res.getHeader('Content-Type');
+    if (typeof ct === 'string' && (ct.includes('pdf') || ct.includes('octet-stream'))) {
       return false;
     }
     return compression.filter(req, res);

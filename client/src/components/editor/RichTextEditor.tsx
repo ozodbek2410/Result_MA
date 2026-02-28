@@ -2,7 +2,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { FormulaExtension } from './FormulaExtension';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { hasMathML, convertMathMLToLatex } from '@/lib/mathmlUtils';
 import './editor.css';
 
@@ -17,6 +17,7 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
   const [showSymbols, setShowSymbols] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'greek' | 'operators' | 'advanced'>('basic');
   const [editorKey] = useState(() => Math.random()); // Уникальный ключ для редактора
+  const formulaConvertedRef = useRef(false);
 
   // Мемоизируем расширения чтобы они не пересоздавались
   const extensions = useMemo(() => [
@@ -108,7 +109,80 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
       return;
     }
 
-    if (value !== editor.getHTML()) {
+    // Helper: parse \(...\), \[...\], $...$ delimiters into text/formula parts
+    const parseFormulaParts = (text: string): Array<{ type: 'text' | 'formula', content: string }> => {
+      const parts: Array<{ type: 'text' | 'formula', content: string }> = [];
+
+      // Parse \(...\) and \[...\] delimiters
+      const delimRegex = /\\[()\[\]]/g;
+      let lastIndex = 0;
+      let delimMatch;
+      let inFormula = false;
+      let formulaStart = -1;
+      let formulaType: '(' | '[' | null = null;
+
+      while ((delimMatch = delimRegex.exec(text)) !== null) {
+        const sym = delimMatch[0];
+        if (!inFormula) {
+          if (sym === '\\(' || sym === '\\[') {
+            if (delimMatch.index > lastIndex) {
+              parts.push({ type: 'text', content: text.substring(lastIndex, delimMatch.index) });
+            }
+            inFormula = true;
+            formulaStart = delimMatch.index + 2;
+            formulaType = sym === '\\(' ? '(' : '[';
+          }
+        } else {
+          const expectedEnd = formulaType === '(' ? '\\)' : '\\]';
+          if (sym === expectedEnd) {
+            parts.push({ type: 'formula', content: text.substring(formulaStart, delimMatch.index) });
+            inFormula = false;
+            formulaType = null;
+            lastIndex = delimMatch.index + 2;
+          }
+        }
+      }
+
+      if (parts.length > 0) {
+        if (lastIndex < text.length) {
+          parts.push({ type: 'text', content: text.substring(lastIndex) });
+        }
+        return parts;
+      }
+
+      // Fallback: parse $...$ formulas
+      const dollarRegex = /\$([^$]+)\$/g;
+      let dMatch;
+      lastIndex = 0;
+      while ((dMatch = dollarRegex.exec(text)) !== null) {
+        if (dMatch.index > lastIndex) {
+          parts.push({ type: 'text', content: text.substring(lastIndex, dMatch.index) });
+        }
+        parts.push({ type: 'formula', content: dMatch[1] });
+        lastIndex = dollarRegex.lastIndex;
+      }
+      if (parts.length > 0 && lastIndex < text.length) {
+        parts.push({ type: 'text', content: text.substring(lastIndex) });
+      }
+
+      return parts;
+    };
+
+    const applyFormulaParts = (parts: Array<{ type: 'text' | 'formula', content: string }>) => {
+      editor.commands.clearContent();
+      parts.forEach(part => {
+        if (part.type === 'formula') {
+          editor.commands.setFormula(part.content);
+        } else if (part.content.trim()) {
+          editor.commands.insertContent(part.content, { updateSelection: false });
+        }
+      });
+    };
+
+    const editorHtml = editor.getHTML();
+
+    if (value !== editorHtml) {
+      formulaConvertedRef.current = false;
       try {
         if (value && typeof value === 'string') {
           try {
@@ -123,81 +197,10 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
 
           // Parse \(...\) or $...$ formulas and convert to formula nodes
           if (value.includes('\\(') || value.includes('\\[') || /\$[^$]+\$/.test(value)) {
-            const parts: Array<{ type: 'text' | 'formula', content: string }> = [];
-            let remaining = value;
-
-            // Parse \(...\) and \[...\] delimiters
-            const delimRegex = /\\[()\[\]]/g;
-            let lastIndex = 0;
-            let delimMatch;
-            let inFormula = false;
-            let formulaStart = -1;
-            let formulaType: '(' | '[' | null = null;
-
-            while ((delimMatch = delimRegex.exec(value)) !== null) {
-              const sym = delimMatch[0];
-              if (!inFormula) {
-                if (sym === '\\(' || sym === '\\[') {
-                  if (delimMatch.index > lastIndex) {
-                    parts.push({ type: 'text', content: value.substring(lastIndex, delimMatch.index) });
-                  }
-                  inFormula = true;
-                  formulaStart = delimMatch.index + 2;
-                  formulaType = sym === '\\(' ? '(' : '[';
-                }
-              } else {
-                const expectedEnd = formulaType === '(' ? '\\)' : '\\]';
-                if (sym === expectedEnd) {
-                  parts.push({ type: 'formula', content: value.substring(formulaStart, delimMatch.index) });
-                  inFormula = false;
-                  formulaType = null;
-                  lastIndex = delimMatch.index + 2;
-                }
-              }
-            }
-            if (lastIndex < value.length) {
-              remaining = value.substring(lastIndex);
-            } else {
-              remaining = '';
-            }
-
-            // If \(...\) found, use those parts
+            const parts = parseFormulaParts(value);
             if (parts.length > 0) {
-              if (remaining.trim()) parts.push({ type: 'text', content: remaining });
-              editor.commands.clearContent();
-              parts.forEach(part => {
-                if (part.type === 'formula') {
-                  editor.commands.setFormula(part.content);
-                } else if (part.content.trim()) {
-                  editor.commands.insertContent(part.content, { updateSelection: false });
-                }
-              });
-              return;
-            }
-
-            // Fallback: parse $...$ formulas
-            const dollarRegex = /\$([^$]+)\$/g;
-            let dMatch;
-            lastIndex = 0;
-            while ((dMatch = dollarRegex.exec(value)) !== null) {
-              if (dMatch.index > lastIndex) {
-                parts.push({ type: 'text', content: value.substring(lastIndex, dMatch.index) });
-              }
-              parts.push({ type: 'formula', content: dMatch[1] });
-              lastIndex = dollarRegex.lastIndex;
-            }
-            if (parts.length > 0) {
-              if (lastIndex < value.length) {
-                parts.push({ type: 'text', content: value.substring(lastIndex) });
-              }
-              editor.commands.clearContent();
-              parts.forEach(part => {
-                if (part.type === 'formula') {
-                  editor.commands.setFormula(part.content);
-                } else if (part.content.trim()) {
-                  editor.commands.insertContent(part.content, { updateSelection: false });
-                }
-              });
+              formulaConvertedRef.current = true;
+              applyFormulaParts(parts);
               return;
             }
           }
@@ -207,6 +210,18 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
       } catch (err) {
         console.error('Error setting editor content:', err);
         editor.commands.setContent(`<p>${value}</p>`, { emitUpdate: false });
+      }
+    } else if (!formulaConvertedRef.current) {
+      // Value matches HTML but editor text might have unconverted \( formulas
+      // This happens when value was saved as HTML containing raw \( text
+      const plainText = editor.getText();
+      if ((plainText.includes('\\(') || plainText.includes('\\[') || /\$[^$]+\$/.test(plainText)) &&
+          !editorHtml.includes('data-latex')) {
+        formulaConvertedRef.current = true;
+        const parts = parseFormulaParts(plainText);
+        if (parts.length > 0) {
+          applyFormulaParts(parts);
+        }
       }
     }
   }, [value, editor]);
