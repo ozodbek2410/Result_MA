@@ -239,7 +239,7 @@ export default function BlockTestVariantsPage() {
                       </div>
                       <div>
                         <p className="font-semibold text-gray-900">
-                          Variant {variant.variantCode}
+                          ID: {variant.studentId?.studentCode || variant.variantCode}
                         </p>
                         <p className="text-sm text-gray-600">
                           {variant.studentId?.firstName} {variant.studentId?.lastName}

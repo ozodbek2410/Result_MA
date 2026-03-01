@@ -1194,6 +1194,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
           return {
             number: index + 1,
             text: questionText,
+            contextText: q.contextText || undefined,
             options,
             correctAnswer: q.correctAnswer || '',
             ...extractQuestionMedia(q),
@@ -1229,6 +1230,7 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
         return {
           number: index + 1,
           text: questionText,
+          contextText: q.contextText || undefined,
           options,
           correctAnswer: q.correctAnswer || '',
           ...extractQuestionMedia(q),
@@ -1487,6 +1489,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
           return {
             number: index + 1,
             text: questionText,
+            contextText: q.contextText || undefined,
             options,
             correctAnswer: q.correctAnswer || '',
             ...extractQuestionMedia(q),
@@ -1541,6 +1544,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
         return {
           number: index + 1,
           text: questionText,
+          contextText: q.contextText || undefined,
           options,
           correctAnswer: q.correctAnswer || '',
           ...extractQuestionMedia(q),
