@@ -8,6 +8,7 @@ import {
 import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
 import RichTextEditor from '@/components/editor/RichTextEditor';
+import MathText from '@/components/MathText';
 
 export interface BlockTestFormData {
   classNumber: number;
@@ -38,6 +39,7 @@ function getParserKeyFromSubject(name: string): string {
 
 interface ParsedQuestion {
   text: string;
+  contextText?: string;
   formula?: string;
   variants: { letter: string; text: string; formula?: string; imageUrl?: string; imageWidth?: number; imageHeight?: number }[];
   correctAnswer: string;
@@ -579,6 +581,14 @@ export function BlockTestImportForm({
                         </button>
                       </div>
                       <div className="flex-1 space-y-3">
+                        {q.contextText && (
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <div className="text-xs font-medium text-amber-600 mb-1">Matn (kontekst)</div>
+                            <div className="text-sm text-gray-700 italic">
+                              <MathText text={q.contextText} />
+                            </div>
+                          </div>
+                        )}
                         <div className="border rounded-lg">
                           <RichTextEditor
                             value={q.text}
