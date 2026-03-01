@@ -5,6 +5,7 @@ interface AnswerSheetProps {
   student: {
     fullName: string;
     variantCode: string;
+    studentCode?: number;
   };
   test: {
     name: string;
@@ -317,7 +318,7 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
               </div>
             )}
             <div style={{ margin: '1mm 0' }}>
-              <span style={{ fontWeight: 600 }}>Variant:</span> <span style={{ fontWeight: 'bold' }}>{student.variantCode}</span>
+              <span style={{ fontWeight: 600 }}>ID:</span> <span style={{ fontWeight: 'bold' }}>{student.studentCode || student.variantCode}</span>
             </div>
             <div style={{ margin: '1mm 0' }}>
               <span style={{ fontWeight: 600 }}>Sinf:</span> {test.classNumber}-{test.groupLetter}

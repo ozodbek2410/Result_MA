@@ -17,6 +17,7 @@ export interface IMediaItem {
 
 export interface IQuestion {
   text: string;
+  contextText?: string;
   formula?: string;
   imageUrl?: string; // Legacy support
   imageWidth?: number; // Word dagi original kenglik (px)
@@ -56,6 +57,7 @@ const MediaItemSchema = new Schema<IMediaItem>({
 
 const QuestionSchema = new Schema<IQuestion>({
   text: { type: String, required: true },
+  contextText: String,
   formula: String,
   imageUrl: String, // Legacy support
   imageWidth: Number, // Word dagi original kenglik (px)

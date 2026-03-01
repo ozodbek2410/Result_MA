@@ -15,6 +15,7 @@ export interface QuestionVariant {
 
 export interface Question {
   text: string;
+  contextText?: string;
   formula?: string;
   imageUrl?: string;
   variants: QuestionVariant[];

@@ -702,7 +702,7 @@ export default function TestPrintPage() {
                           <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
                             {student.fullName}
                           </h2>
-                          <span style={{ fontSize: `${fontSize - 2}px` }}>| Variant: {variantCode}</span>
+                          <span style={{ fontSize: `${fontSize - 2}px` }}>| ID: {student.studentCode || variantCode}</span>
                           {isBlockTest ? (
                             <>
                               <span style={{ fontSize: `${fontSize - 2}px` }}>| {test.classNumber}-sinf</span>
@@ -755,6 +755,11 @@ export default function TestPrintPage() {
                                 const isLongQ = questionText.length + optsLen > 600;
                                 return (
                                   <div key={qi} className={`${isLongQ ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
+                                    {question.contextText && (
+                                      <div className="mb-1 italic border-l-2 border-gray-400 pl-2 text-gray-700">
+                                        <MathText text={question.contextText} />
+                                      </div>
+                                    )}
                                     <div className="mb-1">
                                       <span className="font-bold">{currentIndex + 1}. </span>
                                       <span><MathText text={questionText} /></span>
@@ -793,6 +798,11 @@ export default function TestPrintPage() {
                             const isLongQ2 = questionText.length + optsLen2 > 600;
                             return (
                               <div key={index} className={`${isLongQ2 ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
+                                {question.contextText && (
+                                  <div className="mb-1 italic border-l-2 border-gray-400 pl-2 text-gray-700">
+                                    <MathText text={question.contextText} />
+                                  </div>
+                                )}
                                 <div className="mb-1">
                                   <span className="font-bold">{index + 1}. </span>
                                   <span><MathText text={questionText} /></span>
@@ -867,7 +877,7 @@ export default function TestPrintPage() {
                 <div className="text-center flex-1">
                   <h1 className="text-2xl font-bold mb-2">Javoblar kaliti</h1>
                   <p className="text-lg">{student.fullName}</p>
-                  <p className="text-sm">Variant: {variantCode}</p>
+                  <p className="text-sm">ID: {student.studentCode || variantCode}</p>
                 </div>
               </div>
               <hr className="border-t-2 border-gray-800 mb-4" />
@@ -989,7 +999,8 @@ export default function TestPrintPage() {
                   <AnswerSheet
                     student={{
                       fullName: student.fullName,
-                      variantCode: variantCode
+                      variantCode: variantCode,
+                      studentCode: student.studentCode
                     }}
                     test={{
                       name: test.name || 'Test',

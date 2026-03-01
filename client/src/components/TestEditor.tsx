@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from './ui/Button';
-import { Plus, Trash2, Image as ImageIcon, X } from 'lucide-react';
+import { Plus, Trash2, Image as ImageIcon, X, FileText } from 'lucide-react';
 import 'katex/dist/katex.min.css';
 import RichTextEditor from './editor/RichTextEditor';
 import MathText from './MathText';
@@ -13,6 +13,7 @@ const getVariantLetter = (index: number): string => {
 
 interface Question {
   text: string;
+  contextText?: string;
   formula?: string;
   imageUrl?: string;
   variants: {
@@ -199,12 +200,37 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
               {/* Content */}
               {expandedQuestion === qIndex && (
                 <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 bg-white">
+                  {/* Context Text (reading passage) */}
+                  {question.contextText ? (
+                    <div className="relative bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-amber-700">Matn (passage)</label>
+                        <button
+                          type="button"
+                          onClick={() => updateQuestion(qIndex, 'contextText', undefined)}
+                          className="p-1 hover:bg-amber-100 rounded text-amber-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <textarea
+                        value={question.contextText}
+                        onChange={(e) => updateQuestion(qIndex, 'contextText', e.target.value)}
+                        className="w-full min-h-[80px] text-sm bg-white border border-amber-200 rounded p-2 resize-y"
+                        placeholder="Matn kiritng..."
+                      />
+                      <div className="mt-2 text-xs text-amber-600">
+                        <MathText text={question.contextText} />
+                      </div>
+                    </div>
+                  ) : null}
+
                   {/* Question Text with Rich Text Editor */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Savol matni
                     </label>
-                    
+
                     <RichTextEditor
                       value={question.text}
                       onChange={(value) => updateQuestion(qIndex, 'text', value)}
@@ -213,37 +239,49 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                     />
                   </div>
 
-                  {/* Question Image */}
-                  {question.imageUrl ? (
-                    <div className="relative inline-block">
-                      <img 
-                        src={question.imageUrl} 
-                        alt="Question" 
-                        className="max-w-full sm:max-w-xs rounded-lg border border-gray-300 shadow-sm" 
-                      />
+                  {/* Question Image + Context Text buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    {question.imageUrl ? (
+                      <div className="relative inline-block">
+                        <img
+                          src={question.imageUrl}
+                          alt="Question"
+                          className="max-w-full sm:max-w-xs rounded-lg border border-gray-300 shadow-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateQuestion(qIndex, 'imageUrl', undefined)}
+                          className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-md"
+                        >
+                          <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="inline-flex items-center gap-2 text-sm text-blue-600 cursor-pointer hover:text-blue-700 p-2 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                        <ImageIcon className="w-4 h-4" />
+                        <span>Rasm qo'shish</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleImageUpload(qIndex, null, file);
+                          }}
+                        />
+                      </label>
+                    )}
+                    {!question.contextText && (
                       <button
                         type="button"
-                        onClick={() => updateQuestion(qIndex, 'imageUrl', undefined)}
-                        className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-md"
+                        onClick={() => updateQuestion(qIndex, 'contextText', '')}
+                        className="inline-flex items-center gap-2 text-sm text-amber-600 p-2 border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors"
                       >
-                        <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <FileText className="w-4 h-4" />
+                        <span>Matn qo'shish</span>
                       </button>
-                    </div>
-                  ) : (
-                    <label className="inline-flex items-center gap-2 text-sm text-blue-600 cursor-pointer hover:text-blue-700 p-2 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
-                      <ImageIcon className="w-4 h-4" />
-                      <span>Savolga rasm qo'shish</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleImageUpload(qIndex, null, file);
-                        }}
-                      />
-                    </label>
-                  )}
+                    )}
+                  </div>
 
                   {/* Variants */}
                   <div className="space-y-2">

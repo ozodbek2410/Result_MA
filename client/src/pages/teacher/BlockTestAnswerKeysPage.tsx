@@ -224,10 +224,10 @@ export default function BlockTestAnswerKeysPage() {
                       {item.student.directionId?.nameUzb} | {item.questions.length} ta savol
                     </p>
                   </div>
-                  {item.variantCode && (
+                  {(item.student.studentCode || item.variantCode) && (
                     <div className="text-right">
-                      <div className="text-xs text-gray-500">Variant kodi</div>
-                      <div className="text-lg font-bold text-blue-600">{item.variantCode}</div>
+                      <div className="text-xs text-gray-500">ID</div>
+                      <div className="text-lg font-bold text-blue-600">{item.student.studentCode || item.variantCode}</div>
                     </div>
                   )}
                 </div>

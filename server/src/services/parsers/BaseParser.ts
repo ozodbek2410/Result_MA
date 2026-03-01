@@ -62,6 +62,7 @@ export interface MediaItem {
 
 export interface ParsedQuestion {
   text: string;
+  contextText?: string;
   variants: { letter: string; text: string; imageUrl?: string; imageWidth?: number; imageHeight?: number }[];
   correctAnswer: string;
   points: number;
@@ -896,17 +897,39 @@ export abstract class BaseParser {
     // Sequential filter: skip sub-items (e.g., "1) sazavor; 2) pinhona" inside questions)
     validMatches = this.filterSequentialMarkers(validMatches, text);
 
+    // Capture text before first question marker as contextText for Q1
+    const firstMarkerIdx = validMatches.length > 0 ? validMatches[0].index! : 0;
+    let pendingContextText = '';
+    if (firstMarkerIdx > 0) {
+      const preText = text.substring(0, firstMarkerIdx).replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
+      if (preText.length > 30) {
+        pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
+        console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+      }
+    }
+
     for (let i = 0; i < validMatches.length; i++) {
       const match = validMatches[i];
       const startIdx = match.index!;
       const endIdx = i < validMatches.length - 1 ? validMatches[i + 1].index! : text.length;
-      
+
       const block = text.substring(startIdx, endIdx);
 
       const question = this.extractQuestion(block, mathBlocks);
-      
+
       if (question) {
         question.originalNumber = parseInt(match[1]);
+        // Attach pending contextText from previous block or pre-question text
+        if (pendingContextText) {
+          question.contextText = pendingContextText;
+          pendingContextText = '';
+        }
+        // Check for post-variant text in this block (contextText for NEXT question)
+        const postText = this.extractPostVariantText(block, mathBlocks);
+        if (postText && postText.length > 30) {
+          pendingContextText = postText;
+          console.log(`📖 [PARSER] Post-variant context text found after Q${i + 1} (${postText.length} chars)`);
+        }
         console.log(`✅ [PARSER] Question ${i + 1}: ${question.text.substring(0, 50)}...`);
         questions.push(question);
       } else {
@@ -915,6 +938,7 @@ export abstract class BaseParser {
         const questionNumber = parseInt(match[1]);
         questions.push({
           text: `Savol ${questionNumber} (parse qilinmadi)`,
+          contextText: pendingContextText || undefined,
           variants: [
             { letter: 'A', text: '' },
             { letter: 'B', text: '' },
@@ -924,10 +948,39 @@ export abstract class BaseParser {
           correctAnswer: 'A',
           points: 1,
         });
+        pendingContextText = '';
       }
     }
-    
+
     return questions;
+  }
+
+  /**
+   * Extract text after the last ABCD variant in a block.
+   * This text is a reading passage for the NEXT question.
+   */
+  private extractPostVariantText(block: string, mathBlocks: string[]): string {
+    // Find the last D) variant position
+    const lastVariantPattern = /[A-D]\s*\)[^)]*$/;
+    const lines = block.split('\n');
+
+    // Find last line containing a variant letter
+    let lastVariantLineIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/[A-D]\s*\)/.test(lines[i])) {
+        lastVariantLineIdx = i;
+        break;
+      }
+    }
+
+    if (lastVariantLineIdx === -1 || lastVariantLineIdx >= lines.length - 1) return '';
+
+    // Text after the last variant line
+    const postText = lines.slice(lastVariantLineIdx + 1).join('\n').replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
+    if (!postText) return '';
+
+    // Clean and restore math
+    return this.finalCleanText(this.restoreMath(postText, mathBlocks), mathBlocks);
   }
 
   /**
