@@ -40,6 +40,7 @@ function getParserKeyFromSubject(name: string): string {
 interface ParsedQuestion {
   text: string;
   contextText?: string;
+  contextImage?: string;
   formula?: string;
   variants: { letter: string; text: string; formula?: string; imageUrl?: string; imageWidth?: number; imageHeight?: number }[];
   correctAnswer: string;
@@ -581,12 +582,17 @@ export function BlockTestImportForm({
                         </button>
                       </div>
                       <div className="flex-1 space-y-3">
-                        {q.contextText && (
+                        {(q.contextText || q.contextImage) && (
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <div className="text-xs font-medium text-amber-600 mb-1">Matn (kontekst)</div>
-                            <div className="text-sm text-gray-700 italic">
-                              <MathText text={q.contextText} />
-                            </div>
+                            {q.contextImage && (
+                              <img src={q.contextImage} alt="Context" className="max-w-full rounded mb-2" style={{ maxHeight: 300 }} />
+                            )}
+                            {q.contextText && (
+                              <div className="text-sm text-gray-700 italic">
+                                <MathText text={q.contextText} />
+                              </div>
+                            )}
                           </div>
                         )}
                         <div className="border rounded-lg">

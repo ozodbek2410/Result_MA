@@ -34,6 +34,7 @@ import { useToast } from '@/hooks/useToast';
 interface ParsedQuestion {
   text: string;
   contextText?: string;
+  contextImage?: string;
   variants: { letter: string; text: string; imageUrl?: string; imageWidth?: number }[];
   correctAnswer: string;
   points: number;
@@ -706,12 +707,17 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
                     <div className="flex items-start gap-3">
                       <span className="font-bold text-gray-700 text-lg mt-2">{idx + 1}.</span>
                       <div className="flex-1 space-y-3">
-                        {q.contextText && (
+                        {(q.contextText || q.contextImage) && (
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <div className="text-xs font-medium text-amber-600 mb-1">Matn (kontekst)</div>
-                            <div className="text-sm text-gray-700 italic">
-                              <MathText text={q.contextText} />
-                            </div>
+                            {q.contextImage && (
+                              <img src={q.contextImage} alt="Context" className="max-w-full rounded mb-2" style={{ maxHeight: 300 }} />
+                            )}
+                            {q.contextText && (
+                              <div className="text-sm text-gray-700 italic">
+                                <MathText text={q.contextText} />
+                              </div>
+                            )}
                           </div>
                         )}
                         <div className="border rounded-lg">

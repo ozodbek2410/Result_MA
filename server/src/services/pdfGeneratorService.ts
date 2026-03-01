@@ -9,6 +9,7 @@ interface Question {
   subjectName?: string;
   text: string;
   contextText?: string;
+  contextImage?: string;
   options: string[];
   correctAnswer?: string;
   imageUrl?: string;
@@ -296,7 +297,7 @@ export class PDFGeneratorService {
 
                 return `
                 <div class="question${isLong ? ' long-question' : ''}">
-                  ${q.contextText ? `<div class="context-text" style="font-style:italic;border-left:2px solid #999;padding-left:6px;margin-bottom:4px;color:#444;">${this.renderMath(q.contextText)}</div>` : ''}
+                  ${(q.contextText || q.contextImage) ? `<div class="context-text" style="font-style:italic;border-left:2px solid #999;padding-left:6px;margin-bottom:4px;color:#444;">${q.contextImage ? `<img src="${q.contextImage}" style="max-width:100%;max-height:200px;margin-bottom:4px;" />` : ''}${q.contextText ? this.renderMath(q.contextText) : ''}</div>` : ''}
                   <div class="question-text">
                     <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
                   </div>
@@ -819,7 +820,7 @@ export class PDFGeneratorService {
 
           return `
           <div class="question${isLong ? ' long-question' : ''}">
-            ${q.contextText ? `<div class="context-text" style="font-style:italic;border-left:2px solid #999;padding-left:6px;margin-bottom:4px;color:#444;">${this.renderMath(q.contextText)}</div>` : ''}
+            ${(q.contextText || q.contextImage) ? `<div class="context-text" style="font-style:italic;border-left:2px solid #999;padding-left:6px;margin-bottom:4px;color:#444;">${q.contextImage ? `<img src="${q.contextImage}" style="max-width:100%;max-height:200px;margin-bottom:4px;" />` : ''}${q.contextText ? this.renderMath(q.contextText) : ''}</div>` : ''}
             <div class="question-text">
               <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
             </div>

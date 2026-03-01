@@ -10,6 +10,7 @@ import { ParserFactory } from './parsers/ParserFactory';
 interface ParsedQuestion {
   text: string;
   contextText?: string;
+  contextImage?: string;
   variants: { letter: string; text: string; invalid?: boolean }[];
   correctAnswer: string;
   points: number;
