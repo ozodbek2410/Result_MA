@@ -63,6 +63,7 @@ export interface MediaItem {
 export interface ParsedQuestion {
   text: string;
   contextText?: string;
+  contextImage?: string;
   variants: { letter: string; text: string; imageUrl?: string; imageWidth?: number; imageHeight?: number }[];
   correctAnswer: string;
   points: number;
@@ -900,8 +901,16 @@ export abstract class BaseParser {
     // Capture text before first question marker as contextText for Q1
     const firstMarkerIdx = validMatches.length > 0 ? validMatches[0].index! : 0;
     let pendingContextText = '';
+    let pendingContextImage = '';
     if (firstMarkerIdx > 0) {
-      const preText = text.substring(0, firstMarkerIdx).replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
+      let preText = text.substring(0, firstMarkerIdx).replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
+      // Extract image from context text
+      const ctxImgMatch = preText.match(/___IMAGE_(\d+)___/);
+      if (ctxImgMatch) {
+        const imgUrl = this.findImageByNumber(ctxImgMatch[1]);
+        if (imgUrl) pendingContextImage = imgUrl;
+        preText = preText.replace(/___IMAGE_\d+___/g, '').trim();
+      }
       if (preText.length > 30) {
         pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
         console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
@@ -920,9 +929,11 @@ export abstract class BaseParser {
       if (question) {
         question.originalNumber = parseInt(match[1]);
         // Attach pending contextText from previous block or pre-question text
-        if (pendingContextText) {
-          question.contextText = pendingContextText;
+        if (pendingContextText || pendingContextImage) {
+          if (pendingContextText) question.contextText = pendingContextText;
+          if (pendingContextImage) question.contextImage = pendingContextImage;
           pendingContextText = '';
+          pendingContextImage = '';
         }
         // Check for post-variant text in this block (contextText for NEXT question)
         const postText = this.extractPostVariantText(block, mathBlocks);

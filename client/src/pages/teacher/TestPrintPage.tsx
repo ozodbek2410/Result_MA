@@ -755,9 +755,10 @@ export default function TestPrintPage() {
                                 const isLongQ = questionText.length + optsLen > 600;
                                 return (
                                   <div key={qi} className={`${isLongQ ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
-                                    {question.contextText && (
+                                    {(question.contextText || question.contextImage) && (
                                       <div className="mb-1 italic border-l-2 border-gray-400 pl-2 text-gray-700">
-                                        <MathText text={question.contextText} />
+                                        {question.contextImage && <img src={question.contextImage} alt="" className="max-w-full mb-1" style={{ maxHeight: 200 }} />}
+                                        {question.contextText && <MathText text={question.contextText} />}
                                       </div>
                                     )}
                                     <div className="mb-1">
@@ -798,9 +799,10 @@ export default function TestPrintPage() {
                             const isLongQ2 = questionText.length + optsLen2 > 600;
                             return (
                               <div key={index} className={`${isLongQ2 ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
-                                {question.contextText && (
+                                {(question.contextText || question.contextImage) && (
                                   <div className="mb-1 italic border-l-2 border-gray-400 pl-2 text-gray-700">
-                                    <MathText text={question.contextText} />
+                                    {question.contextImage && <img src={question.contextImage} alt="" className="max-w-full mb-1" style={{ maxHeight: 200 }} />}
+                                    {question.contextText && <MathText text={question.contextText} />}
                                   </div>
                                 )}
                                 <div className="mb-1">
