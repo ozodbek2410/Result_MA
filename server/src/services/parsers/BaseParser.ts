@@ -894,38 +894,15 @@ export abstract class BaseParser {
     console.log(`✅ [PARSER] Valid question markers: ${validMatches.length}`);
 
     // Sequential filter: skip sub-items (e.g., "1) sazavor; 2) pinhona" inside questions)
-    validMatches = this.filterSequentialMarkers(validMatches);
+    validMatches = this.filterSequentialMarkers(validMatches, text);
 
     for (let i = 0; i < validMatches.length; i++) {
       const match = validMatches[i];
       const startIdx = match.index!;
       const endIdx = i < validMatches.length - 1 ? validMatches[i + 1].index! : text.length;
       
-      let block = text.substring(startIdx, endIdx);
-      
-      // CRITICAL FIX: Check if block has variants
-      // If no variants found, check next line - it might be the variants line
-      const hasVariants = block.match(/[A-D]\s*\)/g);
-      const variantCount = hasVariants ? hasVariants.length : 0;
-      
-      if (variantCount < 2 && i < validMatches.length - 1) {
-        // No variants in current block, check if next line has variants
-        const nextStartIdx = validMatches[i + 1].index!;
-        const nextEndIdx = i < validMatches.length - 2 ? validMatches[i + 2].index! : text.length;
-        const nextBlock = text.substring(nextStartIdx, nextEndIdx);
-        
-        // Check if next block is actually a variants line (starts with A), B), etc.)
-        const nextBlockFirstLine = nextBlock.split('\n')[0].trim();
-        const startsWithVariant = nextBlockFirstLine.match(/^(?:\*\*\s*)?[A-D]\s*\)/);
-        
-        if (startsWithVariant) {
-          // Next block is variants line, merge it with current block
-          block = text.substring(startIdx, nextEndIdx);
-          i++; // Skip next block since we merged it
-          console.log(`🔗 [PARSER] Merged question ${i} with variants line`);
-        }
-      }
-      
+      const block = text.substring(startIdx, endIdx);
+
       const question = this.extractQuestion(block, mathBlocks);
       
       if (question) {
@@ -957,14 +934,27 @@ export abstract class BaseParser {
    * Filter question markers to keep only ascending sequence.
    * Skips sub-items (1, 2, 3 inside question body) that break numbering.
    */
-  private filterSequentialMarkers(matches: RegExpExecArray[]): RegExpExecArray[] {
+  private filterSequentialMarkers(matches: RegExpExecArray[], text: string): RegExpExecArray[] {
     if (matches.length <= 1) return matches;
 
     const nums = matches.map(m => parseInt(m[1]));
     const maxNum = Math.max(...nums);
 
+    // Helper: get block end position for a marker given ALL markers
+    const getBlockEnd = (marker: RegExpExecArray): number => {
+      for (const m of matches) {
+        if (m.index! > marker.index!) return m.index!;
+      }
+      return text.length;
+    };
+
+    // Helper: check if block has >= 4 ABCD variants
+    const hasVariants = (marker: RegExpExecArray): boolean => {
+      const blockText = text.substring(marker.index!, getBlockEnd(marker));
+      return (blockText.match(/[A-D]\s*\)/g) || []).length >= 4;
+    };
+
     // Strategy 1: For each n=1..maxNum, pick first occurrence after previous selection.
-    // This correctly skips false markers (e.g. sub-items with high numbers that appear early).
     const s1: RegExpExecArray[] = [];
     let si = 0;
     for (let n = 1; n <= maxNum; n++) {
@@ -977,7 +967,7 @@ export abstract class BaseParser {
       }
     }
 
-    // Strategy 2: Longest ascending subsequence from best start (original algorithm).
+    // Strategy 2: Longest ascending subsequence from best start.
     let bestStart = 0;
     let bestLen = 0;
     for (let s = 0; s < nums.length; s++) {
@@ -995,7 +985,33 @@ export abstract class BaseParser {
       if (n > lastNum) { s2.push(matches[i]); lastNum = n; }
     }
 
-    const result = s1.length >= s2.length ? s1 : s2;
+    // Strategy 3: For duplicate numbers, prefer marker whose block has ABCD variants.
+    const s3: RegExpExecArray[] = [];
+    let searchFrom = 0;
+    for (let n = 1; n <= maxNum; n++) {
+      const candidates = matches.filter(m => parseInt(m[1]) === n && m.index! >= searchFrom);
+      if (candidates.length === 0) continue;
+
+      if (candidates.length === 1) {
+        s3.push(candidates[0]);
+        searchFrom = candidates[0].index! + 1;
+      } else {
+        // Prefer candidate with ABCD variants in its block
+        let picked = candidates[0];
+        for (const c of candidates) {
+          if (hasVariants(c)) {
+            picked = c;
+            break;
+          }
+        }
+        s3.push(picked);
+        searchFrom = picked.index! + 1;
+      }
+    }
+
+    // Pick strategy with most markers; prefer s3 (variant-aware) when tied
+    const strategies = [s1, s2, s3];
+    const result = strategies.reduce((best, cur) => cur.length >= best.length ? cur : best);
 
     if (result.length < matches.length) {
       console.log(`📊 [PARSER] Sequential filter: ${matches.length} → ${result.length} (skipped ${matches.length - result.length} sub-items)`);
@@ -1119,15 +1135,20 @@ export abstract class BaseParser {
     const parts = cleanVariants.split(/(?=[A-D]\s*\))/);
     const variants: { letter: string; text: string }[] = [];
 
+    const seenLetters = new Set<string>();
     for (const part of parts) {
       const match = part.match(/^([A-D])\s*\)\s*(.*)$/);
       if (match) {
         const letter = match[1].toUpperCase();
+        // Stop at duplicate only after collecting a full set (4 variants)
+        // This allows typos like "D) x D) y" but stops merged blocks' next question
+        if (seenLetters.has(letter) && variants.length >= 4) break;
+        seenLetters.add(letter);
         let text = match[2].trim();
-        
+
         text = this.restoreMath(text, mathBlocks);
         text = this.finalCleanText(text, mathBlocks);
-        
+
         console.log(`  ✅ Variant ${letter}: ${text || '(empty)'}`);
         variants.push({ letter, text: text || '' });
       }
@@ -1175,7 +1196,7 @@ export abstract class BaseParser {
     const variantCountUpper = variantMatchesUpper ? variantMatchesUpper.length : 0;
 
     // If 4 variants found in full block, process as single line
-    if (variantCountUpper === 4) {
+    if (variantCountUpper >= 4) {
       console.log(`🔍 [PARSER] Detected 4 inline variants in block, processing as single line`);
       const result = this.extractInlineVariants(fullBlock, mathBlocks);
       if (result && extractedImageUrl && !result.imageUrl) {
