@@ -738,11 +738,11 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
                               src={q.imageUrl || q.image}
                               alt="Question"
                               className="rounded-lg border-2 border-gray-200"
-                              style={q.imageWidth ? { width: Math.round(q.imageWidth * 0.64), maxWidth: '100%', height: 'auto' } : undefined}
+                              style={q.imageWidth ? { width: Math.round(q.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : { maxWidth: 300, height: 'auto' }}
                               onLoad={(e) => {
                                 const img = e.currentTarget;
-                                if (!img.style.width) {
-                                  const w = Math.round(img.naturalWidth * 0.64);
+                                if (!img.style.width && !q.imageWidth) {
+                                  const w = Math.min(Math.round(img.naturalWidth * 0.5), 300);
                                   img.style.width = w + 'px';
                                   img.style.height = 'auto';
                                 }
