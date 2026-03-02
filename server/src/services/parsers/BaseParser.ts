@@ -64,6 +64,8 @@ export interface ParsedQuestion {
   text: string;
   contextText?: string;
   contextImage?: string;
+  contextImageWidth?: number;
+  contextImageHeight?: number;
   variants: { letter: string; text: string; imageUrl?: string; imageWidth?: number; imageHeight?: number }[];
   correctAnswer: string;
   points: number;
@@ -902,13 +904,22 @@ export abstract class BaseParser {
     const firstMarkerIdx = validMatches.length > 0 ? validMatches[0].index! : 0;
     let pendingContextText = '';
     let pendingContextImage = '';
+    let pendingContextImageWidth = 0;
+    let pendingContextImageHeight = 0;
     if (firstMarkerIdx > 0) {
       let preText = text.substring(0, firstMarkerIdx).replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
       // Extract image from context text
       const ctxImgMatch = preText.match(/___IMAGE_(\d+)___/);
       if (ctxImgMatch) {
         const imgUrl = this.findImageByNumber(ctxImgMatch[1]);
-        if (imgUrl) pendingContextImage = imgUrl;
+        if (imgUrl) {
+          pendingContextImage = imgUrl;
+          const dims = this.imageDimensions.get(ctxImgMatch[1]);
+          if (dims) {
+            pendingContextImageWidth = dims.widthPx;
+            pendingContextImageHeight = dims.heightPx;
+          }
+        }
         preText = preText.replace(/___IMAGE_\d+___/g, '').trim();
       }
       if (preText.length > 30) {
@@ -931,9 +942,15 @@ export abstract class BaseParser {
         // Attach pending contextText from previous block or pre-question text
         if (pendingContextText || pendingContextImage) {
           if (pendingContextText) question.contextText = pendingContextText;
-          if (pendingContextImage) question.contextImage = pendingContextImage;
+          if (pendingContextImage) {
+            question.contextImage = pendingContextImage;
+            if (pendingContextImageWidth) question.contextImageWidth = pendingContextImageWidth;
+            if (pendingContextImageHeight) question.contextImageHeight = pendingContextImageHeight;
+          }
           pendingContextText = '';
           pendingContextImage = '';
+          pendingContextImageWidth = 0;
+          pendingContextImageHeight = 0;
         }
         // Check for post-variant text in this block (contextText for NEXT question)
         const postText = this.extractPostVariantText(block, mathBlocks);

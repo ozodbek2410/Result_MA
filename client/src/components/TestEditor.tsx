@@ -214,7 +214,7 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                         </button>
                       </div>
                       {question.contextImage && (
-                        <img src={question.contextImage} alt="Context" className="max-w-full rounded mb-2" style={{ maxHeight: 300 }} />
+                        <img src={question.contextImage} alt="Context" className="rounded mb-2" style={{ float: 'right', maxWidth: '40%', maxHeight: 250, margin: '0 0 4px 8px' }} />
                       )}
                       {question.contextText && (
                         <>
