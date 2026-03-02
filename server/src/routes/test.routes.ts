@@ -1196,6 +1196,8 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
             text: questionText,
             contextText: q.contextText || undefined,
             contextImage: q.contextImage || undefined,
+            contextImageWidth: q.contextImageWidth || undefined,
+            contextImageHeight: q.contextImageHeight || undefined,
             options,
             correctAnswer: q.correctAnswer || '',
             ...extractQuestionMedia(q),
@@ -1232,12 +1234,15 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
           number: index + 1,
           text: questionText,
           contextText: q.contextText || undefined,
+          contextImage: q.contextImage || undefined,
+          contextImageWidth: q.contextImageWidth || undefined,
+          contextImageHeight: q.contextImageHeight || undefined,
           options,
           correctAnswer: q.correctAnswer || '',
           ...extractQuestionMedia(q),
         };
       });
-      
+
       testData = {
         title: test.name || 'Test',
         className: test.groupId ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`) : '',
@@ -1492,6 +1497,8 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
             text: questionText,
             contextText: q.contextText || undefined,
             contextImage: q.contextImage || undefined,
+            contextImageWidth: q.contextImageWidth || undefined,
+            contextImageHeight: q.contextImageHeight || undefined,
             options,
             correctAnswer: q.correctAnswer || '',
             ...extractQuestionMedia(q),
@@ -1547,12 +1554,15 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
           number: index + 1,
           text: questionText,
           contextText: q.contextText || undefined,
+          contextImage: q.contextImage || undefined,
+          contextImageWidth: q.contextImageWidth || undefined,
+          contextImageHeight: q.contextImageHeight || undefined,
           options,
           correctAnswer: q.correctAnswer || '',
           ...extractQuestionMedia(q),
         };
       });
-      
+
       testData = {
         title: test.name || 'Test',
         className: test.groupId ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`) : '',

@@ -10,6 +10,8 @@ interface Question {
   text: string;
   contextText?: string;
   contextImage?: string;
+  contextImageWidth?: number;
+  contextImageHeight?: number;
   options: string[];
   correctAnswer?: string;
   imageUrl?: string;
@@ -297,7 +299,7 @@ export class PDFGeneratorService {
 
                 return `
                 <div class="question${isLong ? ' long-question' : ''}">
-                  ${(q.contextText || q.contextImage) ? `<div class="context-text" style="font-style:italic;border-left:2px solid #999;padding-left:6px;margin-bottom:4px;color:#444;">${q.contextImage ? `<img src="${q.contextImage}" style="max-width:100%;max-height:200px;margin-bottom:4px;" />` : ''}${q.contextText ? this.renderMath(q.contextText) : ''}</div>` : ''}
+                  ${(q.contextText || q.contextImage) ? `<div class="context-text" style="font-style:italic;margin-bottom:4px;color:#444;overflow:hidden;">${q.contextImage ? `<img src="${this.resolveImageForPdf(q.contextImage)}" style="float:right;${q.contextImageWidth ? `width:${Math.round(q.contextImageWidth * 0.55)}px;` : ''}max-width:40%;max-height:200px;margin:0 0 4px 8px;border-radius:4px;" />` : ''}${q.contextText ? this.renderMath(q.contextText) : ''}<div style="clear:both;"></div></div>` : ''}
                   <div class="question-text">
                     <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
                   </div>
@@ -820,7 +822,7 @@ export class PDFGeneratorService {
 
           return `
           <div class="question${isLong ? ' long-question' : ''}">
-            ${(q.contextText || q.contextImage) ? `<div class="context-text" style="font-style:italic;border-left:2px solid #999;padding-left:6px;margin-bottom:4px;color:#444;">${q.contextImage ? `<img src="${q.contextImage}" style="max-width:100%;max-height:200px;margin-bottom:4px;" />` : ''}${q.contextText ? this.renderMath(q.contextText) : ''}</div>` : ''}
+            ${(q.contextText || q.contextImage) ? `<div class="context-text" style="font-style:italic;margin-bottom:4px;color:#444;overflow:hidden;">${q.contextImage ? `<img src="${this.resolveImageForPdf(q.contextImage)}" style="float:right;${q.contextImageWidth ? `width:${Math.round(q.contextImageWidth * 0.55)}px;` : ''}max-width:40%;max-height:200px;margin:0 0 4px 8px;border-radius:4px;" />` : ''}${q.contextText ? this.renderMath(q.contextText) : ''}<div style="clear:both;"></div></div>` : ''}
             <div class="question-text">
               <span class="question-number">${q.number}.</span> ${this.renderMath(q.text)}
             </div>

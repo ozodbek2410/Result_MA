@@ -1238,6 +1238,10 @@ function convertQuestionForExport(q: any, questionNumber: number, _subjectName: 
   return {
     number: questionNumber,
     text: questionText,
+    contextText: q.contextText || undefined,
+    contextImage: q.contextImage || undefined,
+    contextImageWidth: q.contextImageWidth || undefined,
+    contextImageHeight: q.contextImageHeight || undefined,
     options,
     correctAnswer: q.correctAnswer || '',
     imageUrl: undefined, // Only use media[] to avoid duplicates

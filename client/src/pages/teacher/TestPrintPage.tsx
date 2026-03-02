@@ -756,9 +756,10 @@ export default function TestPrintPage() {
                                 return (
                                   <div key={qi} className={`${isLongQ ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
                                     {(question.contextText || question.contextImage) && (
-                                      <div className="mb-1 italic border-l-2 border-gray-400 pl-2 text-gray-700">
-                                        {question.contextImage && <img src={question.contextImage} alt="" className="max-w-full mb-1" style={{ maxHeight: 200 }} />}
+                                      <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
+                                        {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
                                         {question.contextText && <MathText text={question.contextText} />}
+                                        <div style={{ clear: 'both' }} />
                                       </div>
                                     )}
                                     <div className="mb-1">
@@ -800,9 +801,10 @@ export default function TestPrintPage() {
                             return (
                               <div key={index} className={`${isLongQ2 ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
                                 {(question.contextText || question.contextImage) && (
-                                  <div className="mb-1 italic border-l-2 border-gray-400 pl-2 text-gray-700">
-                                    {question.contextImage && <img src={question.contextImage} alt="" className="max-w-full mb-1" style={{ maxHeight: 200 }} />}
+                                  <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
+                                    {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
                                     {question.contextText && <MathText text={question.contextText} />}
+                                    <div style={{ clear: 'both' }} />
                                   </div>
                                 )}
                                 <div className="mb-1">

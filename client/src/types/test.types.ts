@@ -17,6 +17,8 @@ export interface Question {
   text: string;
   contextText?: string;
   contextImage?: string;
+  contextImageWidth?: number;
+  contextImageHeight?: number;
   formula?: string;
   imageUrl?: string;
   variants: QuestionVariant[];

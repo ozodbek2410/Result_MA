@@ -41,6 +41,8 @@ interface ParsedQuestion {
   text: string;
   contextText?: string;
   contextImage?: string;
+  contextImageWidth?: number;
+  contextImageHeight?: number;
   formula?: string;
   variants: { letter: string; text: string; formula?: string; imageUrl?: string; imageWidth?: number; imageHeight?: number }[];
   correctAnswer: string;
@@ -583,16 +585,17 @@ export function BlockTestImportForm({
                       </div>
                       <div className="flex-1 space-y-3">
                         {(q.contextText || q.contextImage) && (
-                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
                             <div className="text-xs font-medium text-amber-600 mb-1">Matn (kontekst)</div>
                             {q.contextImage && (
-                              <img src={q.contextImage} alt="Context" className="max-w-full rounded mb-2" style={{ maxHeight: 300 }} />
+                              <img src={q.contextImage} alt="Context" className="rounded" style={{ float: 'right', width: q.contextImageWidth ? q.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 250, margin: '0 0 4px 8px' }} />
                             )}
                             {q.contextText && (
                               <div className="text-sm text-gray-700 italic">
                                 <MathText text={q.contextText} />
                               </div>
                             )}
+                            <div style={{ clear: 'both' }} />
                           </div>
                         )}
                         <div className="border rounded-lg">
@@ -608,7 +611,7 @@ export function BlockTestImportForm({
                           <div className="relative inline-block">
                             <img src={q.imageUrl || q.image} alt="Question"
                               className="rounded-lg border-2 border-gray-200"
-                              style={q.imageWidth ? { width: q.imageWidth, maxWidth: '100%', height: 'auto' } : undefined}
+                              style={q.imageWidth ? { width: Math.round(q.imageWidth * 0.64), maxWidth: '100%', height: 'auto' } : undefined}
                               onLoad={e => {
                                 const img = e.currentTarget;
                                 if (!img.style.width) {

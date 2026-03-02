@@ -19,6 +19,8 @@ export interface IQuestion {
   text: string;
   contextText?: string;
   contextImage?: string;
+  contextImageWidth?: number;
+  contextImageHeight?: number;
   formula?: string;
   imageUrl?: string; // Legacy support
   imageWidth?: number; // Word dagi original kenglik (px)
@@ -60,6 +62,8 @@ const QuestionSchema = new Schema<IQuestion>({
   text: { type: String, required: true },
   contextText: String,
   contextImage: String,
+  contextImageWidth: Number,
+  contextImageHeight: Number,
   formula: String,
   imageUrl: String, // Legacy support
   imageWidth: Number, // Word dagi original kenglik (px)
