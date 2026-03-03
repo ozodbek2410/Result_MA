@@ -126,3 +126,4 @@ test/*.jpg
 test/*.png
 test/*.xlsx
 guruhlar/
+mongo_dump/
