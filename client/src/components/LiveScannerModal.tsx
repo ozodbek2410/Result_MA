@@ -247,8 +247,33 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
-    // Detection: bright + content + not too blurry
-    const detected = avgBright > 130 && whiteRatio > 0.20 && darkRatio > 0.02 && sharpness > 5;
+    // ---- Corner marks detection: check 4 corners for dark squares ----
+    const markSize = Math.round(afw * 0.04); // ~4% of frame width
+    const checkR = Math.max(3, Math.round(markSize / 2));
+    const cornerPositions = [
+      { x: Math.round(afx + afw * 0.02), y: Math.round(afy + afh * 0.02) },           // TL
+      { x: Math.round(afx + afw * 0.98), y: Math.round(afy + afh * 0.02) },           // TR
+      { x: Math.round(afx + afw * 0.02), y: Math.round(afy + afh * 0.98) },           // BL
+      { x: Math.round(afx + afw * 0.98), y: Math.round(afy + afh * 0.98) },           // BR
+    ];
+    let cornersFound = 0;
+    for (const cp of cornerPositions) {
+      let darkCount = 0, totalCount = 0;
+      for (let dy = -checkR; dy <= checkR; dy++) {
+        for (let dx = -checkR; dx <= checkR; dx++) {
+          const px2 = cp.x + dx, py2 = cp.y + dy;
+          if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
+          const idx = (py2 * ANALYSIS_W + px2) * 4;
+          const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+          if (g < 100) darkCount++;
+          totalCount++;
+        }
+      }
+      if (totalCount > 0 && darkCount / totalCount > 0.5) cornersFound++;
+    }
+
+    // Detection: must find all 4 corner marks + basic quality
+    const detected = cornersFound >= 4 && avgBright > 120 && sharpness > 4;
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -335,7 +360,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
-        const hint = sharpness < 5 ? 'Fokus qiling — xira' : avgBright < 130 ? 'Yoritish kerak' : 'Varoqni ramkaga moslang';
+        const hint = cornersFound < 4
+          ? `Burchak belgilari: ${cornersFound}/4`
+          : sharpness < 4 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
       }
     }
