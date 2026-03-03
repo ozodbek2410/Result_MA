@@ -432,68 +432,43 @@ class HybridOMR:
         self.log(f"Total bubbles: {len(result)} (y={y_min}-{y_max}, size={min_s}-{max_s})")
         return result
 
-    def _build_grid(self, bubbles, w_img, h_img):
-        """Build question grid by clustering detected bubble positions"""
-        if len(bubbles) < 16:
-            self.log(f"Too few bubbles ({len(bubbles)})")
-            return {}
-
-        # Auto-detect total from Y rows if not specified
-        if self.TOTAL_QUESTIONS:
-            total = self.TOTAL_QUESTIONS
-        else:
-            # Count Y rows first to estimate total
-            y_thr_pre = max(6, int(np.median([b['w'] for b in bubbles]) * 0.5))
-            sorted_y_pre = sorted(bubbles, key=lambda b: b['y'])
-            y_rows_pre = []
-            cl_pre = [sorted_y_pre[0]]
-            for i in range(1, len(sorted_y_pre)):
-                if sorted_y_pre[i]['y'] - cl_pre[-1]['y'] < y_thr_pre:
-                    cl_pre.append(sorted_y_pre[i])
-                else:
-                    y_rows_pre.append(cl_pre)
-                    cl_pre = [sorted_y_pre[i]]
-            y_rows_pre.append(cl_pre)
-            n_valid_rows = len([r for r in y_rows_pre if len(r) >= 8])
-            # Estimate: rows * 4 columns, round to nearest 5
-            raw_total = n_valid_rows * 4
-            total = max(30, round(raw_total / 5) * 5)
-            self.log(f"  Auto-detected: {n_valid_rows} rows -> {total} questions")
-
-        if total <= 44: n_cols = 2
-        elif total <= 75: n_cols = 3
-        elif total <= 100: n_cols = 4
-        else: n_cols = 5
-        rows_per_col = (total + n_cols - 1) // n_cols
-
-        median_w = int(np.median([b['w'] for b in bubbles]))
-        self.log(f"Grid: {total}q, expect {n_cols}cols x {rows_per_col}rows, bubble={median_w}px")
-
-        # 1. Cluster Y -> rows
-        y_thr = max(6, int(median_w * 0.5))
+    def _cluster_y_rows(self, bubbles, median_w, expected_rows):
+        """Cluster bubbles into Y rows with anti-chaining protection.
+        Compares new bubble to cluster FIRST element (not last) to prevent
+        adjacent rows from merging when gap ≈ threshold."""
         sorted_y = sorted(bubbles, key=lambda b: b['y'])
-        y_rows_raw = []
-        cl = [sorted_y[0]]
-        for i in range(1, len(sorted_y)):
-            if sorted_y[i]['y'] - cl[-1]['y'] < y_thr:
-                cl.append(sorted_y[i])
-            else:
-                y_rows_raw.append(cl)
-                cl = [sorted_y[i]]
-        y_rows_raw.append(cl)
 
-        min_per_row = max(4, n_cols * 2)
-        y_rows = [r for r in y_rows_raw if len(r) >= min_per_row]
-        self.log(f"  Y rows: {len(y_rows)} with {min_per_row}+ bubbles")
+        best_rows = []
+        # Try decreasing thresholds until we get enough rows
+        for y_mult in [1.0, 0.75, 0.5, 0.35]:
+            y_thr = max(6, int(median_w * y_mult))
+            rows_raw = []
+            cl = [sorted_y[0]]
+            for i in range(1, len(sorted_y)):
+                # ANTI-CHAINING: compare to FIRST element, not last
+                if sorted_y[i]['y'] - cl[0]['y'] < y_thr:
+                    cl.append(sorted_y[i])
+                else:
+                    rows_raw.append(cl)
+                    cl = [sorted_y[i]]
+            rows_raw.append(cl)
 
-        if len(y_rows) < 3:
-            return {}
+            y_rows = [r for r in rows_raw if len(r) >= 4]
+            self.log(f"  Y cluster (thr={y_thr}, mult={y_mult}): {len(y_rows)} rows (raw={len(rows_raw)})")
 
-        # 2. X histogram: find stable column positions
-        all_x = [b['x'] for row in y_rows for b in row]
-        x_sorted = sorted(all_x)
+            if len(y_rows) > len(best_rows):
+                best_rows = y_rows
+
+            if len(y_rows) >= expected_rows * 0.8:
+                return y_rows
+
+        return best_rows
+
+    def _find_x_clusters(self, bubbles_x, median_w, n_y_rows):
+        """Find stable X column positions from bubble X coordinates."""
+        x_sorted = sorted(bubbles_x)
         x_cl_thr = max(4, int(median_w * 0.4))
-        min_hits = max(3, len(y_rows) // 4)
+        min_hits = max(3, n_y_rows // 4)
 
         x_clusters = []
         cl_x = [x_sorted[0]]
@@ -507,10 +482,8 @@ class HybridOMR:
         if len(cl_x) >= min_hits:
             x_clusters.append(int(np.median(cl_x)))
 
-        self.log(f"  X clusters: {len(x_clusters)} positions: {x_clusters}")
-
         if len(x_clusters) < 4:
-            # Retry with lower threshold
+            # Retry with lower min_hits
             x_clusters = []
             cl_x = [x_sorted[0]]
             for xi in x_sorted[1:]:
@@ -522,25 +495,127 @@ class HybridOMR:
                     cl_x = [xi]
             if len(cl_x) >= 2:
                 x_clusters.append(int(np.median(cl_x)))
-            self.log(f"  X clusters (loose): {len(x_clusters)}")
 
+        return x_clusters
+
+    def _find_abcd_columns(self, x_clusters, n_cols):
+        """Find ABCD column groups using pattern matching.
+        Looks for groups of 4 consecutive X positions with consistent spacing,
+        automatically filtering out timing marks and noise."""
         if len(x_clusters) < 4:
-            return {}
+            return None
 
-        # 3. Group X into column groups using natural gap detection
-        diffs = [x_clusters[i+1] - x_clusters[i] for i in range(len(x_clusters) - 1)]
+        diffs = [x_clusters[i+1] - x_clusters[i] for i in range(len(x_clusters)-1)]
         self.log(f"  X diffs: {[f'{d:.0f}' for d in diffs]}")
 
-        # Find natural break: sort diffs, find largest jump between consecutive
+        # Estimate ABCD spacing: median of smallest ~60% of diffs
         sorted_diffs = sorted(diffs)
-        best_jump, best_pos = 0, 0
-        for i in range(len(sorted_diffs) - 1):
-            jump = sorted_diffs[i+1] - sorted_diffs[i]
-            if jump > best_jump:
-                best_jump = jump
-                best_pos = i
-        gap_threshold = (sorted_diffs[best_pos] + sorted_diffs[best_pos + 1]) / 2
-        self.log(f"  Gap threshold: {gap_threshold:.0f}px (jump={best_jump:.0f})")
+        within_count = max(4, int(len(sorted_diffs) * 0.6))
+        abcd_sp = float(np.median(sorted_diffs[:within_count]))
+
+        # Sanity check: ABCD spacing should be ~3-7% of image width
+        max_x = getattr(self, '_grid_w', 1000)
+        min_abcd = max_x * 0.025  # ~25px for 1000px
+        max_abcd = max_x * 0.07   # ~70px for 1000px
+        if not (min_abcd <= abcd_sp <= max_abcd):
+            self.log(f"  ABCD spacing {abcd_sp:.0f}px outside range [{min_abcd:.0f}-{max_abcd:.0f}], using default")
+            abcd_sp = max_x * 0.04  # ~40px default
+        tol = abcd_sp * 0.35
+        self.log(f"  ABCD spacing: {abcd_sp:.0f}px, tol: {tol:.0f}px")
+
+        # Find all valid quadruplets: 4 consecutive X clusters with ABCD-like spacing
+        quads = []
+        for i in range(len(x_clusters) - 3):
+            sub = x_clusters[i:i+4]
+            sub_diffs = [sub[k+1] - sub[k] for k in range(3)]
+            if all(abs(d - abcd_sp) < tol for d in sub_diffs):
+                score = sum((d - abcd_sp)**2 for d in sub_diffs)
+                quads.append((sub, score, set(range(i, i+4))))
+
+        self.log(f"  ABCD quadruplets found: {len(quads)}")
+
+        # If not enough, retry with wider tolerance
+        if len(quads) < n_cols:
+            tol2 = abcd_sp * 0.5
+            for i in range(len(x_clusters) - 3):
+                sub = x_clusters[i:i+4]
+                sub_diffs = [sub[k+1] - sub[k] for k in range(3)]
+                if all(abs(d - abcd_sp) < tol2 for d in sub_diffs):
+                    indices = set(range(i, i+4))
+                    if not any(indices == q[2] for q in quads):
+                        score = sum((d - abcd_sp)**2 for d in sub_diffs)
+                        quads.append((sub, score, indices))
+            self.log(f"  After wider tol: {len(quads)} quadruplets")
+
+        if not quads:
+            return None
+
+        # Sort by score (best spacing match first)
+        quads.sort(key=lambda q: q[1])
+
+        # Greedily select non-overlapping quadruplets
+        selected = []
+        used = set()
+        for pos, score, indices in quads:
+            if not indices.intersection(used):
+                selected.append(pos)
+                used.update(indices)
+                if len(selected) == n_cols:
+                    break
+
+        selected.sort(key=lambda q: q[0])
+        self.log(f"  Pattern matched: {len(selected)} cols: {[[p for p in q] for q in selected]}")
+
+        # If found fewer than n_cols, extrapolate missing columns
+        if len(selected) >= 1 and len(selected) < n_cols:
+            abcd_sp_found = (selected[0][3] - selected[0][0]) / 3.0
+            max_x = getattr(self, '_grid_w', 1200)
+            col_centers = [(q[0] + q[3]) / 2 for q in selected]
+
+            if len(selected) >= 2:
+                col_spacings = [col_centers[i+1] - col_centers[i] for i in range(len(col_centers)-1)]
+                col_gap = float(np.median(col_spacings))
+            else:
+                col_gap = max_x * 0.22
+
+            expected_col_gap = max_x * 0.22
+            if col_gap > expected_col_gap * 1.5:
+                n_between = max(1, round(col_gap / expected_col_gap))
+                col_gap = col_gap / n_between
+                self.log(f"  Non-adjacent cols, adjusted gap: {col_gap:.0f}px")
+
+            # Find best starting position: try each found col as each index
+            best_start, best_err = None, float('inf')
+            for fc in col_centers:
+                for ti in range(n_cols):
+                    start = fc - ti * col_gap
+                    end_x = start + (n_cols - 1) * col_gap + 1.5 * abcd_sp_found
+                    if start - 1.5 * abcd_sp_found < -10 or end_x > max_x * 1.05:
+                        continue
+                    err = sum(min(abs(start + i * col_gap - c) for i in range(n_cols)) for c in col_centers)
+                    if err < best_err:
+                        best_err = err
+                        best_start = start
+
+            if best_start is not None:
+                all_cols = []
+                for c in range(n_cols):
+                    center = best_start + c * col_gap
+                    new_col = [int(center + (k - 1.5) * abcd_sp_found) for k in range(4)]
+                    all_cols.append(new_col)
+                self.log(f"  Extrapolated: {len(all_cols)} cols (gap={col_gap:.0f}px, start={best_start:.0f})")
+                if len(all_cols) >= len(selected):
+                    selected = all_cols
+
+        return selected if selected else None
+
+    def _gap_based_columns(self, x_clusters, n_cols, diffs, expected_spacing):
+        """Fallback: gap-based column grouping when pattern matching fails."""
+        sorted_diffs = sorted(diffs)
+        within_count = max(4, int(len(sorted_diffs) * 0.6))
+        within_median = float(np.median(sorted_diffs[:within_count]))
+        gap_threshold = within_median * 2.0
+        self.log(f"  Gap fallback: thr={gap_threshold:.0f}px")
 
         col_groups = [[x_clusters[0]]]
         for i in range(1, len(x_clusters)):
@@ -549,38 +624,117 @@ class HybridOMR:
             else:
                 col_groups[-1].append(x_clusters[i])
 
-        self.log(f"  Col groups: {len(col_groups)}, sizes={[len(g) for g in col_groups]}")
-
-        # 4. Normalize each group to 4 positions (A,B,C,D)
-        # Compute expected spacing from groups that already have 4
-        ref_spacings = []
-        for g in col_groups:
-            if len(g) == 4:
-                ref_spacings.extend([g[i+1]-g[i] for i in range(3)])
-        within_diffs = [d for d in diffs if d <= gap_threshold]
-        expected_spacing = float(np.median(ref_spacings)) if ref_spacings else (float(np.median(within_diffs)) if within_diffs else 40)
-        self.log(f"  Expected within-col spacing: {expected_spacing:.0f}px")
+        self.log(f"  Gap col groups: {len(col_groups)}, sizes={[len(g) for g in col_groups]}")
 
         final_cols = []
         for gi, group in enumerate(col_groups):
             if len(group) == 4:
                 final_cols.append(group)
             elif len(group) > 4:
-                # Find best 4-consecutive subset with spacing closest to expected
                 best_sub, best_score = group[:4], float('inf')
                 for si in range(len(group) - 3):
                     sub = group[si:si+4]
-                    sub_diffs = [sub[i+1]-sub[i] for i in range(3)]
+                    sub_diffs = [sub[k+1]-sub[k] for k in range(3)]
                     score = sum((d - expected_spacing)**2 for d in sub_diffs)
                     if score < best_score:
                         best_score = score
                         best_sub = sub
-                self.log(f"  Col {gi}: {len(group)} -> picked {best_sub}")
                 final_cols.append(best_sub)
             elif len(group) >= 2:
-                # Interpolate to 4 using expected spacing, centered on group
                 center = (group[0] + group[-1]) / 2.0
                 final_cols.append([int(center + (i - 1.5) * expected_spacing) for i in range(4)])
+
+        # Extrapolate if we have 1+ cols but less than n_cols
+        if len(final_cols) >= 1 and len(final_cols) < n_cols:
+            abcd_sp_found = (final_cols[0][3] - final_cols[0][0]) / 3.0
+            max_x = getattr(self, '_grid_w', 1200)
+            fc_centers = [(c[0] + c[3]) / 2 for c in final_cols]
+            if len(final_cols) >= 2:
+                col_spacings = [fc_centers[i+1] - fc_centers[i] for i in range(len(fc_centers)-1)]
+                col_gap = float(np.median(col_spacings))
+            else:
+                col_gap = max_x * 0.22
+            expected_col_gap = max_x * 0.22
+            if col_gap > expected_col_gap * 1.5:
+                n_between = max(1, round(col_gap / expected_col_gap))
+                col_gap = col_gap / n_between
+                self.log(f"  Non-adjacent cols, adjusted gap: {col_gap:.0f}px")
+            # Find best starting position
+            best_start, best_err = None, float('inf')
+            for fc in fc_centers:
+                for ti in range(n_cols):
+                    start = fc - ti * col_gap
+                    end_x = start + (n_cols - 1) * col_gap + 1.5 * abcd_sp_found
+                    if start - 1.5 * abcd_sp_found < -10 or end_x > max_x * 1.05:
+                        continue
+                    err = sum(min(abs(start + i * col_gap - c) for i in range(n_cols)) for c in fc_centers)
+                    if err < best_err:
+                        best_err = err
+                        best_start = start
+            if best_start is not None:
+                all_cols = []
+                for c in range(n_cols):
+                    center = best_start + c * col_gap
+                    new_col = [int(center + (k - 1.5) * abcd_sp_found) for k in range(4)]
+                    all_cols.append(new_col)
+                self.log(f"  Gap extrapolated: {len(all_cols)} cols (gap={col_gap:.0f}px)")
+                if len(all_cols) >= len(final_cols):
+                    final_cols = all_cols
+
+        return final_cols if final_cols else None
+
+    def _build_grid(self, bubbles, w_img, h_img):
+        """Build question grid by clustering detected bubble positions.
+        Uses anti-chaining Y clustering + ABCD pattern matching for columns."""
+        if len(bubbles) < 16:
+            self.log(f"Too few bubbles ({len(bubbles)})")
+            return {}
+
+        median_w = int(np.median([b['w'] for b in bubbles]))
+
+        # Auto-detect total from Y rows if not specified
+        if self.TOTAL_QUESTIONS:
+            total = self.TOTAL_QUESTIONS
+        else:
+            y_rows_est = self._cluster_y_rows(bubbles, median_w, 23)
+            raw_total = len(y_rows_est) * 4
+            total = max(30, round(raw_total / 5) * 5)
+            self.log(f"  Auto-detected: {len(y_rows_est)} rows -> {total} questions")
+
+        if total <= 44: n_cols = 2
+        elif total <= 75: n_cols = 3
+        elif total <= 100: n_cols = 4
+        else: n_cols = 5
+        rows_per_col = (total + n_cols - 1) // n_cols
+
+        self.log(f"Grid: {total}q, expect {n_cols}cols x {rows_per_col}rows, bubble={median_w}px")
+
+        # 1. Cluster Y rows (anti-chaining)
+        y_rows = self._cluster_y_rows(bubbles, median_w, rows_per_col)
+        self.log(f"  Y rows: {len(y_rows)} with 4+ bubbles")
+
+        if len(y_rows) < 3:
+            return {}
+
+        # 2. Find X clusters
+        all_x = [b['x'] for row in y_rows for b in row]
+        x_clusters = self._find_x_clusters(all_x, median_w, len(y_rows))
+        self.log(f"  X clusters: {len(x_clusters)} positions: {x_clusters}")
+
+        if len(x_clusters) < 4:
+            return {}
+
+        # 3. Find ABCD columns via pattern matching
+        self._grid_w = w_img  # for extrapolation bounds
+        final_cols = self._find_abcd_columns(x_clusters, n_cols)
+
+        if not final_cols or len(final_cols) < 2:
+            self.log(f"  Pattern matching failed, trying gap-based")
+            diffs = [x_clusters[i+1] - x_clusters[i] for i in range(len(x_clusters)-1)]
+            sd = sorted(diffs)
+            wc = max(4, int(len(sd) * 0.6))
+            esp = float(np.median(sd[:wc]))
+            final_cols = self._gap_based_columns(x_clusters, n_cols, diffs, esp)
 
         if not final_cols:
             return {}
@@ -590,7 +744,7 @@ class HybridOMR:
             n_cols = len(final_cols)
             rows_per_col = (total + n_cols - 1) // n_cols
 
-        # 5. Row Y positions (select best rows_per_col rows)
+        # 4. Row Y positions (select best rows_per_col rows)
         row_ys = sorted([int(np.median([b['y'] for b in row])) for row in y_rows])
 
         if len(row_ys) > rows_per_col + 3:
@@ -606,7 +760,7 @@ class HybridOMR:
 
         actual_rows = min(len(row_ys), rows_per_col)
 
-        # 6. Build grid
+        # 5. Build grid
         grid = {}
         letters = ['A', 'B', 'C', 'D']
         for col_idx in range(n_cols):
@@ -627,6 +781,167 @@ class HybridOMR:
         self.log(f"  Grid built: {len(grid)} questions ({n_cols}x{actual_rows})")
         if 1 in grid:
             self.log(f"  Q1: A=({grid[1]['A']['x']},{grid[1]['A']['y']}), D=({grid[1]['D']['x']},{grid[1]['D']['y']})")
+        return grid
+
+    def _build_grid_geometric_REMOVED(self, bubbles, w_img, h_img, total):
+        """REMOVED: Was unreliable due to CSS→print position drift.
+        Kept as reference only - NOT called anywhere."""
+        self.log(f"  Geometric grid: {total}q, image {w_img}x{h_img}")
+
+        # A4 answer sheet layout (from AnswerSheet.tsx getGridLayout)
+        if total <= 44:
+            n_cols, bub_mm, gap_mm, row_mm, col_gap, num_w = 2, 7.5, 2.5, 1.2, 8, 8
+        elif total <= 60:
+            n_cols, bub_mm, gap_mm, row_mm, col_gap, num_w = 3, 7.5, 2.5, 1.2, 6, 8
+        elif total <= 75:
+            n_cols, bub_mm, gap_mm, row_mm, col_gap, num_w = 3, 7.0, 2.0, 0.8, 5, 8
+        elif total <= 100:
+            n_cols, bub_mm, gap_mm, row_mm, col_gap, num_w = 4, 5.5, 2.5, 1.0, 4, 7
+        else:
+            n_cols, bub_mm, gap_mm, row_mm, col_gap, num_w = 5, 5.5, 1.2, 0.4, 3, 6
+
+        rows_per_col = (total + n_cols - 1) // n_cols
+
+        # After perspective transform: image spans corner-mark-to-corner-mark
+        # Corner marks: 5mm squares at 2mm from edge, center at 4.5mm
+        # So image width = 210 - 2*4.5 = 201mm, height = 297 - 2*4.5 = 288mm
+        SPAN_W_MM = 201.0
+        px_mm = w_img / SPAN_W_MM
+
+        # Header takes ~28% of page (logo, QR, student info, instructions)
+        # Answer grid starts at approximately 82mm from top edge = 77.5mm from top mark
+        grid_top_mm = 77.5
+
+        # Column width: numberWidth + 4*(bubbleSize + bubbleGap) - bubbleGap (last has no gap)
+        abcd_width_mm = 4 * bub_mm + 3 * gap_mm
+        col_width_mm = num_w + abcd_width_mm
+        # Total grid width
+        total_grid_w = n_cols * col_width_mm + (n_cols - 1) * col_gap
+        # Center the grid horizontally
+        grid_left_mm = (SPAN_W_MM - total_grid_w) / 2
+
+        # Row height (bubble + margin)
+        row_h_mm = bub_mm + row_mm
+
+        self.log(f"  Layout: {n_cols}cols, bub={bub_mm}mm, gap={gap_mm}mm, row_h={row_h_mm}mm")
+        self.log(f"  Grid: left={grid_left_mm:.1f}mm, top={grid_top_mm:.1f}mm, col_w={col_width_mm:.1f}mm")
+
+        # If we have detected bubbles, use them to calibrate Y start
+        # Find the topmost cluster of bubbles to determine actual grid start
+        if bubbles:
+            top_ys = sorted([b['y'] for b in bubbles])[:20]
+            actual_y_start = int(np.median(top_ys[:min(8, len(top_ys))]))
+            expected_y_start = int(grid_top_mm * px_mm)
+            # Only use calibration if reasonable (within 15% of expected)
+            if abs(actual_y_start - expected_y_start) < h_img * 0.15:
+                grid_top_px = actual_y_start
+                self.log(f"  Y calibrated from bubbles: {grid_top_px}px (expected {expected_y_start}px)")
+            else:
+                grid_top_px = expected_y_start
+                self.log(f"  Y from geometry: {grid_top_px}px (bubbles too far: {actual_y_start}px)")
+        else:
+            grid_top_px = int(grid_top_mm * px_mm)
+
+        # Calibrate X using detected X clusters from _build_grid attempt
+        # Group bubbles by X to find ABCD column groups
+        abcd_sp = (bub_mm + gap_mm) * px_mm  # expected ABCD spacing in px
+        col_full_sp = (col_width_mm + col_gap) * px_mm  # expected column group spacing in px
+
+        # Find column group centers from bubbles
+        if bubbles:
+            all_bx = sorted([b['x'] for b in bubbles])
+            # Cluster X positions
+            x_cl_thr = max(4, int(abcd_sp * 0.35))
+            x_cls = []
+            cl_x = [all_bx[0]]
+            for xi in all_bx[1:]:
+                if xi - cl_x[-1] < x_cl_thr:
+                    cl_x.append(xi)
+                else:
+                    if len(cl_x) >= 2:
+                        x_cls.append(int(np.median(cl_x)))
+                    cl_x = [xi]
+            if len(cl_x) >= 2:
+                x_cls.append(int(np.median(cl_x)))
+
+            # Group into column groups using gap threshold
+            if len(x_cls) >= 4:
+                diffs = [x_cls[i+1] - x_cls[i] for i in range(len(x_cls)-1)]
+                sorted_d = sorted(diffs)
+                # Find the largest jump between consecutive sorted diffs
+                best_j, best_p = 0, 0
+                for i in range(len(sorted_d)-1):
+                    j = sorted_d[i+1] - sorted_d[i]
+                    if j > best_j:
+                        best_j, best_p = j, i
+                gap_th = (sorted_d[best_p] + sorted_d[best_p+1]) / 2 if best_j > 0 else col_full_sp * 0.5
+
+                col_grps = [[x_cls[0]]]
+                for i in range(1, len(x_cls)):
+                    if x_cls[i] - x_cls[i-1] > gap_th:
+                        col_grps.append([x_cls[i]])
+                    else:
+                        col_grps[-1].append(x_cls[i])
+
+                # Use centers of groups with 3+ positions as reliable column refs
+                reliable_cols = []
+                for g in col_grps:
+                    if len(g) >= 3:
+                        reliable_cols.append(int(np.mean(g)))
+                self.log(f"  X calibration: {len(reliable_cols)} reliable column centers: {reliable_cols}")
+
+                if len(reliable_cols) >= 2:
+                    # Calculate actual column spacing from reliable columns
+                    col_spacings = [reliable_cols[i+1] - reliable_cols[i] for i in range(len(reliable_cols)-1)]
+                    actual_col_sp = float(np.mean(col_spacings))
+                    # Use first reliable column to set base X
+                    base_col_idx = 0  # first reliable column is column 0
+                    col_x_bases = []
+                    for ci in range(n_cols):
+                        col_x_bases.append(reliable_cols[0] + ci * actual_col_sp)
+                    self.log(f"  Actual col spacing: {actual_col_sp:.1f}px (expected {col_full_sp:.1f}px)")
+                    self.log(f"  Column X bases: {[f'{x:.0f}' for x in col_x_bases]}")
+                else:
+                    col_x_bases = None
+            else:
+                col_x_bases = None
+        else:
+            col_x_bases = None
+
+        # Build grid with calibrated or calculated positions
+        grid = {}
+        letters = ['A', 'B', 'C', 'D']
+        bub_px = int(bub_mm * px_mm)
+
+        for col_idx in range(n_cols):
+            if col_x_bases:
+                # Use calibrated column base
+                col_center = col_x_bases[col_idx]
+                # ABCD positions centered around column center
+                abcd_total_w = 3 * abcd_sp  # A to D span
+                col_a_x = col_center - abcd_total_w / 2
+            else:
+                col_x_mm = grid_left_mm + col_idx * (col_width_mm + col_gap) + num_w
+                col_a_x = col_x_mm * px_mm + bub_mm / 2 * px_mm
+
+            for row_idx in range(rows_per_col):
+                q = col_idx * rows_per_col + row_idx + 1
+                if q > total:
+                    break
+                cy = grid_top_px + int(row_idx * row_h_mm * px_mm) + bub_px // 2
+                grid[q] = {}
+                for bi, letter in enumerate(letters):
+                    cx = int(col_a_x + bi * abcd_sp)
+                    grid[q][letter] = {
+                        'x': cx, 'y': cy, 'w': bub_px, 'h': bub_px,
+                        'bbox': (cx - bub_px // 2, cy - bub_px // 2, bub_px, bub_px)
+                    }
+
+        self.log(f"  Geometric grid: {len(grid)} questions ({n_cols}x{rows_per_col})")
+        if 1 in grid:
+            self.log(f"  Q1: A=({grid[1]['A']['x']},{grid[1]['A']['y']}), D=({grid[1]['D']['x']},{grid[1]['D']['y']})")
+        if total in grid:
+            self.log(f"  Q{total}: A=({grid[total]['A']['x']},{grid[total]['A']['y']})")
         return grid
 
     # ===== Legacy methods (fallback) =====
@@ -1927,6 +2242,7 @@ class HybridOMR:
 
         # 4. Build grid from detected positions
         grid = self._build_grid(bubbles, w_proc, h_proc)
+
         if len(grid) < 4:
             return {"success": False, "error": "Cannot build grid"}
 

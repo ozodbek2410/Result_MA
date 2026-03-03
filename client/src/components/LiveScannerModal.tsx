@@ -50,7 +50,7 @@ const MARK_RX = 4.5 / 210; // corner mark center X (relative to paper width)
 const MARK_RY = 4.5 / 297; // corner mark center Y (relative to paper height)
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
-const AUTO_TH = 4; // ~0.3s debounce
+const AUTO_TH = 6; // ~0.5s debounce
 const ANALYSIS_W = 320;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
