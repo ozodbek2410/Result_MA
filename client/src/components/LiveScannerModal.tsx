@@ -43,8 +43,8 @@ interface LiveScannerModalProps {
 
 // A4 aspect ratio: 210mm / 297mm
 const A4_RATIO = 210 / 297;
-// Auto-capture after this many consecutive detections (~1.5s)
-const AUTO_CAPTURE_THRESHOLD = 18;
+// Auto-capture after this many consecutive detections (~2.5s stable)
+const AUTO_CAPTURE_THRESHOLD = 30;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -162,7 +162,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     return { gx, gy, gw, gh };
   }, []);
 
-  // Paper detection + overlay drawing
+  // Robust paper detection using edge contrast + fill + pattern analysis
   const detectPaper = useCallback(() => {
     const video = videoRef.current;
     const overlay = overlayRef.current;
@@ -176,9 +176,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const ow = overlay.width;
     const oh = overlay.height;
 
-    // Low-res analysis
+    // Higher res for better analysis
     const tempCanvas = document.createElement('canvas');
-    const sw = 160, sh = 120;
+    const sw = 240, sh = 180;
     tempCanvas.width = sw;
     tempCanvas.height = sh;
     const tc = tempCanvas.getContext('2d');
@@ -186,64 +186,117 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     tc.drawImage(video, 0, 0, sw, sh);
     const pixels = tc.getImageData(0, 0, sw, sh).data;
 
-    // Guide rect in low-res coordinates
     const guide = getGuideRect(ow, oh);
     const sx1 = Math.floor((guide.gx / ow) * sw);
     const sy1 = Math.floor((guide.gy / oh) * sh);
     const sx2 = Math.floor(((guide.gx + guide.gw) / ow) * sw);
     const sy2 = Math.floor(((guide.gy + guide.gh) / oh) * sh);
+    const grayAt = (x: number, y: number) => {
+      if (x < 0 || x >= sw || y < 0 || y >= sh) return 0;
+      const i = (y * sw + x) * 4;
+      return (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+    };
 
-    let brightCount = 0, totalCount = 0;
-    for (let y = sy1; y < sy2; y++) {
-      for (let x = sx1; x < sx2; x++) {
-        const i = (y * sw + x) * 4;
-        const gray = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-        totalCount++;
-        if (gray > 150) brightCount++;
+    // === CHECK 1: Inner brightness (paper should be white) ===
+    const insetX = Math.floor((sx2 - sx1) * 0.12);
+    const insetY = Math.floor((sy2 - sy1) * 0.08);
+    let innerBright = 0, innerTotal = 0;
+    for (let y = sy1 + insetY; y < sy2 - insetY; y += 2) {
+      for (let x = sx1 + insetX; x < sx2 - insetX; x += 2) {
+        innerTotal++;
+        if (grayAt(x, y) > 140) innerBright++;
       }
     }
+    const innerBrightRatio = innerTotal > 0 ? innerBright / innerTotal : 0;
 
-    // Check corners for dark marks (5mm black squares)
-    const cornerSize = 5;
-    const corners = [
-      { x: sx1 + 1, y: sy1 + 1 },
-      { x: sx2 - cornerSize - 1, y: sy1 + 1 },
-      { x: sx1 + 1, y: sy2 - cornerSize - 1 },
-      { x: sx2 - cornerSize - 1, y: sy2 - cornerSize - 1 },
-    ];
+    // === CHECK 2: Edge contrast (paper edge = bright→dark transition) ===
+    const edgeInset = 3; // pixels inside guide border
+    const edgeOutset = 8; // pixels outside guide border
+    let edgeContrastScore = 0;
+    let edgeChecks = 0;
 
-    let cornersFound = 0;
-    for (const c of corners) {
-      let darkPx = 0, total = 0;
-      for (let dy = 0; dy < cornerSize; dy++) {
-        for (let dx = 0; dx < cornerSize; dx++) {
-          const px = c.x + dx, py = c.y + dy;
-          if (px >= 0 && px < sw && py >= 0 && py < sh) {
-            const i = (py * sw + px) * 4;
-            const gray = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-            if (gray < 100) darkPx++;
-            total++;
-          }
+    // Top edge
+    for (let x = sx1 + 10; x < sx2 - 10; x += 6) {
+      const inside = grayAt(x, sy1 + edgeInset);
+      const outside = grayAt(x, sy1 - edgeOutset);
+      if (inside - outside > 40) edgeContrastScore++;
+      edgeChecks++;
+    }
+    // Bottom edge
+    for (let x = sx1 + 10; x < sx2 - 10; x += 6) {
+      const inside = grayAt(x, sy2 - edgeInset);
+      const outside = grayAt(x, sy2 + edgeOutset);
+      if (inside - outside > 40) edgeContrastScore++;
+      edgeChecks++;
+    }
+    // Left edge
+    for (let y = sy1 + 10; y < sy2 - 10; y += 6) {
+      const inside = grayAt(sx1 + edgeInset, y);
+      const outside = grayAt(sx1 - edgeOutset, y);
+      if (inside - outside > 40) edgeContrastScore++;
+      edgeChecks++;
+    }
+    // Right edge
+    for (let y = sy1 + 10; y < sy2 - 10; y += 6) {
+      const inside = grayAt(sx2 - edgeInset, y);
+      const outside = grayAt(sx2 + edgeOutset, y);
+      if (inside - outside > 40) edgeContrastScore++;
+      edgeChecks++;
+    }
+    const edgeRatio = edgeChecks > 0 ? edgeContrastScore / edgeChecks : 0;
+
+    // === CHECK 3: Grid area bubble pattern (regular dark spots) ===
+    // Bubbles are in the lower 70% of the sheet
+    const gridY1 = sy1 + Math.floor((sy2 - sy1) * 0.28);
+    const gridY2 = sy2 - 3;
+    const gridX1 = sx1 + 3;
+    const gridX2 = sx2 - 3;
+
+    // Count dark pixels in grid area and check for vertical column structure
+    let darkInGrid = 0, gridSamples = 0;
+    const columnDarkCounts: number[] = new Array(10).fill(0);
+    for (let y = gridY1; y < gridY2; y += 2) {
+      for (let x = gridX1; x < gridX2; x += 2) {
+        const g = grayAt(x, y);
+        gridSamples++;
+        if (g < 80) {
+          darkInGrid++;
+          const colIdx = Math.floor(((x - gridX1) / (gridX2 - gridX1)) * 10);
+          columnDarkCounts[colIdx]++;
         }
       }
-      if (total > 0 && darkPx / total > 0.25) cornersFound++;
     }
+    const darkRatio = gridSamples > 0 ? darkInGrid / gridSamples : 0;
+    // Bubbles create structured dark patterns: 5-30% dark in grid
+    const hasBubblePattern = darkRatio > 0.04 && darkRatio < 0.35;
+    // Check column structure: at least 3 columns with similar dark density
+    const avgColDark = columnDarkCounts.reduce((a, b) => a + b, 0) / 10;
+    const activeColumns = columnDarkCounts.filter(c => c > avgColDark * 0.3).length;
+    const hasColumnStructure = activeColumns >= 3;
 
-    // Also check for filled bubbles (dark circles in grid area)
-    let bubbleScore = 0;
-    const gridY1 = sy1 + Math.floor((sy2 - sy1) * 0.28);
-    const gridY2 = sy2 - 2;
-    for (let y = gridY1; y < gridY2; y += 3) {
-      for (let x = sx1 + 4; x < sx2 - 4; x += 3) {
-        const i = (y * sw + x) * 4;
-        const gray = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-        if (gray < 60) bubbleScore++;
+    // === CHECK 4: Header area (top 25% should have some content but mostly white) ===
+    const headerY2 = sy1 + Math.floor((sy2 - sy1) * 0.25);
+    let headerBright = 0, headerTotal = 0, headerDark = 0;
+    for (let y = sy1 + 3; y < headerY2; y += 2) {
+      for (let x = sx1 + 3; x < sx2 - 3; x += 2) {
+        headerTotal++;
+        const g = grayAt(x, y);
+        if (g > 150) headerBright++;
+        if (g < 60) headerDark++;
       }
     }
+    const headerBrightRatio = headerTotal > 0 ? headerBright / headerTotal : 0;
+    const headerDarkRatio = headerTotal > 0 ? headerDark / headerTotal : 0;
+    // Header should be mostly white (>50%) with some dark content (QR code, text: 2-20%)
+    const hasHeader = headerBrightRatio > 0.45 && headerDarkRatio > 0.01 && headerDarkRatio < 0.25;
 
-    const brightRatio = brightCount / totalCount;
-    const hasBubbles = bubbleScore > 15;
-    const detected = brightRatio > 0.4 && (cornersFound >= 2 || (brightRatio > 0.55 && hasBubbles));
+    // === FINAL DECISION ===
+    // Strict: need brightness + edge contrast + (bubbles OR header pattern)
+    const detected =
+      innerBrightRatio > 0.50 &&          // Paper is white enough
+      edgeRatio > 0.25 &&                  // Clear edge on at least 2 sides
+      (hasBubblePattern && hasColumnStructure) && // Grid area has bubble pattern
+      hasHeader;                            // Header area looks right
 
     // --- Draw overlay ---
     ctx.clearRect(0, 0, ow, oh);
@@ -309,6 +362,28 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       ctx.fillText(`${Math.round(progress * 100)}%`, ringX, ringY);
     }
 
+    // Detection indicators inside guide (small icons)
+    const indSize = 10;
+    const indY = gy + 8;
+    const indicators = [
+      { ok: innerBrightRatio > 0.50, label: 'Oq' },
+      { ok: edgeRatio > 0.25, label: 'Chegara' },
+      { ok: hasBubblePattern && hasColumnStructure, label: 'Bubble' },
+      { ok: hasHeader, label: 'Sarlavha' },
+    ];
+    const indStartX = gx + 8;
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'left';
+    indicators.forEach((ind, i) => {
+      const ix = indStartX + i * 62;
+      ctx.fillStyle = ind.ok ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.6)';
+      ctx.beginPath();
+      ctx.arc(ix + 5, indY + 5, indSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillText(ind.label, ix + 14, indY + 9);
+    });
+
     // Status text
     const statusY = gy + gh + 16;
     ctx.font = 'bold 13px system-ui';
@@ -322,8 +397,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       ctx.fillStyle = '#fff';
       ctx.fillText('Avtomatik skanerlash...', ow / 2, statusY + 11);
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillText('Varaqni ramkaga joylashtiring', ow / 2, statusY + 11);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillText('Varaqni yaqinroq tutib ramkaga moslang', ow / 2, statusY + 11);
     }
 
     return detected;
