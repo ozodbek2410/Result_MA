@@ -50,7 +50,7 @@ const MARK_RX = 4.5 / 210; // corner mark center X (relative to paper width)
 const MARK_RY = 4.5 / 297; // corner mark center Y (relative to paper height)
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
-const AUTO_TH = 6; // ~0.5s debounce (6 detections at every 5th frame)
+const AUTO_TH = 4; // ~0.3s debounce
 const ANALYSIS_W = 320;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
@@ -248,7 +248,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
     // Detection: bright + content + not too blurry
-    const detected = avgBright > 140 && whiteRatio > 0.25 && darkRatio > 0.03 && sharpness > 8;
+    const detected = avgBright > 130 && whiteRatio > 0.20 && darkRatio > 0.02 && sharpness > 5;
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -335,7 +335,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
-        const hint = sharpness < 8 ? 'Fokus qiling — xira' : avgBright < 140 ? 'Yoritish kerak' : 'Varoqni ramkaga moslang';
+        const hint = sharpness < 5 ? 'Fokus qiling — xira' : avgBright < 130 ? 'Yoritish kerak' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
       }
     }
