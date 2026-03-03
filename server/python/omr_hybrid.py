@@ -363,7 +363,112 @@ class HybridOMR:
         
         self.log(f"✅ Perspective transform: {maxWidth}x{maxHeight}")
         return warped
-    
+
+    def _find_paper_contour(self, image):
+        """Find the answer sheet rectangle in image (for far/above scanning).
+        Returns 4 corner points of the paper or None if not found."""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        h_img, w_img = gray.shape[:2]
+        img_area = h_img * w_img
+
+        # Try multiple preprocessing approaches
+        results = []
+
+        for method_name, thresh in self._paper_thresholds(gray):
+            # Clean up
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+            closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+            cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            for c in sorted(cnts, key=cv2.contourArea, reverse=True)[:5]:
+                area = cv2.contourArea(c)
+                # Paper should be at least 15% of image but less than 95%
+                if area < img_area * 0.15 or area > img_area * 0.95:
+                    continue
+
+                peri = cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+
+                if len(approx) == 4:
+                    # Check if roughly rectangular (aspect ratio ~0.7 for A4)
+                    pts = approx.reshape(4, 2).astype(np.float32)
+                    widths = [np.linalg.norm(pts[(i+1)%4] - pts[i]) for i in range(4)]
+                    short = min(widths)
+                    long = max(widths)
+                    ar = short / long if long > 0 else 0
+                    if ar > 0.4:  # Not too skewed
+                        results.append((area, pts, method_name))
+
+        if not results:
+            return None
+
+        # Pick largest valid rectangle
+        results.sort(key=lambda x: x[0], reverse=True)
+        best_area, best_pts, best_method = results[0]
+        self.log(f"  Paper found ({best_method}): area={best_area:.0f} ({best_area/img_area*100:.1f}%)")
+
+        # Order points: TL, TR, BR, BL
+        return self._order_points(best_pts)
+
+    def _paper_thresholds(self, gray):
+        """Generate multiple thresholds for paper detection."""
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # Otsu
+        _, th1 = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        yield ('otsu', th1)
+
+        # Canny edges
+        edges = cv2.Canny(blurred, 50, 150)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        dilated = cv2.dilate(edges, kernel, iterations=2)
+        yield ('canny', dilated)
+
+        # Adaptive
+        adapt = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv2.THRESH_BINARY, 51, 10)
+        yield ('adapt', adapt)
+
+    def _order_points(self, pts):
+        """Order 4 points as: TL, TR, BR, BL"""
+        rect = np.zeros((4, 2), dtype=np.float32)
+        s = pts.sum(axis=1)
+        rect[0] = pts[np.argmin(s)]   # TL: smallest x+y
+        rect[2] = pts[np.argmax(s)]   # BR: largest x+y
+        d = np.diff(pts, axis=1)
+        rect[1] = pts[np.argmin(d)]   # TR: smallest y-x
+        rect[3] = pts[np.argmax(d)]   # BL: largest y-x
+        return rect
+
+    def _extract_paper(self, image, paper_pts):
+        """Perspective-transform to extract just the paper from image."""
+        rect = paper_pts
+        widthA = np.linalg.norm(rect[2] - rect[3])
+        widthB = np.linalg.norm(rect[1] - rect[0])
+        maxW = int(max(widthA, widthB))
+
+        heightA = np.linalg.norm(rect[1] - rect[2])
+        heightB = np.linalg.norm(rect[0] - rect[3])
+        maxH = int(max(heightA, heightB))
+
+        # Force A4 aspect ratio
+        target_ar = 210.0 / 297.0
+        current_ar = maxW / maxH if maxH > 0 else 1.0
+        if current_ar > target_ar:
+            maxH = int(maxW / target_ar)
+        else:
+            maxW = int(maxH * target_ar)
+
+        dst = np.array([
+            [0, 0], [maxW - 1, 0],
+            [maxW - 1, maxH - 1], [0, maxH - 1]
+        ], dtype=np.float32)
+
+        M = cv2.getPerspectiveTransform(rect, dst)
+        extracted = cv2.warpPerspective(image, M, (maxW, maxH))
+        self.log(f"  Paper extracted: {maxW}x{maxH}")
+        return extracted
+
     # ===== Detection-first approach (v2) =====
 
     def _preprocess(self, image):
@@ -2256,18 +2361,9 @@ class HybridOMR:
 
         return False, darkness_pct
     
-    def scan(self, image_path, correct_answers=None):
-        """Detection-first scan: detect bubbles first, build grid from positions"""
-        self.log("=" * 60)
-        self.log("HYBRID OMR SCANNER v2 (detection-first)")
-        self.log("=" * 60)
-
-        image = cv2.imread(image_path)
-        if image is None:
-            return {"success": False, "error": "Cannot load image"}
-        self.log(f"Image: {image.shape[1]}x{image.shape[0]}")
-
-        # 1. Corner marks -> perspective transform
+    def _run_pipeline(self, image):
+        """Core OMR pipeline: corners -> preprocess -> bubbles -> grid -> fill.
+        Returns (mode, enhanced, h_proc, w_proc, bubbles, grid) or None on failure."""
         corners = self.find_corner_marks(image)
         if corners:
             self.log("\nMode: Corner marks")
@@ -2278,20 +2374,71 @@ class HybridOMR:
             warped = image
             mode = "marker_free"
 
-        # 2. Preprocess: resize to 1000px + CLAHE
         resized, enhanced, scale = self._preprocess(warped)
         h_proc, w_proc = enhanced.shape[:2]
 
-        # 3. Detect bubbles
         bubbles = self._detect_bubbles(enhanced)
         if len(bubbles) < 16:
-            return {"success": False, "error": f"Too few bubbles: {len(bubbles)}"}
+            return None
 
-        # 4. Build grid from detected positions
         grid = self._build_grid(bubbles, w_proc, h_proc)
-
         if len(grid) < 4:
-            return {"success": False, "error": "Cannot build grid"}
+            return None
+
+        return (mode, enhanced, h_proc, w_proc, bubbles, grid)
+
+    def scan(self, image_path, correct_answers=None):
+        """Detection-first scan: detect bubbles first, build grid from positions.
+        Falls back to paper extraction if initial scan is poor (far/above shots)."""
+        self.log("=" * 60)
+        self.log("HYBRID OMR SCANNER v2 (detection-first)")
+        self.log("=" * 60)
+
+        image = cv2.imread(image_path)
+        if image is None:
+            return {"success": False, "error": "Cannot load image"}
+        self.log(f"Image: {image.shape[1]}x{image.shape[0]}")
+
+        # Run normal pipeline
+        pipeline = self._run_pipeline(image)
+
+        # Check if result is good enough
+        total = self.TOTAL_QUESTIONS or 90
+        used_paper = False
+        need_retry = False
+        if pipeline is None:
+            need_retry = True
+        else:
+            if len(pipeline[5]) < total * 0.6:
+                need_retry = True
+                self.log(f"\n  Grid too small ({len(pipeline[5])}/{total}), trying paper extraction...")
+
+        # Fallback: find paper contour and extract, then re-run pipeline
+        if need_retry:
+            self.log("\n--- FAR SCAN FALLBACK: paper extraction ---")
+            paper_pts = self._find_paper_contour(image)
+            if paper_pts is not None:
+                extracted = self._extract_paper(image, paper_pts)
+                pipeline2 = self._run_pipeline(extracted)
+                if pipeline2 is not None:
+                    p2_grid = pipeline2[5]
+                    if pipeline is None or len(p2_grid) > len(pipeline[5]):
+                        pipeline = pipeline2
+                        used_paper = True
+                        self.log(f"  Paper extraction improved: {len(p2_grid)} questions")
+                    else:
+                        self.log(f"  Paper extraction not better ({len(p2_grid)} vs {len(pipeline[5])})")
+                else:
+                    self.log(f"  Paper extraction pipeline failed")
+            else:
+                self.log(f"  No paper contour found")
+
+        if pipeline is None:
+            return {"success": False, "error": "Cannot detect answer sheet"}
+
+        mode, enhanced, h_proc, w_proc, bubbles, grid = pipeline
+        if used_paper:
+            mode = mode + "+paper"
 
         # 5. Fill detection (relative scoring on CLAHE-enhanced image)
         self.log("\nJavoblarni aniqlash...")
