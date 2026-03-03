@@ -391,10 +391,14 @@ class HybridOMR:
         y_max = int(h_img * 0.97)
 
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        # Extra CLAHE pass for uneven lighting (shadows on one side)
+        clahe2 = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+        enhanced2 = clahe2.apply(blurred)
         threshs = [
             ('otsu', cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]),
             ('adapt11', cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)),
             ('adapt21', cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 21, 4)),
+            ('clahe4', cv2.threshold(enhanced2, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]),
         ]
 
         dedup_d = max(4, int(expected * 0.3))
