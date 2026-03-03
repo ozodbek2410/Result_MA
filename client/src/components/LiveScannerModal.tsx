@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, RotateCw, Zap, ZapOff, CheckCircle, XCircle, ArrowLeft, Loader2, Camera } from 'lucide-react';
+import {
+  X, RotateCw, Zap, ZapOff, CheckCircle, XCircle,
+  ArrowLeft, Loader2, Camera,
+} from 'lucide-react';
 import api from '../lib/api';
 
 type ScanState = 'scanning' | 'captured' | 'processing' | 'result' | 'error';
@@ -41,24 +44,20 @@ interface LiveScannerModalProps {
   onResult: (result: ScanResult, file: File) => void;
 }
 
-// A4 paper proportions & mark positions
+// ---- Constants ----
 const A4_RATIO = 297 / 210;
-// Mark center = 4.5mm from edge (2mm offset + 2.5mm half of 5mm)
-const MARK_RX = 4.5 / 210;
-const MARK_RY = 4.5 / 297;
-// Guide frame = 80% of screen width
-const FRAME_W_RATIO = 0.80;
-// Detection
-const DARK_TH = 100;
-const MARK_DARK_MIN = 0.35;
-const AUTO_TH = 22;
-const ANALYSIS_W = 480;
+const MARK_RX = 4.5 / 210; // corner mark center X (relative to paper width)
+const MARK_RY = 4.5 / 297; // corner mark center Y (relative to paper height)
+const FRAME_W_RATIO = 0.82;
+const CROP_MARGIN = 0.08; // 8% extra margin when cropping
+const AUTO_TH = 24; // ~2s at 12fps detection
+const ANALYSIS_W = 320;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  const tempCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
+  const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef(0);
   const detectionCountRef = useRef(0);
@@ -73,42 +72,86 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [processingProgress, setProcessingProgress] = useState(0);
-  const [markStatus, setMarkStatus] = useState([false, false, false, false]);
 
   useEffect(() => { stateRef.current = state; }, [state]);
+
+  // Lazy init temp canvas
+  const getTempCanvas = useCallback(() => {
+    if (!tempCanvasRef.current) tempCanvasRef.current = document.createElement('canvas');
+    return tempCanvasRef.current;
+  }, []);
 
   const stopCamera = useCallback(() => {
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
   }, []);
 
+  // Guide frame rectangle
+  const getFrame = useCallback((ow: number, oh: number) => {
+    let fw = ow * FRAME_W_RATIO;
+    let fh = fw * A4_RATIO;
+    if (fh > oh * 0.72) { fh = oh * 0.72; fw = fh / A4_RATIO; }
+    return { fx: (ow - fw) / 2, fy: (oh - fh) / 2, fw, fh };
+  }, []);
+
+  // Map screen rect to video rect (inverse object-cover)
+  const screenToVideoRect = useCallback((
+    sx: number, sy: number, sw: number, sh: number,
+    scrW: number, scrH: number, vidW: number, vidH: number,
+  ) => {
+    const vAsp = vidW / vidH, sAsp = scrW / scrH;
+    let scale: number, offX = 0, offY = 0;
+    if (vAsp > sAsp) { scale = vidH / scrH; offX = (vidW - scrW * scale) / 2; }
+    else { scale = vidW / scrW; offY = (vidH - scrH * scale) / 2; }
+    const vx = Math.max(0, offX + sx * scale);
+    const vy = Math.max(0, offY + sy * scale);
+    const vw = Math.min(vidW - vx, sw * scale);
+    const vh = Math.min(vidH - vy, sh * scale);
+    return { vx, vy, vw, vh };
+  }, []);
+
+  // ---- CAPTURE with smart crop ----
   const capturePhoto = useCallback(async () => {
     if (capturingRef.current) return;
     capturingRef.current = true;
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas) { capturingRef.current = false; return; }
 
-    setState('captured');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Save dimensions BEFORE state change
+    const scrW = video.clientWidth, scrH = video.clientHeight;
+    const vidW = video.videoWidth, vidH = video.videoHeight;
+    const { fx, fy, fw, fh } = getFrame(scrW, scrH);
+
+    // Crop region with margin
+    const mx = fw * CROP_MARGIN, my = fh * CROP_MARGIN;
+    const crop = screenToVideoRect(
+      fx - mx, fy - my, fw + 2 * mx, fh + 2 * my,
+      scrW, scrH, vidW, vidH,
+    );
+
+    // Draw ONLY the frame area to canvas (smart crop)
+    canvas.width = Math.round(crop.vw);
+    canvas.height = Math.round(crop.vh);
     const ctx = canvas.getContext('2d');
     if (!ctx) { capturingRef.current = false; return; }
-    ctx.drawImage(video, 0, 0);
-    if (navigator.vibrate) navigator.vibrate(50);
+    ctx.drawImage(video, crop.vx, crop.vy, crop.vw, crop.vh, 0, 0, canvas.width, canvas.height);
 
+    if (navigator.vibrate) navigator.vibrate(50);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
     setCapturedImage(dataUrl);
-    stopCamera();
 
+    setState('captured');
+    stopCamera();
     setState('processing');
     setProcessingProgress(0);
+
     const progressInterval = setInterval(() => {
       setProcessingProgress(p => p >= 90 ? p : p + Math.random() * 20);
     }, 150);
 
     try {
       const blob = await new Promise<Blob>(resolve =>
-        canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.95)
+        canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.95),
       );
       const file = new File([blob], `omr-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
       const formData = new FormData();
@@ -132,53 +175,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     } finally {
       capturingRef.current = false;
     }
-  }, [stopCamera, onResult]);
+  }, [stopCamera, onResult, getFrame, screenToVideoRect]);
 
-  // Guide frame & 4 target positions on screen
-  const getFrameAndTargets = useCallback((ow: number, oh: number) => {
-    let fw = ow * FRAME_W_RATIO;
-    let fh = fw * A4_RATIO;
-    if (fh > oh * 0.78) { fh = oh * 0.78; fw = fh / A4_RATIO; }
-    const fx = (ow - fw) / 2;
-    const fy = (oh - fh) / 2;
-    return {
-      fx, fy, fw, fh,
-      targets: [
-        { x: fx + fw * MARK_RX, y: fy + fh * MARK_RY },
-        { x: fx + fw * (1 - MARK_RX), y: fy + fh * MARK_RY },
-        { x: fx + fw * MARK_RX, y: fy + fh * (1 - MARK_RY) },
-        { x: fx + fw * (1 - MARK_RX), y: fy + fh * (1 - MARK_RY) },
-      ],
-    };
-  }, []);
-
-  // Sliding window search near a target position
-  const checkMarkAt = useCallback((
-    pixels: Uint8ClampedArray, aw: number, ah: number,
-    ax: number, ay: number, markSize: number,
-  ): boolean => {
-    const searchR = Math.round(markSize * 1.5);
-    const markR = Math.round(markSize * 0.45);
-    const markArea = (2 * markR + 1) ** 2;
-
-    for (let sy = -searchR; sy <= searchR; sy += 2) {
-      for (let sx = -searchR; sx <= searchR; sx += 2) {
-        let dark = 0;
-        const cx = Math.round(ax + sx), cy = Math.round(ay + sy);
-        for (let dy = -markR; dy <= markR; dy++) {
-          for (let dx = -markR; dx <= markR; dx++) {
-            const px = cx + dx, py = cy + dy;
-            if (px < 0 || py < 0 || px >= aw || py >= ah) continue;
-            const i = (py * aw + px) * 4;
-            if (pixels[i] + pixels[i + 1] + pixels[i + 2] < DARK_TH * 3) dark++;
-          }
-        }
-        if (dark / markArea >= MARK_DARK_MIN) return true;
-      }
-    }
-    return false;
-  }, []);
-
+  // ---- DETECTION: brightness + content ----
   const detectPaper = useCallback(() => {
     const video = videoRef.current, overlay = overlayRef.current;
     if (!video || !overlay || video.videoWidth === 0) return false;
@@ -186,9 +185,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const ow = overlay.clientWidth, oh = overlay.clientHeight;
     overlay.width = ow; overlay.height = oh;
     const ctx = overlay.getContext('2d')!;
-    const { fx, fy, fw, fh, targets } = getFrameAndTargets(ow, oh);
+    const { fx, fy, fw, fh } = getFrame(ow, oh);
 
-    // Draw visible portion of video (object-cover crop) to analysis canvas
+    // Draw visible video (object-cover crop) to analysis canvas
     const vw = video.videoWidth, vh = video.videoHeight;
     const vAsp = vw / vh, sAsp = ow / oh;
     let cropX: number, cropY: number, cropW: number, cropH: number;
@@ -199,28 +198,67 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
 
     const ah = Math.round(ANALYSIS_W * oh / ow);
-    const tc = tempCanvasRef.current;
+    const tc = getTempCanvas();
     tc.width = ANALYSIS_W; tc.height = ah;
     const tctx = tc.getContext('2d')!;
     tctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, ANALYSIS_W, ah);
     const pixels = tctx.getImageData(0, 0, ANALYSIS_W, ah).data;
 
-    // Mark size in analysis pixels
-    const fwA = (fw / ow) * ANALYSIS_W;
-    const markSize = fwA * (5 / 210);
+    // Frame area in analysis coords
+    const afx = fx / ow * ANALYSIS_W;
+    const afy = fy / oh * ah;
+    const afw = fw / ow * ANALYSIS_W;
+    const afh = fh / oh * ah;
 
-    // Check each of the 4 targets
-    const status = targets.map(t => {
-      const axp = (t.x / ow) * ANALYSIS_W;
-      const ayp = (t.y / oh) * ah;
-      return checkMarkAt(pixels, ANALYSIS_W, ah, axp, ayp, markSize);
-    });
+    // ---- Sample INSIDE frame (8×8 grid = 64 points) ----
+    const grid = 8;
+    const stepX = afw / (grid + 1), stepY = afh / (grid + 1);
+    let brightSum = 0, whiteN = 0, darkN = 0, total = 0;
+    for (let gy = 1; gy <= grid; gy++) {
+      for (let gx = 1; gx <= grid; gx++) {
+        const px = Math.round(afx + gx * stepX);
+        const py = Math.round(afy + gy * stepY);
+        if (px < 0 || py < 0 || px >= ANALYSIS_W || py >= ah) continue;
+        const i = (py * ANALYSIS_W + px) * 4;
+        const gray = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+        brightSum += gray;
+        if (gray > 180) whiteN++;
+        if (gray < 80) darkN++;
+        total++;
+      }
+    }
+    const avgBright = total > 0 ? brightSum / total : 0;
+    const whiteRatio = total > 0 ? whiteN / total : 0;
+    const darkRatio = total > 0 ? darkN / total : 0;
 
-    setMarkStatus(status);
-    const allFound = status.every(Boolean);
-    const foundCount = status.filter(Boolean).length;
+    // ---- Sample OUTSIDE frame (edges) for contrast ----
+    let outSum = 0, outCount = 0;
+    const outStep = afh / 10;
+    for (let y = afy; y < afy + afh; y += outStep) {
+      // Left side
+      const lx = Math.max(0, Math.round(afx - 15));
+      const ly = Math.round(y);
+      if (ly >= 0 && ly < ah && lx < ANALYSIS_W) {
+        const i = (ly * ANALYSIS_W + lx) * 4;
+        outSum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+        outCount++;
+      }
+      // Right side
+      const rx = Math.min(ANALYSIS_W - 1, Math.round(afx + afw + 15));
+      if (ly >= 0 && ly < ah && rx >= 0) {
+        const i = (ly * ANALYSIS_W + rx) * 4;
+        outSum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+        outCount++;
+      }
+    }
+    const avgOutside = outCount > 0 ? outSum / outCount : 0;
+    const brightDiff = avgBright - avgOutside;
 
-    // ===== DRAW OVERLAY =====
+    // Detection: bright white paper with printed content, brighter than surroundings
+    const detected = avgBright > 140 && whiteRatio > 0.25 && darkRatio > 0.03
+      && (brightDiff > 15 || avgBright > 170);
+
+    // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
 
     // Dark background
@@ -229,93 +267,90 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     // Clear cutout for guide frame
     ctx.clearRect(fx, fy, fw, fh);
 
-    // Frame border
-    ctx.setLineDash(allFound ? [] : [8, 4]);
-    ctx.strokeStyle = allFound ? '#22c55e' : foundCount > 0 ? '#f59e0b' : 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = allFound ? 3 : 1.5;
+    // Thin inner border on frame (subtle)
+    ctx.strokeStyle = detected ? '#22c55e' : 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = detected ? 2.5 : 1;
+    ctx.setLineDash(detected ? [] : [6, 4]);
     ctx.strokeRect(fx, fy, fw, fh);
     ctx.setLineDash([]);
 
-    // Corner brackets at each target
-    const bLen = Math.max(16, fw * 0.06);
-    const dirs = [
-      { dx: 1, dy: 1 }, { dx: -1, dy: 1 },
-      { dx: 1, dy: -1 }, { dx: -1, dy: -1 },
+    // Corner brackets at frame corners
+    const bLen = Math.max(22, fw * 0.07);
+    const bColor = detected ? '#22c55e' : 'rgba(255,255,255,0.55)';
+    ctx.strokeStyle = bColor;
+    ctx.lineWidth = detected ? 3.5 : 2.5;
+    ctx.lineCap = 'round';
+
+    // TL
+    ctx.beginPath();
+    ctx.moveTo(fx + bLen, fy); ctx.lineTo(fx, fy); ctx.lineTo(fx, fy + bLen);
+    ctx.stroke();
+    // TR
+    ctx.beginPath();
+    ctx.moveTo(fx + fw - bLen, fy); ctx.lineTo(fx + fw, fy); ctx.lineTo(fx + fw, fy + bLen);
+    ctx.stroke();
+    // BL
+    ctx.beginPath();
+    ctx.moveTo(fx + bLen, fy + fh); ctx.lineTo(fx, fy + fh); ctx.lineTo(fx, fy + fh - bLen);
+    ctx.stroke();
+    // BR
+    ctx.beginPath();
+    ctx.moveTo(fx + fw - bLen, fy + fh); ctx.lineTo(fx + fw, fy + fh); ctx.lineTo(fx + fw, fy + fh - bLen);
+    ctx.stroke();
+
+    // Small crosshairs at corner mark positions (subtle alignment hints)
+    const markTargets = [
+      { x: fx + fw * MARK_RX, y: fy + fh * MARK_RY },
+      { x: fx + fw * (1 - MARK_RX), y: fy + fh * MARK_RY },
+      { x: fx + fw * MARK_RX, y: fy + fh * (1 - MARK_RY) },
+      { x: fx + fw * (1 - MARK_RX), y: fy + fh * (1 - MARK_RY) },
     ];
-
-    targets.forEach((t, i) => {
-      const ok = status[i];
-      const d = dirs[i];
-      const color = ok ? '#22c55e' : 'rgba(255,255,255,0.6)';
-
-      // L-shaped bracket
-      ctx.strokeStyle = color;
-      ctx.lineWidth = ok ? 3.5 : 2;
-      ctx.lineCap = 'round';
+    ctx.strokeStyle = detected ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    markTargets.forEach(t => {
+      const s = 5;
       ctx.beginPath();
-      ctx.moveTo(t.x + d.dx * bLen, t.y);
-      ctx.lineTo(t.x, t.y);
-      ctx.lineTo(t.x, t.y + d.dy * bLen);
+      ctx.moveTo(t.x - s, t.y); ctx.lineTo(t.x + s, t.y);
+      ctx.moveTo(t.x, t.y - s); ctx.lineTo(t.x, t.y + s);
       ctx.stroke();
-
-      // Small square target indicator
-      const sq = ok ? 10 : 7;
-      if (ok) {
-        ctx.fillStyle = 'rgba(34,197,94,0.85)';
-        ctx.fillRect(t.x - sq / 2, t.y - sq / 2, sq, sq);
-      } else {
-        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(t.x - sq / 2, t.y - sq / 2, sq, sq);
-      }
     });
 
-    // Auto-capture progress ring
-    if (allFound && detectionCountRef.current > 2) {
+    // Progress ring (below frame)
+    if (detected && detectionCountRef.current > 2) {
       const progress = Math.min(detectionCountRef.current / AUTO_TH, 1);
-      const rx = ow / 2, ry = fy + fh + 30, rr = 26;
-      ctx.beginPath();
-      ctx.arc(rx, ry, rr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fill();
+      const rx = ow / 2;
+      const ry = Math.min(fy + fh + 35, oh - 90);
+      const rr = 26;
+      ctx.beginPath(); ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fill();
       ctx.beginPath();
       ctx.arc(rx, ry, rr - 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
-      ctx.strokeStyle = '#22c55e';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 12px system-ui';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(`${Math.round(progress * 100)}%`, rx, ry);
     }
 
     // Status label above frame
     const labelY = fy - 16;
     if (labelY > 25) {
-      ctx.font = 'bold 12px system-ui';
       ctx.textAlign = 'center';
-      if (allFound) {
+      if (detected) {
         ctx.fillStyle = 'rgba(34,197,94,0.9)';
-        ctx.beginPath(); ctx.roundRect(ow / 2 - 65, labelY - 11, 130, 24, 6); ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.fillText('Skanerlash...', ow / 2, labelY + 3);
-      } else if (foundCount > 0) {
-        ctx.fillStyle = 'rgba(245,158,11,0.9)';
-        ctx.beginPath(); ctx.roundRect(ow / 2 - 55, labelY - 11, 110, 24, 6); ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.fillText(`${foundCount}/4 moslandi`, ow / 2, labelY + 3);
+        ctx.beginPath(); ctx.roundRect(ow / 2 - 65, labelY - 12, 130, 26, 6); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui';
+        ctx.fillText('Tayyor, skanerlash...', ow / 2, labelY + 2);
       } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
-        ctx.fillText('Varoqni ramkaga moslang', ow / 2, labelY + 3);
+        ctx.fillText('Varoqni ramkaga moslang', ow / 2, labelY + 2);
       }
     }
 
-    return allFound;
-  }, [getFrameAndTargets, checkMarkAt]);
+    return detected;
+  }, [getFrame, getTempCanvas]);
 
+  // Detection loop
   const startDetection = useCallback(() => {
     let frameCount = 0;
     const loop = () => {
@@ -333,10 +368,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           }
         } else {
           detectionCountRef.current = Math.max(0, detectionCountRef.current - 2);
-          if (detectionCountRef.current === 0) {
-            setPaperDetected(false);
-            setAutoProgress(0);
-          }
+          if (detectionCountRef.current === 0) { setPaperDetected(false); setAutoProgress(0); }
         }
       }
       animFrameRef.current = requestAnimationFrame(loop);
@@ -380,35 +412,22 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       try {
         await track.applyConstraints({ advanced: [{ torch: !flashEnabled } as never] });
         setFlashEnabled(!flashEnabled);
-      } catch { /* unsupported */ }
+      } catch { /* not supported */ }
     }
   };
 
   const resetToScanning = () => {
-    setState('scanning');
-    setCapturedImage(null);
-    setCameraError(null);
-    setProcessingProgress(0);
-    setAutoProgress(0);
-    setMarkStatus([false, false, false, false]);
-    detectionCountRef.current = 0;
-    capturingRef.current = false;
-    setPaperDetected(false);
+    setState('scanning'); setCapturedImage(null); setCameraError(null);
+    setProcessingProgress(0); setAutoProgress(0);
+    detectionCountRef.current = 0; capturingRef.current = false; setPaperDetected(false);
   };
 
   const handleClose = () => {
-    stopCamera();
-    setState('scanning');
-    setCapturedImage(null);
-    setCameraError(null);
-    capturingRef.current = false;
-    detectionCountRef.current = 0;
-    onClose();
+    stopCamera(); setState('scanning'); setCapturedImage(null); setCameraError(null);
+    capturingRef.current = false; detectionCountRef.current = 0; onClose();
   };
 
   if (!isOpen) return null;
-
-  const foundCount = markStatus.filter(Boolean).length;
 
   return (
     <div className="fixed inset-0 z-50 bg-black">
@@ -419,15 +438,13 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
             <div className="flex items-center gap-2">
               <div className={`w-2.5 h-2.5 rounded-full ${
                 state === 'scanning'
-                  ? (paperDetected ? 'bg-green-500 animate-pulse' : foundCount > 0 ? 'bg-yellow-500' : 'bg-white/50')
+                  ? (paperDetected ? 'bg-green-500 animate-pulse' : 'bg-white/50')
                   : state === 'processing' ? 'bg-yellow-500 animate-pulse'
                   : state === 'result' ? 'bg-green-500' : 'bg-red-500'
               }`} />
               <span className="text-white font-semibold text-sm">
                 {state === 'scanning'
-                  ? (paperDetected
-                    ? `Skanerlash... ${Math.round(autoProgress * 100)}%`
-                    : foundCount > 0 ? `${foundCount}/4 marker` : 'Varoqni moslang')
+                  ? (paperDetected ? `Skanerlash... ${Math.round(autoProgress * 100)}%` : 'Varoqni moslang')
                   : state === 'processing' ? 'Tahlil qilinmoqda...'
                   : state === 'result' ? 'Tayyor!' : 'Xatolik'}
               </span>
