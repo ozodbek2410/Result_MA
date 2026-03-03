@@ -248,7 +248,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
     // ---- Corner marks detection: scan each corner REGION for dark square ----
-    const scanR = Math.round(afw * 0.15); // search 15% area near each corner
+    const scanR = Math.round(afw * 0.22); // search 22% area near each corner
     const markR = Math.max(2, Math.round(afw * 0.02)); // mark size ~2%
     const cornerRegions = [
       { cx: afx,       cy: afy       }, // TL
@@ -270,7 +270,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
               if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
               const idx = (py2 * ANALYSIS_W + px2) * 4;
               const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-              if (g < 90) dkN++;
+              if (g < 110) dkN++;
               ttN++;
             }
           }
