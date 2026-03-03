@@ -747,7 +747,7 @@ class HybridOMR:
         # 4. Row Y positions (select best rows_per_col rows)
         row_ys = sorted([int(np.median([b['y'] for b in row])) for row in y_rows])
 
-        if len(row_ys) > rows_per_col + 3:
+        if len(row_ys) > rows_per_col:
             best_start, best_var = 0, float('inf')
             for i in range(len(row_ys) - rows_per_col + 1):
                 subset = row_ys[i:i + rows_per_col]
@@ -757,6 +757,7 @@ class HybridOMR:
                     best_var = var
                     best_start = i
             row_ys = row_ys[best_start:best_start + rows_per_col]
+            self.log(f"  Row selection: {best_start}..{best_start+rows_per_col-1} of {len(row_ys)+best_start}")
 
         actual_rows = min(len(row_ys), rows_per_col)
 
