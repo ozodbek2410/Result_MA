@@ -50,7 +50,7 @@ const MARK_RX = 4.5 / 210; // corner mark center X (relative to paper width)
 const MARK_RY = 4.5 / 297; // corner mark center Y (relative to paper height)
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
-const AUTO_TH = 24; // ~2s at 12fps detection
+const AUTO_TH = 3; // instant capture (~0.25s debounce)
 const ANALYSIS_W = 320;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
@@ -231,32 +231,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const whiteRatio = total > 0 ? whiteN / total : 0;
     const darkRatio = total > 0 ? darkN / total : 0;
 
-    // ---- Sample OUTSIDE frame (edges) for contrast ----
-    let outSum = 0, outCount = 0;
-    const outStep = afh / 10;
-    for (let y = afy; y < afy + afh; y += outStep) {
-      // Left side
-      const lx = Math.max(0, Math.round(afx - 15));
-      const ly = Math.round(y);
-      if (ly >= 0 && ly < ah && lx < ANALYSIS_W) {
-        const i = (ly * ANALYSIS_W + lx) * 4;
-        outSum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-        outCount++;
-      }
-      // Right side
-      const rx = Math.min(ANALYSIS_W - 1, Math.round(afx + afw + 15));
-      if (ly >= 0 && ly < ah && rx >= 0) {
-        const i = (ly * ANALYSIS_W + rx) * 4;
-        outSum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-        outCount++;
-      }
-    }
-    const avgOutside = outCount > 0 ? outSum / outCount : 0;
-    const brightDiff = avgBright - avgOutside;
-
-    // Detection: bright white paper with printed content, brighter than surroundings
-    const detected = avgBright > 140 && whiteRatio > 0.25 && darkRatio > 0.03
-      && (brightDiff > 15 || avgBright > 170);
+    // Detection: bright surface with printed content (white + dark areas)
+    // No outside comparison needed — paper often fills entire screen
+    const detected = avgBright > 125 && whiteRatio > 0.20 && darkRatio > 0.02;
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -367,7 +344,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
             return;
           }
         } else {
-          detectionCountRef.current = Math.max(0, detectionCountRef.current - 2);
+          detectionCountRef.current = Math.max(0, detectionCountRef.current - 1);
           if (detectionCountRef.current === 0) { setPaperDetected(false); setAutoProgress(0); }
         }
       }
