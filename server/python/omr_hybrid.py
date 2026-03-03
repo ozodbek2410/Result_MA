@@ -181,7 +181,7 @@ class HybridOMR:
 
         self.log(f"  Parallelism: w_ratio={w_ratio:.3f}, h_ratio={h_ratio:.3f}")
 
-        if w_ratio < 0.95 or h_ratio < 0.95:
+        if w_ratio < 0.90 or h_ratio < 0.90:
             # Bad parallelism — find worst corner by distance to image edge
             # Good corners are close to their image corners
             import math
@@ -438,7 +438,28 @@ class HybridOMR:
             self.log(f"Too few bubbles ({len(bubbles)})")
             return {}
 
-        total = self.TOTAL_QUESTIONS or 45
+        # Auto-detect total from Y rows if not specified
+        if self.TOTAL_QUESTIONS:
+            total = self.TOTAL_QUESTIONS
+        else:
+            # Count Y rows first to estimate total
+            y_thr_pre = max(6, int(np.median([b['w'] for b in bubbles]) * 0.5))
+            sorted_y_pre = sorted(bubbles, key=lambda b: b['y'])
+            y_rows_pre = []
+            cl_pre = [sorted_y_pre[0]]
+            for i in range(1, len(sorted_y_pre)):
+                if sorted_y_pre[i]['y'] - cl_pre[-1]['y'] < y_thr_pre:
+                    cl_pre.append(sorted_y_pre[i])
+                else:
+                    y_rows_pre.append(cl_pre)
+                    cl_pre = [sorted_y_pre[i]]
+            y_rows_pre.append(cl_pre)
+            n_valid_rows = len([r for r in y_rows_pre if len(r) >= 8])
+            # Estimate: rows * 4 columns, round to nearest 5
+            raw_total = n_valid_rows * 4
+            total = max(30, round(raw_total / 5) * 5)
+            self.log(f"  Auto-detected: {n_valid_rows} rows -> {total} questions")
+
         if total <= 44: n_cols = 2
         elif total <= 75: n_cols = 3
         elif total <= 100: n_cols = 4
@@ -1913,7 +1934,7 @@ class HybridOMR:
         self.log("\nJavoblarni aniqlash...")
         detected_answers = {}
         SCORE_THRESHOLD = 8.0
-        MULTI_THRESHOLD = 6.0
+        MULTI_THRESHOLD = 10.0  # Increased to reduce false MULTI in shadowed areas
         median_w = int(np.median([b['w'] for b in bubbles]))
 
         for q_num in sorted(grid.keys()):
@@ -1952,7 +1973,10 @@ class HybridOMR:
             min_fill = min(fills.values())
             eff_threshold = SCORE_THRESHOLD if min_fill < 35 else max(SCORE_THRESHOLD, 12.0)
 
-            if score_1 >= eff_threshold and score_2 >= MULTI_THRESHOLD:
+            # MULTI requires: both above threshold, second is at least 45% absolute AND 50% of darkest
+            is_multi = (score_1 >= eff_threshold and score_2 >= MULTI_THRESHOLD
+                        and second_val >= 45.0 and second_val >= darkest_val * 0.50)
+            if is_multi:
                 self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
             elif score >= eff_threshold:
                 detected_answers[str(q_num)] = darkest_letter
