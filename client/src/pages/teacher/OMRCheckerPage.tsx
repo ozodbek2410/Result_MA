@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../hooks/useToast';
 import { CameraModal } from '../../components/CameraModal';
+import { LiveScannerModal } from '../../components/LiveScannerModal';
 import api from '../../lib/api';
 
 interface CheckResult {
@@ -50,7 +51,8 @@ export default function OMRCheckerPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-  
+  const [isLiveScannerOpen, setIsLiveScannerOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -71,6 +73,15 @@ export default function OMRCheckerPage() {
     setPreviewUrl(URL.createObjectURL(file));
     setIsCameraOpen(false);
     toast('Rasm muvaffaqiyatli olindi', 'success');
+  };
+
+  const handleLiveScanResult = (scanResult: CheckResult, file: File) => {
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setResult(scanResult);
+    if (scanResult.success) {
+      setStep('review');
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -245,6 +256,11 @@ export default function OMRCheckerPage() {
         onClose={() => setIsCameraOpen(false)}
         onCapture={handleCameraCapture}
       />
+      <LiveScannerModal
+        isOpen={isLiveScannerOpen}
+        onClose={() => setIsLiveScannerOpen(false)}
+        onResult={handleLiveScanResult}
+      />
       
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
@@ -331,12 +347,12 @@ export default function OMRCheckerPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setIsCameraOpen(true);
+                      setIsLiveScannerOpen(true);
                     }}
                     className="mt-2 px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:shadow-xl hover:scale-105 transition-all duration-200 font-semibold flex items-center gap-2 sm:gap-3 mx-auto text-sm sm:text-base"
                   >
-                    <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Kamera orqali suratga olish
+                    <Scan className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Skanerlash
                   </button>
                   
                   <input
