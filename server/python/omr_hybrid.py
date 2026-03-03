@@ -2297,7 +2297,6 @@ class HybridOMR:
         self.log("\nJavoblarni aniqlash...")
         detected_answers = {}
         SCORE_THRESHOLD = 8.0
-        MULTI_THRESHOLD = 10.0  # Increased to reduce false MULTI in shadowed areas
         median_w = int(np.median([b['w'] for b in bubbles]))
 
         for q_num in sorted(grid.keys()):
@@ -2336,9 +2335,10 @@ class HybridOMR:
             min_fill = min(fills.values())
             eff_threshold = SCORE_THRESHOLD if min_fill < 35 else max(SCORE_THRESHOLD, 12.0)
 
-            # MULTI requires: both above threshold, second is at least 45% absolute AND 50% of darkest
-            is_multi = (score_1 >= eff_threshold and score_2 >= MULTI_THRESHOLD
-                        and second_val >= 45.0 and second_val >= darkest_val * 0.50)
+            # MULTI requires: very strict — both must be clearly filled, big gap from unfilled
+            is_multi = (score_1 >= eff_threshold and score_2 >= 15.0
+                        and second_val >= 55.0 and second_val >= darkest_val * 0.70
+                        and darkest_val >= 60.0)
             if is_multi:
                 self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
             elif score >= eff_threshold:

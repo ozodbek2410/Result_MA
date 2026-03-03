@@ -247,32 +247,39 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
-    // ---- Corner marks detection: check 4 corners for dark squares ----
-    const markSize = Math.round(afw * 0.04); // ~4% of frame width
-    const checkR = Math.max(3, Math.round(markSize / 2));
-    const cornerPositions = [
-      { x: Math.round(afx + afw * 0.02), y: Math.round(afy + afh * 0.02) },           // TL
-      { x: Math.round(afx + afw * 0.98), y: Math.round(afy + afh * 0.02) },           // TR
-      { x: Math.round(afx + afw * 0.02), y: Math.round(afy + afh * 0.98) },           // BL
-      { x: Math.round(afx + afw * 0.98), y: Math.round(afy + afh * 0.98) },           // BR
+    // ---- Corner marks detection: scan each corner REGION for dark square ----
+    const scanR = Math.round(afw * 0.15); // search 15% area near each corner
+    const markR = Math.max(2, Math.round(afw * 0.02)); // mark size ~2%
+    const cornerRegions = [
+      { cx: afx,       cy: afy       }, // TL
+      { cx: afx + afw, cy: afy       }, // TR
+      { cx: afx,       cy: afy + afh }, // BL
+      { cx: afx + afw, cy: afy + afh }, // BR
     ];
     let cornersFound = 0;
-    for (const cp of cornerPositions) {
-      let darkCount = 0, totalCount = 0;
-      for (let dy = -checkR; dy <= checkR; dy++) {
-        for (let dx = -checkR; dx <= checkR; dx++) {
-          const px2 = cp.x + dx, py2 = cp.y + dy;
-          if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
-          const idx = (py2 * ANALYSIS_W + px2) * 4;
-          const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-          if (g < 100) darkCount++;
-          totalCount++;
+    const step = Math.max(2, Math.round(markR));
+    for (const cr of cornerRegions) {
+      let found = false;
+      for (let sy = Math.round(cr.cy - scanR); sy <= Math.round(cr.cy + scanR) && !found; sy += step) {
+        for (let sx = Math.round(cr.cx - scanR); sx <= Math.round(cr.cx + scanR) && !found; sx += step) {
+          if (sx < 0 || sy < 0 || sx >= ANALYSIS_W || sy >= ah) continue;
+          let dkN = 0, ttN = 0;
+          for (let dy = -markR; dy <= markR; dy++) {
+            for (let dx = -markR; dx <= markR; dx++) {
+              const px2 = sx + dx, py2 = sy + dy;
+              if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
+              const idx = (py2 * ANALYSIS_W + px2) * 4;
+              const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+              if (g < 90) dkN++;
+              ttN++;
+            }
+          }
+          if (ttN > 0 && dkN / ttN > 0.55) { found = true; cornersFound++; }
         }
       }
-      if (totalCount > 0 && darkCount / totalCount > 0.5) cornersFound++;
     }
 
-    // Detection: must find all 4 corner marks + basic quality
+    // Detection: all 4 corner marks + basic quality
     const detected = cornersFound >= 4 && avgBright > 120 && sharpness > 4;
 
     // ======== DRAW OVERLAY ========
