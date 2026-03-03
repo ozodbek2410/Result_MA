@@ -726,7 +726,41 @@ class HybridOMR:
 
         # 3. Find ABCD columns via pattern matching
         self._grid_w = w_img  # for extrapolation bounds
-        final_cols = self._find_abcd_columns(x_clusters, n_cols)
+
+        # Check if X clusters ARE column centers (sparse bubbles case)
+        # When x_clusters == n_cols, each cluster is likely a column center, not ABCD
+        if len(x_clusters) == n_cols:
+            abcd_sp = w_img * 0.04  # default ABCD spacing ~4% of width
+            self.log(f"  X clusters = n_cols ({n_cols}), treating as column centers, abcd_sp={abcd_sp:.0f}")
+            final_cols = []
+            for cx in x_clusters:
+                col = [int(cx + (k - 1.5) * abcd_sp) for k in range(4)]
+                final_cols.append(col)
+        elif len(x_clusters) <= n_cols + 2 and len(x_clusters) < n_cols * 4 * 0.5:
+            # Very few X clusters (e.g., 5-6 for 4 cols) — likely column centers with noise
+            abcd_sp = w_img * 0.04
+            # Pick n_cols most evenly spaced clusters
+            if len(x_clusters) > n_cols:
+                # Try all combinations of n_cols from x_clusters, pick most even
+                from itertools import combinations
+                best_combo, best_var = None, float('inf')
+                for combo in combinations(range(len(x_clusters)), n_cols):
+                    centers = [x_clusters[i] for i in combo]
+                    spacings = [centers[j+1] - centers[j] for j in range(len(centers)-1)]
+                    var = float(np.std(spacings))
+                    if var < best_var:
+                        best_var = var
+                        best_combo = centers
+                x_as_centers = best_combo
+            else:
+                x_as_centers = x_clusters
+            self.log(f"  Few X clusters ({len(x_clusters)}), treating as column centers: {x_as_centers}")
+            final_cols = []
+            for cx in x_as_centers:
+                col = [int(cx + (k - 1.5) * abcd_sp) for k in range(4)]
+                final_cols.append(col)
+        else:
+            final_cols = self._find_abcd_columns(x_clusters, n_cols)
 
         if not final_cols or len(final_cols) < 2:
             self.log(f"  Pattern matching failed, trying gap-based")
@@ -756,8 +790,20 @@ class HybridOMR:
                 if var < best_var:
                     best_var = var
                     best_start = i
+            # Header row protection: if best_start==0, check if starting from 1 is nearly as good
+            # Header row (A B C D labels) is often detected as row 0, causing Q1/Q24/Q47 to miss
+            if best_start == 0 and len(row_ys) > rows_per_col + 0:
+                subset1 = row_ys[1:1 + rows_per_col]
+                if len(subset1) >= rows_per_col:
+                    spacings1 = [subset1[j+1] - subset1[j] for j in range(len(subset1)-1)]
+                    var1 = float(np.std(spacings1))
+                    # Prefer skipping first row unless it makes variance much worse
+                    if var1 < best_var * 2.0:
+                        best_start = 1
+                        self.log(f"  Header skip: row 0 skipped (var0={best_var:.1f}, var1={var1:.1f})")
+            n_total_rows = len(row_ys)
             row_ys = row_ys[best_start:best_start + rows_per_col]
-            self.log(f"  Row selection: {best_start}..{best_start+rows_per_col-1} of {len(row_ys)+best_start}")
+            self.log(f"  Row selection: {best_start}..{best_start+rows_per_col-1} of {n_total_rows}")
 
         actual_rows = min(len(row_ys), rows_per_col)
 
@@ -2260,8 +2306,8 @@ class HybridOMR:
                 if letter not in grid[q_num]:
                     continue
                 b = grid[q_num][letter]
-                # Inner 35% ROI
-                r = max(2, int(median_w * 0.175))
+                # Inner 50% ROI (wider = catches more fill area)
+                r = max(3, int(median_w * 0.25))
                 y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
                 x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
                 if x2 - x1 < 2 or y2 - y1 < 2:
@@ -2311,7 +2357,7 @@ class HybridOMR:
             "mode": mode
         }
 
-        if correct_answers and len(correct_answers) > 0:
+        if correct_answers and isinstance(correct_answers, dict) and len(correct_answers) > 0:
             correct_count = sum(1 for q, a in detected_answers.items() if correct_answers.get(q) == a)
             incorrect_count = sum(1 for q, a in detected_answers.items() if q in correct_answers and correct_answers.get(q) != a)
             unanswered = total - len(detected_answers)
@@ -2336,8 +2382,14 @@ def main():
     except json.JSONDecodeError:
         correct_answers = {}
 
-    # Read totalQuestions from options
-    total_questions = None
+    # If correct_answers is int, treat as totalQuestions
+    if isinstance(correct_answers, (int, float)):
+        total_questions = int(correct_answers)
+        correct_answers = {}
+    else:
+        # Read totalQuestions from options
+        total_questions = None
+
     try:
         options = json.loads(options_json)
         if 'totalQuestions' in options:
