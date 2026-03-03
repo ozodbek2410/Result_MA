@@ -1064,21 +1064,46 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
         
         const score = totalQuestionsFromVariant > 0 ? Math.round((correct / totalQuestionsFromVariant) * 100) : 0;
         
+        // Fan bo'yicha natijalarni guruhlash (subjectBreakdown)
+        const subjectMap: Record<string, { name: string; correct: number; incorrect: number; unanswered: number; total: number }> = {};
+        if (variantInfo.shuffledQuestions) {
+          for (let i = 0; i < totalQuestionsFromVariant; i++) {
+            const sq = variantInfo.shuffledQuestions[i];
+            const subId = sq?.subjectId?._id?.toString() || sq?.subjectId?.toString() || 'unknown';
+            const subName = sq?.subjectId?.nameUzb || 'Boshqa';
+            if (!subjectMap[subId]) {
+              subjectMap[subId] = { name: subName, correct: 0, incorrect: 0, unanswered: 0, total: 0 };
+            }
+            subjectMap[subId].total++;
+            const det = comparison[i];
+            if (!det) continue;
+            if (!det.student_answer) subjectMap[subId].unanswered++;
+            else if (det.is_correct) subjectMap[subId].correct++;
+            else subjectMap[subId].incorrect++;
+          }
+        }
+        const subjectBreakdown = Object.values(subjectMap).map(s => ({
+          ...s,
+          score: s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0,
+        }));
+
         result.comparison = {
           correct,
           incorrect,
           unanswered,
           total: totalQuestionsFromVariant,
           score,
-          details: comparison
+          details: comparison,
+          subjectBreakdown,
         };
-        
+
         console.log('✅ Natija:', {
           correct,
           incorrect,
           unanswered,
           total: totalQuestionsFromVariant,
-          score: `${score}%`
+          score: `${score}%`,
+          subjects: subjectBreakdown.map((s: any) => `${s.name}: ${s.correct}/${s.total}`)
         });
       } else {
         console.log('⚠️ To\'g\'ri javoblar topilmadi, faqat aniqlangan javoblarni qaytaramiz');

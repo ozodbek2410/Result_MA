@@ -35,6 +35,14 @@ interface CheckResult {
       correct_answer: string;
       is_correct: boolean;
     }>;
+    subjectBreakdown?: Array<{
+      name: string;
+      correct: number;
+      incorrect: number;
+      unanswered: number;
+      total: number;
+      score: number;
+    }>;
   };
 }
 
@@ -526,6 +534,43 @@ export default function OMRCheckerPage() {
                     <p className="text-xs font-medium text-gray-600">Javobsiz</p>
                   </div>
                 </Card>
+              </div>
+            )}
+
+            {/* Subject Breakdown Cards */}
+            {result.comparison?.subjectBreakdown && result.comparison.subjectBreakdown.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {result.comparison.subjectBreakdown.map((subject, idx) => {
+                  const pct = subject.total > 0 ? Math.round((subject.correct / subject.total) * 100) : 0;
+                  const color = pct >= 70 ? 'green' : pct >= 40 ? 'yellow' : 'red';
+                  const colors: Record<string, { bg: string; bar: string; text: string; badge: string }> = {
+                    green: { bg: 'bg-green-50', bar: 'bg-green-500', text: 'text-green-700', badge: 'bg-green-100 text-green-700' },
+                    yellow: { bg: 'bg-yellow-50', bar: 'bg-yellow-500', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-700' },
+                    red: { bg: 'bg-red-50', bar: 'bg-red-500', text: 'text-red-700', badge: 'bg-red-100 text-red-700' },
+                  };
+                  const c = colors[color];
+                  return (
+                    <Card key={idx} className="border shadow-sm overflow-hidden">
+                      <div className={`${c.bg} p-3 sm:p-4`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="text-sm font-bold text-gray-900 truncate">{subject.name}</h3>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.badge}`}>{pct}%</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
+                          <span className="text-green-600 font-semibold">{subject.correct} to'g'ri</span>
+                          <span className="text-red-600 font-semibold">{subject.incorrect} xato</span>
+                          {subject.unanswered > 0 && (
+                            <span className="text-gray-400 font-semibold">{subject.unanswered} bo'sh</span>
+                          )}
+                          <span className="text-gray-500 ml-auto">{subject.total} ta</span>
+                        </div>
+                        <div className="h-1.5 bg-white/60 rounded-full overflow-hidden">
+                          <div className={`h-full ${c.bar} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             )}
 

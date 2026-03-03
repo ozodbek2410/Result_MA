@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  X, RotateCw, Zap, ZapOff, CheckCircle, XCircle,
-  ArrowLeft, Loader2, Camera,
+  X, RotateCw, Zap, ZapOff, XCircle,
+  Loader2, Camera,
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -162,8 +162,15 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       clearInterval(progressInterval);
       setProcessingProgress(100);
       if (response.data.success) {
-        setState('result');
+        // Auto-close — no result screen, no buttons
+        clearInterval(progressInterval);
         onResult(response.data, file);
+        setState('scanning');
+        setCapturedImage(null);
+        capturingRef.current = false;
+        detectionCountRef.current = 0;
+        onClose();
+        return;
       } else {
         setState('error');
         setCameraError(response.data.error || 'Skanerlashda xatolik');
@@ -417,13 +424,13 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
                 state === 'scanning'
                   ? (paperDetected ? 'bg-green-500 animate-pulse' : 'bg-white/50')
                   : state === 'processing' ? 'bg-yellow-500 animate-pulse'
-                  : state === 'result' ? 'bg-green-500' : 'bg-red-500'
+                  : 'bg-red-500'
               }`} />
               <span className="text-white font-semibold text-sm">
                 {state === 'scanning'
                   ? (paperDetected ? `Skanerlash... ${Math.round(autoProgress * 100)}%` : 'Varoqni moslang')
                   : state === 'processing' ? 'Tahlil qilinmoqda...'
-                  : state === 'result' ? 'Tayyor!' : 'Xatolik'}
+                  : 'Xatolik'}
               </span>
             </div>
             <div className="flex gap-2">
@@ -487,10 +494,6 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
             </div>
           )}
 
-          {state === 'result' && capturedImage && (
-            <img src={capturedImage} alt="Result" className="w-full h-full object-contain" />
-          )}
-
           {(state === 'error' || (cameraError && state !== 'scanning')) && (
             <div className="text-center p-6">
               <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -524,31 +527,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           </div>
         )}
 
-        {/* Result bottom */}
-        {state === 'result' && (
-          <div className="absolute bottom-0 left-0 right-0 z-30 bg-black/90 backdrop-blur-md p-4 pb-6 border-t border-white/10">
-            <div className="max-w-md mx-auto space-y-3">
-              <div className="flex items-center justify-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-white font-semibold text-sm">Muvaffaqiyatli!</span>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={resetToScanning}
-                  className="flex-1 py-3 bg-white/10 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
-                >
-                  <Camera className="w-4 h-4" /> Yana
-                </button>
-                <button
-                  onClick={handleClose}
-                  className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Natija
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Result removed — auto-close on success */}
 
         <canvas ref={canvasRef} className="hidden" />
       </div>
