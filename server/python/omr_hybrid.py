@@ -2409,7 +2409,7 @@ class HybridOMR:
         if pipeline is None:
             need_retry = True
         else:
-            if len(pipeline[5]) < total * 0.6:
+            if len(pipeline[5]) < total * 0.85:
                 need_retry = True
                 self.log(f"\n  Grid too small ({len(pipeline[5])}/{total}), trying paper extraction...")
 
