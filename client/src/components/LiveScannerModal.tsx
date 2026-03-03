@@ -41,10 +41,20 @@ interface LiveScannerModalProps {
   onResult: (result: ScanResult, file: File) => void;
 }
 
-// A4 aspect ratio: 210mm / 297mm
-const A4_RATIO = 210 / 297;
-// Auto-capture after this many consecutive detections (~2.5s stable)
-const AUTO_CAPTURE_THRESHOLD = 30;
+interface MarkCandidate {
+  x: number;
+  y: number;
+  score: number;
+}
+
+// Auto-capture after consecutive detections (~2s stable)
+const AUTO_CAPTURE_THRESHOLD = 24;
+// Mark detection: sliding window size (pixels in analysis canvas)
+const MARK_WIN = 7;
+// Minimum dark pixel ratio in window to be considered a mark
+const MARK_DARK_RATIO = 0.35;
+// Dark pixel threshold
+const DARK_THRESHOLD = 80;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,8 +74,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [foundMarks, setFoundMarks] = useState(0);
 
-  // Keep stateRef in sync
   useEffect(() => { stateRef.current = state; }, [state]);
 
   const stopCamera = useCallback(() => {
@@ -89,7 +99,6 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     if (!video || !canvas) { capturingRef.current = false; return; }
 
     setState('captured');
-
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
@@ -104,7 +113,6 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
 
     setState('processing');
     setProcessingProgress(0);
-
     const progressInterval = setInterval(() => {
       setProcessingProgress((p) => (p >= 90 ? p : p + Math.random() * 20));
     }, 150);
@@ -114,7 +122,6 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.95)
       );
       const file = new File([blob], `omr-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
-
       const formData = new FormData();
       formData.append('image', file);
 
@@ -141,28 +148,86 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
   }, [stopCamera, onResult]);
 
-  // Calculate A4 guide rectangle
-  const getGuideRect = useCallback((ow: number, oh: number) => {
-    const padX = ow * 0.06;
-    const padTop = oh * 0.08;
-    const padBottom = oh * 0.15;
-    const availW = ow - padX * 2;
-    const availH = oh - padTop - padBottom;
+  // Find the densest dark blob in a search zone using sliding window
+  const findMarkInZone = useCallback((
+    pixels: Uint8ClampedArray, sw: number, sh: number,
+    zx1: number, zy1: number, zx2: number, zy2: number
+  ): MarkCandidate | null => {
+    let bestScore = 0;
+    let bestX = 0, bestY = 0;
+    const winArea = MARK_WIN * MARK_WIN;
 
-    let gw: number, gh: number;
-    if (availW / availH < A4_RATIO) {
-      gw = availW;
-      gh = gw / A4_RATIO;
-    } else {
-      gh = availH;
-      gw = gh * A4_RATIO;
+    // Clamp to frame
+    const x1 = Math.max(0, zx1);
+    const y1 = Math.max(0, zy1);
+    const x2 = Math.min(sw - MARK_WIN, zx2);
+    const y2 = Math.min(sh - MARK_WIN, zy2);
+
+    for (let wy = y1; wy <= y2; wy += 2) {
+      for (let wx = x1; wx <= x2; wx += 2) {
+        let darkCount = 0;
+        for (let dy = 0; dy < MARK_WIN; dy++) {
+          for (let dx = 0; dx < MARK_WIN; dx++) {
+            const i = ((wy + dy) * sw + (wx + dx)) * 4;
+            const gray = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+            if (gray < DARK_THRESHOLD) darkCount++;
+          }
+        }
+        const score = darkCount / winArea;
+        if (score > bestScore) {
+          bestScore = score;
+          bestX = wx + MARK_WIN / 2;
+          bestY = wy + MARK_WIN / 2;
+        }
+      }
     }
-    const gx = (ow - gw) / 2;
-    const gy = padTop + (availH - gh) / 2;
-    return { gx, gy, gw, gh };
+
+    if (bestScore >= MARK_DARK_RATIO) {
+      return { x: bestX, y: bestY, score: bestScore };
+    }
+    return null;
   }, []);
 
-  // Robust paper detection using edge contrast + fill + pattern analysis
+  // Validate that 4 marks form a reasonable rectangle
+  const validateRectangle = useCallback((marks: (MarkCandidate | null)[]): boolean => {
+    const valid = marks.filter((m): m is MarkCandidate => m !== null);
+    if (valid.length < 3) return false;
+
+    // With 3+ marks, check distances are reasonable
+    if (valid.length >= 4) {
+      const tl = marks[0]!, tr = marks[1]!, bl = marks[2]!, br = marks[3]!;
+      const topW = Math.abs(tr.x - tl.x);
+      const botW = Math.abs(br.x - bl.x);
+      const leftH = Math.abs(bl.y - tl.y);
+      const rightH = Math.abs(br.y - tr.y);
+
+      // Sides should be roughly parallel (within 30%)
+      if (topW > 0 && botW > 0) {
+        const wRatio = Math.min(topW, botW) / Math.max(topW, botW);
+        if (wRatio < 0.6) return false;
+      }
+      if (leftH > 0 && rightH > 0) {
+        const hRatio = Math.min(leftH, rightH) / Math.max(leftH, rightH);
+        if (hRatio < 0.6) return false;
+      }
+
+      // Width/height ratio should be somewhat close to A4 (0.5 - 0.9)
+      const avgW = (topW + botW) / 2;
+      const avgH = (leftH + rightH) / 2;
+      if (avgH > 0) {
+        const ratio = avgW / avgH;
+        if (ratio < 0.4 || ratio > 1.0) return false;
+      }
+
+      // Minimum size: marks should span at least 15% of frame
+      const minSpan = 20; // pixels in analysis canvas
+      if (avgW < minSpan || avgH < minSpan) return false;
+    }
+
+    return true;
+  }, []);
+
+  // Main detection: find 4 corner marks
   const detectPaper = useCallback(() => {
     const video = videoRef.current;
     const overlay = overlayRef.current;
@@ -176,9 +241,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const ow = overlay.width;
     const oh = overlay.height;
 
-    // Higher res for better analysis
+    // Analysis canvas - higher res for mark detection
     const tempCanvas = document.createElement('canvas');
-    const sw = 240, sh = 180;
+    const sw = 320, sh = 240;
     tempCanvas.width = sw;
     tempCanvas.height = sh;
     const tc = tempCanvas.getContext('2d');
@@ -186,223 +251,152 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     tc.drawImage(video, 0, 0, sw, sh);
     const pixels = tc.getImageData(0, 0, sw, sh).data;
 
-    const guide = getGuideRect(ow, oh);
-    const sx1 = Math.floor((guide.gx / ow) * sw);
-    const sy1 = Math.floor((guide.gy / oh) * sh);
-    const sx2 = Math.floor(((guide.gx + guide.gw) / ow) * sw);
-    const sy2 = Math.floor(((guide.gy + guide.gh) / oh) * sh);
-    const grayAt = (x: number, y: number) => {
-      if (x < 0 || x >= sw || y < 0 || y >= sh) return 0;
-      const i = (y * sw + x) * 4;
-      return (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-    };
+    // Search for marks in 4 quadrants of the frame
+    // Each search zone = one quadrant, but we extend slightly into center
+    const mx = sw / 2, my = sh / 2;
+    const overlap = 15; // pixels overlap into opposite quadrant
 
-    // === CHECK 1: Inner brightness (paper should be white) ===
-    const insetX = Math.floor((sx2 - sx1) * 0.12);
-    const insetY = Math.floor((sy2 - sy1) * 0.08);
-    let innerBright = 0, innerTotal = 0;
-    for (let y = sy1 + insetY; y < sy2 - insetY; y += 2) {
-      for (let x = sx1 + insetX; x < sx2 - insetX; x += 2) {
-        innerTotal++;
-        if (grayAt(x, y) > 140) innerBright++;
-      }
-    }
-    const innerBrightRatio = innerTotal > 0 ? innerBright / innerTotal : 0;
+    const zones = [
+      { name: 'TL', x1: 0, y1: 0, x2: mx + overlap, y2: my + overlap },
+      { name: 'TR', x1: mx - overlap, y1: 0, x2: sw, y2: my + overlap },
+      { name: 'BL', x1: 0, y1: my - overlap, x2: mx + overlap, y2: sh },
+      { name: 'BR', x1: mx - overlap, y1: my - overlap, x2: sw, y2: sh },
+    ];
 
-    // === CHECK 2: Edge contrast (paper edge = bright→dark transition) ===
-    const edgeInset = 3; // pixels inside guide border
-    const edgeOutset = 8; // pixels outside guide border
-    let edgeContrastScore = 0;
-    let edgeChecks = 0;
+    const marks: (MarkCandidate | null)[] = zones.map(z =>
+      findMarkInZone(pixels, sw, sh, z.x1, z.y1, z.x2, z.y2)
+    );
 
-    // Top edge
-    for (let x = sx1 + 10; x < sx2 - 10; x += 6) {
-      const inside = grayAt(x, sy1 + edgeInset);
-      const outside = grayAt(x, sy1 - edgeOutset);
-      if (inside - outside > 40) edgeContrastScore++;
-      edgeChecks++;
-    }
-    // Bottom edge
-    for (let x = sx1 + 10; x < sx2 - 10; x += 6) {
-      const inside = grayAt(x, sy2 - edgeInset);
-      const outside = grayAt(x, sy2 + edgeOutset);
-      if (inside - outside > 40) edgeContrastScore++;
-      edgeChecks++;
-    }
-    // Left edge
-    for (let y = sy1 + 10; y < sy2 - 10; y += 6) {
-      const inside = grayAt(sx1 + edgeInset, y);
-      const outside = grayAt(sx1 - edgeOutset, y);
-      if (inside - outside > 40) edgeContrastScore++;
-      edgeChecks++;
-    }
-    // Right edge
-    for (let y = sy1 + 10; y < sy2 - 10; y += 6) {
-      const inside = grayAt(sx2 - edgeInset, y);
-      const outside = grayAt(sx2 + edgeOutset, y);
-      if (inside - outside > 40) edgeContrastScore++;
-      edgeChecks++;
-    }
-    const edgeRatio = edgeChecks > 0 ? edgeContrastScore / edgeChecks : 0;
+    const marksFound = marks.filter(m => m !== null).length;
+    const isRect = validateRectangle(marks);
+    const detected = marksFound >= 3 && isRect;
 
-    // === CHECK 3: Grid area bubble pattern (regular dark spots) ===
-    // Bubbles are in the lower 70% of the sheet
-    const gridY1 = sy1 + Math.floor((sy2 - sy1) * 0.28);
-    const gridY2 = sy2 - 3;
-    const gridX1 = sx1 + 3;
-    const gridX2 = sx2 - 3;
-
-    // Count dark pixels in grid area and check for vertical column structure
-    let darkInGrid = 0, gridSamples = 0;
-    const columnDarkCounts: number[] = new Array(10).fill(0);
-    for (let y = gridY1; y < gridY2; y += 2) {
-      for (let x = gridX1; x < gridX2; x += 2) {
-        const g = grayAt(x, y);
-        gridSamples++;
-        if (g < 80) {
-          darkInGrid++;
-          const colIdx = Math.floor(((x - gridX1) / (gridX2 - gridX1)) * 10);
-          columnDarkCounts[colIdx]++;
-        }
-      }
-    }
-    const darkRatio = gridSamples > 0 ? darkInGrid / gridSamples : 0;
-    // Bubbles create structured dark patterns: 5-30% dark in grid
-    const hasBubblePattern = darkRatio > 0.04 && darkRatio < 0.35;
-    // Check column structure: at least 3 columns with similar dark density
-    const avgColDark = columnDarkCounts.reduce((a, b) => a + b, 0) / 10;
-    const activeColumns = columnDarkCounts.filter(c => c > avgColDark * 0.3).length;
-    const hasColumnStructure = activeColumns >= 3;
-
-    // === CHECK 4: Header area (top 25% should have some content but mostly white) ===
-    const headerY2 = sy1 + Math.floor((sy2 - sy1) * 0.25);
-    let headerBright = 0, headerTotal = 0, headerDark = 0;
-    for (let y = sy1 + 3; y < headerY2; y += 2) {
-      for (let x = sx1 + 3; x < sx2 - 3; x += 2) {
-        headerTotal++;
-        const g = grayAt(x, y);
-        if (g > 150) headerBright++;
-        if (g < 60) headerDark++;
-      }
-    }
-    const headerBrightRatio = headerTotal > 0 ? headerBright / headerTotal : 0;
-    const headerDarkRatio = headerTotal > 0 ? headerDark / headerTotal : 0;
-    // Header should be mostly white (>50%) with some dark content (QR code, text: 2-20%)
-    const hasHeader = headerBrightRatio > 0.45 && headerDarkRatio > 0.01 && headerDarkRatio < 0.25;
-
-    // === FINAL DECISION ===
-    // Strict: need brightness + edge contrast + (bubbles OR header pattern)
-    const detected =
-      innerBrightRatio > 0.50 &&          // Paper is white enough
-      edgeRatio > 0.25 &&                  // Clear edge on at least 2 sides
-      (hasBubblePattern && hasColumnStructure) && // Grid area has bubble pattern
-      hasHeader;                            // Header area looks right
+    setFoundMarks(marksFound);
 
     // --- Draw overlay ---
     ctx.clearRect(0, 0, ow, oh);
-    const { gx, gy, gw, gh } = guide;
 
-    // Darken outside guide
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, ow, gy);
-    ctx.fillRect(0, gy + gh, ow, oh - gy - gh);
-    ctx.fillRect(0, gy, gx, gh);
-    ctx.fillRect(gx + gw, gy, ow - gx - gw, gh);
+    // Semi-transparent background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fillRect(0, 0, ow, oh);
 
-    // Guide border
-    const color = detected ? '#22c55e' : 'rgba(255,255,255,0.6)';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = detected ? 3 : 1.5;
-    ctx.setLineDash(detected ? [] : [8, 6]);
-    ctx.strokeRect(gx, gy, gw, gh);
-    ctx.setLineDash([]);
+    // If marks found, draw the detected paper area
+    if (marksFound >= 2) {
+      const validMarks = marks.filter((m): m is MarkCandidate => m !== null);
+      // Scale from analysis coords to overlay coords
+      const scX = ow / sw, scY = oh / sh;
 
-    // Corner brackets
-    const cl = Math.min(30, gw * 0.08);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = detected ? '#22c55e' : '#3b82f6';
-    const cps = [
-      [gx, gy, 1, 1], [gx + gw, gy, -1, 1],
-      [gx, gy + gh, 1, -1], [gx + gw, gy + gh, -1, -1],
-    ];
-    for (const [cx, cy, dx, dy] of cps) {
-      ctx.beginPath();
-      ctx.moveTo(cx + (dx as number) * cl, cy as number);
-      ctx.lineTo(cx as number, cy as number);
-      ctx.lineTo(cx as number, cy + (dy as number) * cl);
-      ctx.stroke();
+      if (marksFound >= 3) {
+        // Draw paper area (bright cutout)
+        const xs = validMarks.map(m => m.x * scX);
+        const ys = validMarks.map(m => m.y * scY);
+        const minX = Math.min(...xs) - 10;
+        const minY = Math.min(...ys) - 10;
+        const maxX = Math.max(...xs) + 10;
+        const maxY = Math.max(...ys) + 10;
+
+        // Clear the paper area (make it brighter)
+        ctx.clearRect(minX, minY, maxX - minX, maxY - minY);
+
+        // Draw paper border
+        ctx.strokeStyle = detected ? '#22c55e' : '#f59e0b';
+        ctx.lineWidth = detected ? 3 : 2;
+        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+      }
+
+      // Draw each found mark with a circle indicator
+      marks.forEach((mark, i) => {
+        if (!mark) return;
+        const mx = mark.x * scX;
+        const my = mark.y * scY;
+
+        // Filled circle on mark
+        ctx.beginPath();
+        ctx.arc(mx, my, 12, 0, Math.PI * 2);
+        ctx.fillStyle = detected ? 'rgba(34, 197, 94, 0.7)' : 'rgba(245, 158, 11, 0.7)';
+        ctx.fill();
+        ctx.strokeStyle = detected ? '#16a34a' : '#d97706';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Checkmark or corner label
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(['TL', 'TR', 'BL', 'BR'][i], mx, my);
+      });
+
+      // Draw X for missing marks
+      marks.forEach((mark, i) => {
+        if (mark) return;
+        // Expected position based on found marks
+        const scX = ow / sw, scY = oh / sh;
+        const cornerX = [15, sw - 15, 15, sw - 15][i] * scX;
+        const cornerY = [15, 15, sh - 15, sh - 15][i] * scY;
+
+        ctx.beginPath();
+        ctx.arc(cornerX, cornerY, 12, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.5)';
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', cornerX, cornerY);
+      });
     }
 
-    // Auto-capture progress ring
+    // Auto-capture progress ring (bottom center)
     if (detected && detectionCountRef.current > 2) {
       const progress = Math.min(detectionCountRef.current / AUTO_CAPTURE_THRESHOLD, 1);
       const ringX = ow / 2;
-      const ringY = gy + gh + (oh - gy - gh) / 2 - 5;
-      const ringR = 28;
+      const ringY = oh - 90;
+      const ringR = 30;
 
-      // Background circle
       ctx.beginPath();
       ctx.arc(ringX, ringY, ringR, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
       ctx.fill();
 
-      // Progress arc
       ctx.beginPath();
-      ctx.arc(ringX, ringY, ringR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.arc(ringX, ringY, ringR - 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
       ctx.strokeStyle = '#22c55e';
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 5;
       ctx.lineCap = 'round';
       ctx.stroke();
 
-      // Percentage text
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px system-ui';
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 13px system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${Math.round(progress * 100)}%`, ringX, ringY);
     }
 
-    // Detection indicators inside guide (small icons)
-    const indSize = 10;
-    const indY = gy + 8;
-    const indicators = [
-      { ok: innerBrightRatio > 0.50, label: 'Oq' },
-      { ok: edgeRatio > 0.25, label: 'Chegara' },
-      { ok: hasBubblePattern && hasColumnStructure, label: 'Bubble' },
-      { ok: hasHeader, label: 'Sarlavha' },
-    ];
-    const indStartX = gx + 8;
-    ctx.font = '10px system-ui';
-    ctx.textAlign = 'left';
-    indicators.forEach((ind, i) => {
-      const ix = indStartX + i * 62;
-      ctx.fillStyle = ind.ok ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.6)';
-      ctx.beginPath();
-      ctx.arc(ix + 5, indY + 5, indSize / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(ind.label, ix + 14, indY + 9);
-    });
-
-    // Status text
-    const statusY = gy + gh + 16;
+    // Status text top-center area
+    const statusY = 50;
     ctx.font = 'bold 13px system-ui';
     ctx.textAlign = 'center';
     if (detected) {
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.85)';
-      const tw = ctx.measureText('Avtomatik skanerlash...').width + 24;
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.9)';
+      const tw = 180;
       ctx.beginPath();
-      ctx.roundRect(ow / 2 - tw / 2, statusY - 2, tw, 26, 6);
+      ctx.roundRect(ow / 2 - tw / 2, statusY - 12, tw, 28, 8);
       ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.fillText('Avtomatik skanerlash...', ow / 2, statusY + 11);
-    } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.fillText('Varaqni yaqinroq tutib ramkaga moslang', ow / 2, statusY + 11);
+      ctx.fillText(`${marksFound}/4 marker topildi`, ow / 2, statusY + 3);
+    } else if (marksFound > 0) {
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+      const tw = 200;
+      ctx.beginPath();
+      ctx.roundRect(ow / 2 - tw / 2, statusY - 12, tw, 28, 8);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`${marksFound}/4 marker (yaqinroq tutng)`, ow / 2, statusY + 3);
     }
 
     return detected;
-  }, [getGuideRect]);
+  }, [findMarkInZone, validateRectangle]);
 
   // Detection loop with auto-capture
   const startDetection = useCallback(() => {
@@ -416,14 +410,12 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           detectionCountRef.current++;
           setPaperDetected(true);
           setAutoProgress(Math.min(detectionCountRef.current / AUTO_CAPTURE_THRESHOLD, 1));
-
-          // Auto-capture when threshold reached
           if (detectionCountRef.current >= AUTO_CAPTURE_THRESHOLD && !capturingRef.current) {
             capturePhoto();
             return;
           }
         } else {
-          detectionCountRef.current = Math.max(0, detectionCountRef.current - 3);
+          detectionCountRef.current = Math.max(0, detectionCountRef.current - 2);
           if (detectionCountRef.current === 0) {
             setPaperDetected(false);
             setAutoProgress(0);
@@ -435,12 +427,10 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     animFrameRef.current = requestAnimationFrame(loop);
   }, [detectPaper, capturePhoto]);
 
-  // Start camera
   const startCamera = useCallback(async () => {
     try {
       setCameraError(null);
       stopCamera();
-
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: facingMode },
@@ -449,7 +439,6 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         },
       });
       streamRef.current = mediaStream;
-
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         await videoRef.current.play();
@@ -461,9 +450,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   }, [facingMode, stopCamera, startDetection]);
 
   useEffect(() => {
-    if (isOpen && state === 'scanning') {
-      startCamera();
-    }
+    if (isOpen && state === 'scanning') startCamera();
     return () => { if (!isOpen) stopCamera(); };
   }, [isOpen, state, startCamera, stopCamera]);
 
@@ -492,6 +479,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     setCameraError(null);
     setProcessingProgress(0);
     setAutoProgress(0);
+    setFoundMarks(0);
     detectionCountRef.current = 0;
     capturingRef.current = false;
     setPaperDetected(false);
@@ -513,18 +501,18 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     <div className="fixed inset-0 z-50 bg-black">
       <div className="relative w-full h-full flex flex-col">
         {/* Top bar */}
-        <div className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/80 to-transparent p-3 sm:p-4">
+        <div className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/70 to-transparent p-3 sm:p-4">
           <div className="flex items-center justify-between max-w-4xl mx-auto">
             <div className="flex items-center gap-2">
               <div className={`w-2.5 h-2.5 rounded-full ${
                 state === 'scanning'
-                  ? (paperDetected ? 'bg-green-500 animate-pulse' : 'bg-white/50')
+                  ? (paperDetected ? 'bg-green-500 animate-pulse' : foundMarks > 0 ? 'bg-yellow-500' : 'bg-white/50')
                   : state === 'processing' ? 'bg-yellow-500 animate-pulse'
                   : state === 'result' ? 'bg-green-500' : 'bg-red-500'
               }`} />
               <span className="text-white font-semibold text-sm">
                 {state === 'scanning'
-                  ? (paperDetected ? `Skanerlash... ${Math.round(autoProgress * 100)}%` : 'Varaqni joylashtiring')
+                  ? (paperDetected ? `Skanerlash... ${Math.round(autoProgress * 100)}%` : foundMarks > 0 ? `${foundMarks}/4 marker` : '4 ta markerni toping')
                   : state === 'processing' ? 'Tahlil qilinmoqda...'
                   : state === 'result' ? 'Tayyor!' : 'Xatolik'}
               </span>
@@ -607,7 +595,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           )}
         </div>
 
-        {/* Bottom: manual capture button (scanning state) */}
+        {/* Bottom controls */}
         {state === 'scanning' && !cameraError && (
           <div className="absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/70 to-transparent p-4 pb-8">
             <div className="flex flex-col items-center gap-2">
