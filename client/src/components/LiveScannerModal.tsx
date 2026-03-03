@@ -50,7 +50,7 @@ const MARK_RX = 4.5 / 210; // corner mark center X (relative to paper width)
 const MARK_RY = 4.5 / 297; // corner mark center Y (relative to paper height)
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
-const AUTO_TH = 3; // instant capture (~0.25s debounce)
+const AUTO_TH = 6; // ~0.5s debounce (6 detections at every 5th frame)
 const ANALYSIS_W = 320;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
@@ -221,6 +221,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const grid = 8;
     const stepX = afw / (grid + 1), stepY = afh / (grid + 1);
     let brightSum = 0, whiteN = 0, darkN = 0, total = 0;
+    const grayVals: number[] = [];
     for (let gy = 1; gy <= grid; gy++) {
       for (let gx = 1; gx <= grid; gx++) {
         const px = Math.round(afx + gx * stepX);
@@ -229,6 +230,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         const i = (py * ANALYSIS_W + px) * 4;
         const gray = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
         brightSum += gray;
+        grayVals.push(gray);
         if (gray > 180) whiteN++;
         if (gray < 80) darkN++;
         total++;
@@ -238,9 +240,15 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const whiteRatio = total > 0 ? whiteN / total : 0;
     const darkRatio = total > 0 ? darkN / total : 0;
 
-    // Detection: bright surface with printed content (white + dark areas)
-    // No outside comparison needed — paper often fills entire screen
-    const detected = avgBright > 125 && whiteRatio > 0.20 && darkRatio > 0.02;
+    // Sharpness: variance of neighboring pixel differences (low = blurry)
+    let sharpSum = 0;
+    for (let i = 1; i < grayVals.length; i++) {
+      sharpSum += Math.abs(grayVals[i] - grayVals[i - 1]);
+    }
+    const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
+
+    // Detection: bright + content + not too blurry
+    const detected = avgBright > 140 && whiteRatio > 0.25 && darkRatio > 0.03 && sharpness > 8;
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -327,7 +335,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
-        ctx.fillText('Varoqni ramkaga moslang', ow / 2, labelY + 2);
+        const hint = sharpness < 8 ? 'Fokus qiling — xira' : avgBright < 140 ? 'Yoritish kerak' : 'Varoqni ramkaga moslang';
+        ctx.fillText(hint, ow / 2, labelY + 2);
       }
     }
 
