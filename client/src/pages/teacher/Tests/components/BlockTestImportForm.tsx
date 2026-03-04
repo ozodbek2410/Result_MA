@@ -609,11 +609,6 @@ export function BlockTestImportForm({
                                 placeholder="Kontekst matni..."
                               />
                             )}
-                            {q.contextText && (
-                              <div className="mt-1 text-xs text-amber-600">
-                                <MathText text={q.contextText} />
-                              </div>
-                            )}
                             <div style={{ clear: 'both' }} />
                           </div>
                         )}
