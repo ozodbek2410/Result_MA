@@ -882,7 +882,23 @@ export abstract class BaseParser {
    */
   protected parseQuestions(text: string, mathBlocks: string[]): ParsedQuestion[] {
     const questions: ParsedQuestion[] = [];
-    
+
+    // Pre-process: if first line has a document title + question number on the same line,
+    // insert a newline to separate them so the question pattern can match "1)" at line start
+    const firstNewline = text.indexOf('\n');
+    const firstLine = firstNewline > -1 ? text.substring(0, firstNewline) : text;
+    const inlineQMatch = firstLine.match(/^(.+?)\s+(\d+\s*[.)]\s)/);
+    if (inlineQMatch && inlineQMatch[2]) {
+      const possibleTitle = inlineQMatch[1].replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
+      if (this.isLikelyTitle(possibleTitle)) {
+        const splitPos = firstLine.indexOf(inlineQMatch[2], inlineQMatch[1].length);
+        if (splitPos > 0) {
+          text = text.substring(0, splitPos) + '\n' + text.substring(splitPos);
+          console.log(`📝 [PARSER] Separated title from first question at position ${splitPos}`);
+        }
+      }
+    }
+
     // Match question numbers more flexibly: 1) or 1. at start of line or after newline
     // Allow optional space between number and bold-period (e.g. "17 **.**") and zero-space after period (e.g. "27.$\")
     const questionPattern = /(?:^|\n)(?:\*\*|__)?(\d+)\s*(?:\*\*|__)?[.)]\s*/g;
@@ -906,6 +922,7 @@ export abstract class BaseParser {
     let pendingContextImage = '';
     let pendingContextImageWidth = 0;
     let pendingContextImageHeight = 0;
+    let pendingQuestionPrefix = '';
     if (firstMarkerIdx > 0) {
       let preText = text.substring(0, firstMarkerIdx).replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
       // Extract image from context text
@@ -922,9 +939,25 @@ export abstract class BaseParser {
         }
         preText = preText.replace(/___IMAGE_\d+___/g, '').trim();
       }
-      if (preText.length > 30) {
+      // Check for embedded question header (e.g., "Title\n1. Question text...")
+      // This happens when filterSequentialMarkers picks "1)" sub-item over "1." question
+      const embeddedQ = preText.match(/(\d+)\s*[.)]\s+/);
+      if (embeddedQ && embeddedQ.index != null) {
+        const beforeQ = preText.substring(0, embeddedQ.index).trim();
+        const afterQ = preText.substring(embeddedQ.index).trim();
+        if (this.isLikelyTitle(beforeQ) || beforeQ.length <= 30) {
+          // afterQ = "1. Assimilatsiya..." — keep raw text to prepend to first question block
+          pendingQuestionPrefix = afterQ;
+          console.log(`📝 [PARSER] Extracted question header from title: "${pendingQuestionPrefix.substring(0, 80)}"`);
+        } else if (preText.length > 30) {
+          pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
+          console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+        }
+      } else if (preText.length > 30 && !this.isLikelyTitle(preText)) {
         pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
         console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+      } else if (preText.length > 0) {
+        console.log(`⏭️ [PARSER] Skipped pre-question text as title/header: "${preText.substring(0, 80)}"`);
       }
     }
 
@@ -933,7 +966,13 @@ export abstract class BaseParser {
       const startIdx = match.index!;
       const endIdx = i < validMatches.length - 1 ? validMatches[i + 1].index! : text.length;
 
-      const block = text.substring(startIdx, endIdx);
+      // If first question has a pending header from preText, prepend it to the block
+      let block = text.substring(startIdx, endIdx);
+      if (i === 0 && pendingQuestionPrefix) {
+        block = pendingQuestionPrefix + '\n' + block;
+        pendingQuestionPrefix = '';
+        console.log(`📝 [PARSER] Prepended question header to first question block`);
+      }
 
       const question = this.extractQuestion(block, mathBlocks);
 
@@ -1009,6 +1048,40 @@ export abstract class BaseParser {
 
     // Clean and restore math
     return this.finalCleanText(this.restoreMath(postText, mathBlocks), mathBlocks);
+  }
+
+  /**
+   * Detect if text is a document title/header rather than a reading passage.
+   * Titles typically: short, contain test/subject identifiers, no question content.
+   */
+  private isLikelyTitle(text: string): boolean {
+    const clean = text.replace(/\n/g, ' ').trim();
+    // Too long for a title — likely real context
+    if (clean.length > 200) return false;
+    const lower = clean.toLowerCase();
+    const titlePatterns = [
+      /\btest[i]?\b/i,
+      /\bblok\b/i,
+      /\bimtihon\b/i,
+      /\bnazorat\b/i,
+      /\bjoriy\b/i,
+      /\byakuniy\b/i,
+      /\bfan\b.*\b(nomi|bo['']yicha)\b/i,
+      /\bsinf\b/i,
+      /^\d+-\d+\b/, // e.g. "5-02"
+    ];
+    const subjectPatterns = [
+      /biologiya/i, /matematika/i, /fizika/i, /kimyo/i,
+      /adabiyot/i, /ona\s*tili/i, /ingliz/i, /tarix/i,
+      /geografiya/i, /informatika/i, /tibbiyot/i,
+    ];
+    const hasTitle = titlePatterns.some(p => p.test(clean));
+    const hasSubject = subjectPatterns.some(p => p.test(clean));
+    // Count newlines — titles are usually 1-2 lines
+    const lineCount = text.split('\n').filter(l => l.trim()).length;
+    if (lineCount <= 3 && (hasTitle || hasSubject)) return true;
+    if (hasTitle && hasSubject) return true;
+    return false;
   }
 
   /**
