@@ -267,10 +267,26 @@ export class SmartUniversalParser extends BaseParser {
 
     // 5. Extract variant letters from inside formulas (safe — no match if absent)
     // Added ( to lookback to handle variant at start of math block: \(A){Cl}^{-1}...
+    // Also detects correct answer from \mathbf inside math (e.g., \mathbf{D)})
     cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (mathBlock) => {
-      return mathBlock.replace(
+      // Detect bold variant letter from \mathbf BEFORE stripping it
+      let boldLetter = '';
+      const boldMatch = mathBlock.match(/\\(?:mathbf|boldsymbol|bf)\{[^}]*([A-D])\s*[.)]/);
+      if (boldMatch) boldLetter = boldMatch[1];
+
+      // Strip \mathbf inside math (after recording bold info)
+      let result = mathBlock;
+      for (let i = 0; i < 3; i++) {
+        result = result.replace(/\\(?:mathbf|boldsymbol|bf)\{([^{}]*)\}/g, '$1');
+      }
+
+      // Extract variants, adding bold markers for the detected bold letter
+      return result.replace(
         /([0-9}\s(])(\*\*|__)?([A-D])(\*\*|__)?(?:\\?\)|\\?\.)/g,
-        '$1 \\) $2$3) \\( '
+        (_, pre, b1, letter, b2) => {
+          const isBold = letter === boldLetter || !!b1 || !!b2;
+          return `${pre} \\) ${isBold ? '**' : ''}${letter}) \\( `;
+        }
       );
     });
     cleaned = cleaned.replace(/\\\(\s*\\\)/g, ' ');

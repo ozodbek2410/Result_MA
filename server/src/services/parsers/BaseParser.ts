@@ -148,9 +148,8 @@ export abstract class BaseParser {
         case 'Underline':
         case 'Strikeout': return this.serializeInlines(il.c);
         case 'Math': {
-          let latex = il.c[1];
-          // Strip \mathbf/\boldsymbol — bold info comes from Strong node
-          latex = latex.replace(/\\(?:mathbf|boldsymbol|bf)\{([^{}]*)\}/g, '$1');
+          const latex = il.c[1];
+          // Keep \mathbf — preCleanText uses it for correct answer detection in variant formulas
           return `\\(${latex}\\)`;
         }
         case 'Image': {
