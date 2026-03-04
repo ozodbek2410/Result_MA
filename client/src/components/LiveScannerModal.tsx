@@ -46,8 +46,6 @@ interface LiveScannerModalProps {
 
 // ---- Constants ----
 const A4_RATIO = 297 / 210;
-const MARK_RX = 4.5 / 210; // corner mark center X (relative to paper width)
-const MARK_RY = 4.5 / 297; // corner mark center Y (relative to paper height)
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
 const AUTO_TH = 6; // ~0.5s debounce
@@ -260,63 +258,10 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
-    // ---- Corner marks: check KNOWN A4 positions with RELATIVE brightness ----
-    // Mark is 5mm on 210mm paper. At afw≈394px: mark≈9.4px. markR must match mark size!
-    // Too large markR dilutes dark mark with white paper → ratio≈0.74 → barely detects
-    const markR = Math.max(3, Math.round(afw * 0.011)); // ~4px = 9px diameter ≈ 9.4px mark
-    const ringR = markR + Math.max(3, Math.round(markR * 1.0)); // ring just outside mark
-    const tol = Math.max(8, Math.round(afw * 0.12)); // ±12% tolerance
-    const step = Math.max(2, Math.round(markR * 0.7));
-    // 4 target positions based on A4 corner mark layout
-    const targets = [
-      { tx: afx + afw * MARK_RX,       ty: afy + afh * MARK_RY },
-      { tx: afx + afw * (1 - MARK_RX), ty: afy + afh * MARK_RY },
-      { tx: afx + afw * MARK_RX,       ty: afy + afh * (1 - MARK_RY) },
-      { tx: afx + afw * (1 - MARK_RX), ty: afy + afh * (1 - MARK_RY) },
-    ];
-    let cornersFound = 0;
-    const cornerRatios: number[] = [];
-    for (const t of targets) {
-      let bestRatio = 0;
-      let bestActualRatio = 1;
-      for (let sy = Math.round(t.ty - tol); sy <= Math.round(t.ty + tol); sy += step) {
-        for (let sx = Math.round(t.tx - tol); sx <= Math.round(t.tx + tol); sx += step) {
-          if (sx < markR || sy < markR || sx >= ANALYSIS_W - markR || sy >= ah - markR) continue;
-          let mSum = 0, mN = 0;
-          for (let dy = -markR; dy <= markR; dy++) {
-            for (let dx = -markR; dx <= markR; dx++) {
-              const idx = ((sy + dy) * ANALYSIS_W + (sx + dx)) * 4;
-              mSum += (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-              mN++;
-            }
-          }
-          let rSum = 0, rN = 0;
-          for (let dy = -ringR; dy <= ringR; dy += 2) {
-            for (let dx = -ringR; dx <= ringR; dx += 2) {
-              if (Math.abs(dx) <= markR && Math.abs(dy) <= markR) continue;
-              const px2 = sx + dx, py2 = sy + dy;
-              if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
-              const idx = (py2 * ANALYSIS_W + px2) * 4;
-              rSum += (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-              rN++;
-            }
-          }
-          if (mN < 4 || rN < 4) continue;
-          const avgM = mSum / mN;
-          const avgR = rSum / rN;
-          const ratio = avgR > 0 ? avgM / avgR : 1;
-          if (ratio < bestActualRatio) bestActualRatio = ratio;
-          if (ratio < 0.80 && (1 - ratio) > bestRatio) {
-            bestRatio = 1 - ratio;
-          }
-        }
-      }
-      cornerRatios.push(bestActualRatio);
-      if (bestRatio > 0) cornersFound++;
-    }
-
-    // Detection: 4 corners + basic quality
-    const detected = cornersFound >= 4 && avgBright > 100 && sharpness > 3;
+    // ---- Paper detection: simple quality checks ----
+    // Python backend handles corner marks at full resolution (much more reliable)
+    const detected = avgBright > 140 && whiteRatio > 0.45 && darkRatio < 0.35
+                     && sharpness > 3 && uniformity < 50;
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -358,23 +303,6 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     ctx.moveTo(fx + fw - bLen, fy + fh); ctx.lineTo(fx + fw, fy + fh); ctx.lineTo(fx + fw, fy + fh - bLen);
     ctx.stroke();
 
-    // Small crosshairs at corner mark positions (subtle alignment hints)
-    const markTargets = [
-      { x: fx + fw * MARK_RX, y: fy + fh * MARK_RY },
-      { x: fx + fw * (1 - MARK_RX), y: fy + fh * MARK_RY },
-      { x: fx + fw * MARK_RX, y: fy + fh * (1 - MARK_RY) },
-      { x: fx + fw * (1 - MARK_RX), y: fy + fh * (1 - MARK_RY) },
-    ];
-    ctx.strokeStyle = detected ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    markTargets.forEach(t => {
-      const s = 5;
-      ctx.beginPath();
-      ctx.moveTo(t.x - s, t.y); ctx.lineTo(t.x + s, t.y);
-      ctx.moveTo(t.x, t.y - s); ctx.lineTo(t.x, t.y + s);
-      ctx.stroke();
-    });
-
     // Progress ring (below frame)
     if (detected && detectionCountRef.current > 2) {
       const progress = Math.min(detectionCountRef.current / AUTO_TH, 1);
@@ -403,12 +331,10 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
-        const ratioStr = cornerRatios.map(r => Math.round(r * 100)).join('/');
-        const hint = cornersFound < 4
-          ? `Burchak: ${cornersFound}/4 [${ratioStr}]`
-          : uniformity >= 40
-            ? 'Yoritish notekis'
-            : sharpness < 4 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
+        const hint = avgBright <= 140 ? 'Yoritishni yaxshilang'
+          : whiteRatio <= 0.45 ? 'Varoqni ramkaga moslang'
+          : uniformity >= 50 ? 'Yoritish notekis'
+          : sharpness <= 3 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
       }
     }

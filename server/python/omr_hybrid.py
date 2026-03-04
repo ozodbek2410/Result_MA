@@ -1819,6 +1819,11 @@ class HybridOMR:
             self.log(f"  Bubble grid_top: only {len(best_chain)} chain rows, skipping")
             return None
 
+        # Layer 1: Skip header row if chain has more rows than expected
+        if len(best_chain) > rows_per_col:
+            self.log(f"  Chain {len(best_chain)} > expected {rows_per_col}, skipping first (likely header)")
+            best_chain = best_chain[1:]
+
         first_row_y_px = best_chain[0]
         first_row_y_mm = first_row_y_px / px_per_mm_y
         grid_top_mm = first_row_y_mm - header_row_mm - row_margin_mm - bubble_mm / 2
@@ -2605,7 +2610,92 @@ class HybridOMR:
         darkness_pct = (255.0 - mean_intensity) / 255.0 * 100.0
 
         return False, darkness_pct
-    
+
+    def _detect_fills(self, grid, enhanced, bubble_w, w_proc, h_proc):
+        """Detect filled answers in grid using relative scoring."""
+        detected_answers = {}
+        invalid_answers = {}
+        SCORE_THRESHOLD = 6.0
+
+        for q_num in sorted(grid.keys()):
+            fills = {}
+            for letter in ['A', 'B', 'C', 'D']:
+                if letter not in grid[q_num]:
+                    continue
+                b = grid[q_num][letter]
+                r = max(4, int(bubble_w * 0.35))
+                y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
+                x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
+                if x2 - x1 < 2 or y2 - y1 < 2:
+                    fills[letter] = 0.0
+                    continue
+                mean_val = float(np.mean(enhanced[y1:y2, x1:x2]))
+                fills[letter] = (255.0 - mean_val) / 255.0 * 100.0
+
+            if len(fills) < 4:
+                continue
+
+            sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
+            darkest_letter, darkest_val = sorted_f[0]
+            baseline = float(np.median([v for _, v in sorted_f[1:]]))
+            score = darkest_val - baseline
+
+            second_letter, second_val = sorted_f[1]
+            if len(sorted_f) >= 3:
+                base_multi = float(np.median([v for _, v in sorted_f[2:]]))
+                score_1 = darkest_val - base_multi
+                score_2 = second_val - base_multi
+            else:
+                score_1, score_2 = score, 0
+
+            min_fill = min(fills.values())
+            eff_threshold = SCORE_THRESHOLD if min_fill < 40 else max(SCORE_THRESHOLD, 9.0)
+
+            is_multi = (score_1 >= eff_threshold and score_2 >= 15.0
+                        and second_val >= 55.0 and second_val >= darkest_val * 0.70
+                        and darkest_val >= 60.0)
+            if is_multi:
+                self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
+                invalid_answers[str(q_num)] = [darkest_letter, second_letter]
+            elif score >= eff_threshold:
+                detected_answers[str(q_num)] = darkest_letter
+            else:
+                self.log(f"  Q{q_num}: empty (score={score:.1f})")
+
+        return detected_answers, invalid_answers
+
+    def _check_header_shift(self, grid, detected_answers, invalid_answers, enhanced, bubble_w, w_proc, h_proc):
+        """Check and fix header-row shift: if Q1 of each column is empty but Q2 has answer."""
+        if not self.TOTAL_QUESTIONS:
+            return detected_answers, invalid_answers, False
+
+        total_q = self.TOTAL_QUESTIONS
+        n_c = 4 if total_q > 75 else (3 if total_q > 44 else 2)
+        rpc = (total_q + n_c - 1) // n_c
+
+        first_qs = [str(col * rpc + 1) for col in range(n_c) if col * rpc + 1 <= total_q]
+        second_qs = [str(col * rpc + 2) for col in range(n_c) if col * rpc + 2 <= total_q]
+        first_empty = sum(1 for q in first_qs if q not in detected_answers)
+        second_filled = sum(1 for q in second_qs if q in detected_answers)
+
+        if first_empty >= n_c and second_filled >= n_c - 1:
+            q1_y = grid[1]['A']['y'] if 1 in grid else 0
+            q2_y = grid[2]['A']['y'] if 2 in grid else 0
+            row_h_px = q2_y - q1_y if q2_y > q1_y else 0
+            if row_h_px > 5:
+                self.log(f"  HEADER SHIFT: {first_empty}/{n_c} first-Qs empty, shifting +{row_h_px}px")
+                for q_num in grid:
+                    for letter in grid[q_num]:
+                        b = grid[q_num][letter]
+                        b['y'] += row_h_px
+                        bx, by, bw, bh = b['bbox']
+                        b['bbox'] = (bx, by + row_h_px, bw, bh)
+                new_det, new_inv = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
+                self.log(f"  After Y-shift: {len(new_det)} answers")
+                return new_det, new_inv, True
+
+        return detected_answers, invalid_answers, False
+
     def scan(self, image_path, correct_answers=None):
         """Layout-first scan: corner marks → mm-based grid (professional approach)"""
         self.log("=" * 60)
@@ -2658,64 +2748,33 @@ class HybridOMR:
         if len(grid) < 4:
             return {"success": False, "error": "Cannot build grid"}
 
-        # 4. Fill detection (relative scoring)
+        # 4. Fill detection + header-shift fix + layout fallback
         self.log(f"\nJavoblarni aniqlash ({grid_method})...")
-        detected_answers = {}
-        invalid_answers = {}
-        SCORE_THRESHOLD = 6.0
-
-        # Bubble size: from grid cell or default
         sample_q = next(iter(grid.values()))
         bubble_w = sample_q.get('A', {}).get('w', int(w_proc / 45))
 
-        for q_num in sorted(grid.keys()):
-            fills = {}
-            for letter in ['A', 'B', 'C', 'D']:
-                if letter not in grid[q_num]:
-                    continue
-                b = grid[q_num][letter]
-                # Inner 70% ROI — wider catches fill even with small offset
-                r = max(4, int(bubble_w * 0.35))
-                y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
-                x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
-                if x2 - x1 < 2 or y2 - y1 < 2:
-                    fills[letter] = 0.0
-                    continue
-                mean_val = float(np.mean(enhanced[y1:y2, x1:x2]))
-                fills[letter] = (255.0 - mean_val) / 255.0 * 100.0
+        detected_answers, invalid_answers = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
+        self.log(f"  Initial: {len(detected_answers)} answers")
 
-            if len(fills) < 4:
-                continue
+        # Header-shift fix (layer 2)
+        detected_answers, invalid_answers, shifted = self._check_header_shift(
+            grid, detected_answers, invalid_answers, enhanced, bubble_w, w_proc, h_proc)
 
-            sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
-            darkest_letter, darkest_val = sorted_f[0]
-            baseline = float(np.median([v for _, v in sorted_f[1:]]))
-            score = darkest_val - baseline
-
-            second_letter, second_val = sorted_f[1]
-            if len(sorted_f) >= 3:
-                base_multi = float(np.median([v for _, v in sorted_f[2:]]))
-                score_1 = darkest_val - base_multi
-                score_2 = second_val - base_multi
-            else:
-                score_1, score_2 = score, 0
-
-            # Adaptive threshold: softer for shadows
-            min_fill = min(fills.values())
-            eff_threshold = SCORE_THRESHOLD if min_fill < 40 else max(SCORE_THRESHOLD, 9.0)
-
-            # MULTI: both filled
-            is_multi = (score_1 >= eff_threshold and score_2 >= 15.0
-                        and second_val >= 55.0 and second_val >= darkest_val * 0.70
-                        and darkest_val >= 60.0)
-            if is_multi:
-                self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
-                invalid_answers[str(q_num)] = [darkest_letter, second_letter]
-            elif score >= eff_threshold:
-                detected_answers[str(q_num)] = darkest_letter
-                self.log(f"  Q{q_num}: {darkest_letter} (dark={darkest_val:.1f}%, base={baseline:.1f}%, score={score:.1f})")
-            else:
-                self.log(f"  Q{q_num}: empty (max={darkest_val:.1f}%, base={baseline:.1f}%, score={score:.1f})")
+        # Layout→Detection fallback (layer 3): if layout grid gave poor results
+        total_q = self.TOTAL_QUESTIONS or (max(grid.keys()) if grid else 0)
+        det_rate = (len(detected_answers) / total_q * 100) if total_q > 0 else 0
+        if grid_method == "layout" and det_rate < 60 and len(bubbles) >= 16:
+            self.log(f"\n--- Layout failed ({det_rate:.0f}%), switching to detection grid ---")
+            grid2 = self._build_grid(bubbles, w_proc, h_proc)
+            if len(grid2) >= 4:
+                grid = grid2
+                grid_method = "detection"
+                sample_q2 = next(iter(grid.values()))
+                bubble_w = sample_q2.get('A', {}).get('w', int(w_proc / 45))
+                detected_answers, invalid_answers = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
+                self.log(f"  Detection grid: {len(detected_answers)} answers")
+                detected_answers, invalid_answers, shifted = self._check_header_shift(
+                    grid, detected_answers, invalid_answers, enhanced, bubble_w, w_proc, h_proc)
 
         self.log(f"\nAniqlangan: {len(detected_answers)} ta javob")
 
