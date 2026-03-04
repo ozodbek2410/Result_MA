@@ -48,7 +48,7 @@ interface LiveScannerModalProps {
 const A4_RATIO = 297 / 210;
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
-const AUTO_TH = 6; // ~0.5s debounce
+const AUTO_TH = 8; // ~1.3s consecutive detection required
 const ANALYSIS_W = 480;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
@@ -308,9 +308,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     // ---- Paper detection: quality + strict edge + contrast ----
     const detected = avgBright > 140 && whiteRatio > 0.45 && darkRatio < 0.35
                      && sharpness > 3 && uniformity < 50
-                     && edgeBright > 160 && edgeP25 > 140
-                     && edgeStdDev < 30
-                     && (edgeContrast > 15 || edgeBright > 175);
+                     && edgeBright > 165 && edgeP25 > 150
+                     && edgeStdDev < 28
+                     && (edgeContrast > 20 || edgeBright > 180);
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -381,8 +381,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
         const hint = avgBright <= 140 ? 'Yoritishni yaxshilang'
-          : (edgeBright <= 160 || edgeP25 <= 140 || edgeStdDev >= 30
-            || (edgeContrast <= 15 && edgeBright <= 175))
+          : (edgeBright <= 165 || edgeP25 <= 150 || edgeStdDev >= 28
+            || (edgeContrast <= 20 && edgeBright <= 180))
             ? 'Varoqni yaqinroq tutib ramkaga to\'liq moslang'
           : whiteRatio <= 0.45 ? 'Varoqni ramkaga moslang'
           : uniformity >= 50 ? 'Yoritish notekis'
@@ -411,8 +411,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
             return;
           }
         } else {
-          detectionCountRef.current = Math.max(0, detectionCountRef.current - 3);
-          if (detectionCountRef.current <= 0) { detectionCountRef.current = 0; setPaperDetected(false); setAutoProgress(0); }
+          detectionCountRef.current = 0;
+          setPaperDetected(false); setAutoProgress(0);
         }
       }
       animFrameRef.current = requestAnimationFrame(loop);
