@@ -258,29 +258,28 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
-    // ---- Edge + outer coverage: paper must fill the guide frame ----
+    // ---- Per-edge sampling: each side (top/bottom/left/right) checked independently ----
     const edgeSamples = 8;
-    let edgeBrightTotal = 0, edgeBrightN = 0;
-    const edgeVals: number[] = [];
-    const edgeM = Math.max(6, Math.round(afw * 0.06)); // 6% inset
+    const edgeM = Math.max(6, Math.round(afw * 0.06));
+    const sideVals: number[][] = [[], [], [], []]; // top, bottom, left, right
     let outerBrightTotal = 0, outerN = 0;
+    const brightThr = avgBright > 10 ? avgBright * 0.6 : 80;
     for (let i = 1; i <= edgeSamples; i++) {
       const t = i / (edgeSamples + 1);
-      // Inner edge samples (inside frame)
-      for (const [ex, ey] of [
-        [Math.round(afx + afw * t), Math.round(afy + edgeM)],
-        [Math.round(afx + afw * t), Math.round(afy + afh - edgeM)],
-        [Math.round(afx + edgeM), Math.round(afy + afh * t)],
-        [Math.round(afx + afw - edgeM), Math.round(afy + afh * t)],
-      ]) {
+      const pts: [number, number][] = [
+        [Math.round(afx + afw * t), Math.round(afy + edgeM)],           // top
+        [Math.round(afx + afw * t), Math.round(afy + afh - edgeM)],     // bottom
+        [Math.round(afx + edgeM), Math.round(afy + afh * t)],           // left
+        [Math.round(afx + afw - edgeM), Math.round(afy + afh * t)],     // right
+      ];
+      for (let s = 0; s < 4; s++) {
+        const [ex, ey] = pts[s];
         if (ex >= 0 && ey >= 0 && ex < ANALYSIS_W && ey < ah) {
           const idx = (ey * ANALYSIS_W + ex) * 4;
-          const val = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-          edgeBrightTotal += val; edgeBrightN++;
-          edgeVals.push(val);
+          sideVals[s].push((pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3);
         }
       }
-      // Outer samples (outside frame — desk/background)
+      // Outer samples
       for (const [ex, ey] of [
         [Math.round(afx + afw * t), Math.round(Math.max(0, afy - edgeM))],
         [Math.round(afx + afw * t), Math.round(Math.min(ah - 1, afy + afh + edgeM))],
@@ -294,32 +293,26 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         }
       }
     }
-    const edgeBright = edgeBrightN > 0 ? edgeBrightTotal / edgeBrightN : 0;
+    // Per-edge: each side must have 5/8+ bright samples (paper visible on ALL 4 sides)
+    const minBrightPerSide = 5;
+    const sideBrightCounts = sideVals.map(sv => sv.filter(v => v > brightThr).length);
+    const allSidesOK = sideBrightCounts.every(c => c >= minBrightPerSide);
+    // Aggregate stats
+    const edgeVals = sideVals.flat();
+    const edgeBright = edgeVals.length > 0 ? edgeVals.reduce((a, b) => a + b, 0) / edgeVals.length : 0;
     edgeVals.sort((a, b) => a - b);
     const edgeMedian = edgeVals.length > 3 ? edgeVals[Math.floor(edgeVals.length * 0.5)] : 0;
-    const edgeP25 = edgeVals.length > 3 ? edgeVals[Math.floor(edgeVals.length * 0.25)] : 0;
-    // Edge variance: low = uniform paper, high = paper+desk mix (shadow OK up to ~40)
-    let edgeVarSum = 0;
-    for (const v of edgeVals) edgeVarSum += (v - edgeBright) ** 2;
-    const edgeStdDev = edgeVals.length > 1 ? Math.sqrt(edgeVarSum / edgeVals.length) : 0;
-    // Inner vs outer contrast: paper should be brighter than background
     const outerBright = outerN > 0 ? outerBrightTotal / outerN : 0;
     const edgeContrast = edgeBright - outerBright;
-    // Count how many edge samples are "bright enough" (>60% of center brightness)
-    const brightEdgeCount = edgeVals.filter(v => v > avgBright * 0.6).length;
-    const brightEdgeRatio = edgeVals.length > 0 ? brightEdgeCount / edgeVals.length : 0;
 
-    // ---- Paper detection: shadow-tolerant + cross-phone ----
+    // ---- Paper detection: per-edge strict + shadow-tolerant + cross-phone ----
     const edgeMedianRatio = avgBright > 10 ? edgeMedian / avgBright : 0;
     const edgeBrightRatio = avgBright > 10 ? edgeBright / avgBright : 0;
-    const edgeP25Ratio = avgBright > 10 ? edgeP25 / avgBright : 0;
     const detected = avgBright > 120 && whiteRatio > 0.40 && darkRatio < 0.35
-                     && sharpness > 3 && uniformity < 50
-                     && edgeBrightRatio > 0.82         // avg edge ~ center (shadow pulls down)
-                     && edgeMedianRatio > 0.85          // MEDIAN: half of edges bright enough
-                     && edgeP25Ratio > 0.55             // P25 lenient: shadow OK if partial
-                     && brightEdgeRatio > 0.65           // 65%+ of edges are bright
-                     && edgeStdDev < 40                  // shadow creates variance, allow more
+                     && sharpness > 5 && uniformity < 50
+                     && allSidesOK                        // ALL 4 sides must have paper
+                     && edgeBrightRatio > 0.82
+                     && edgeMedianRatio > 0.85
                      && (edgeContrast > 8 || edgeBrightRatio > 0.92);
 
     // ======== DRAW OVERLAY ========
@@ -391,11 +384,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
         const hint = avgBright <= 120 ? 'Yoritishni yaxshilang'
-          : (edgeMedianRatio <= 0.85 || brightEdgeRatio <= 0.65 || edgeStdDev >= 40)
-            ? 'Varoqni ramkaga to\'liq moslang'
+          : !allSidesOK ? 'Varoqni ramkaga to\'liq moslang'
+          : edgeMedianRatio <= 0.85 ? 'Varoqni ramkaga moslang'
           : whiteRatio <= 0.40 ? 'Varoqni ramkaga moslang'
           : uniformity >= 50 ? 'Yoritish notekis'
-          : sharpness <= 3 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
+          : sharpness <= 5 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
       }
     }
