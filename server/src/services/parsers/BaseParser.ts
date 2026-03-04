@@ -148,9 +148,16 @@ export abstract class BaseParser {
         case 'Underline':
         case 'Strikeout': return this.serializeInlines(il.c);
         case 'Math': {
-          const latex = il.c[1];
-          // Keep \mathbf — preCleanText uses it for correct answer detection in variant formulas
-          return `\\(${latex}\\)`;
+          let latex = il.c[1];
+          // Detect bold variant letter (correct answer marker) before stripping
+          let boldMarker = '';
+          const variantBold = latex.match(/\\(?:mathbf|boldsymbol|bf)\{[^}]*([A-D])\s*[.)]/);
+          if (variantBold) boldMarker = `___MATHBOLD_${variantBold[1]}___`;
+          // Strip \mathbf to keep LaTeX clean for rendering
+          for (let i = 0; i < 3; i++) {
+            latex = latex.replace(/\\(?:mathbf|boldsymbol|bf)\{([^{}]*)\}/g, '$1');
+          }
+          return `\\(${latex}\\)${boldMarker}`;
         }
         case 'Image': {
           const attrs = il.c[0];
@@ -1271,9 +1278,8 @@ export abstract class BaseParser {
     const questionText = cleanLine.substring(0, variantStartIdx).trim();
     const variantsText = cleanLine.substring(variantStartIdx);
 
-    // Detect correct answer: match complete bold span "** A) text**"
-    // [^*]* stops at next ** to avoid crossing into adjacent variants
-    const boldVariantPattern = /\*\*\s*([A-D])\s*\)[^*]*\*\*/g;
+    // Detect correct answer: match bold variant "** A) text**" or "** A)" (from MATHBOLD marker)
+    const boldVariantPattern = /\*\*\s*([A-D])\s*\)/g;
     const boldMatches = Array.from(variantsText.matchAll(boldVariantPattern));
     let correctAnswer = '';
     if (boldMatches.length > 0) {
