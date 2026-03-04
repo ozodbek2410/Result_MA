@@ -305,12 +305,15 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const outerBright = outerN > 0 ? outerBrightTotal / outerN : 0;
     const edgeContrast = edgeBright - outerBright;
 
-    // ---- Paper detection: quality + strict edge + contrast ----
-    const detected = avgBright > 140 && whiteRatio > 0.45 && darkRatio < 0.35
+    // ---- Paper detection: RELATIVE thresholds (cross-phone compatible) ----
+    const edgeP25Ratio = avgBright > 10 ? edgeP25 / avgBright : 0;
+    const edgeBrightRatio = avgBright > 10 ? edgeBright / avgBright : 0;
+    const detected = avgBright > 120 && whiteRatio > 0.40 && darkRatio < 0.35
                      && sharpness > 3 && uniformity < 50
-                     && edgeBright > 165 && edgeP25 > 150
-                     && edgeStdDev < 28
-                     && (edgeContrast > 20 || edgeBright > 180);
+                     && edgeBrightRatio > 0.88        // edge ~ center brightness
+                     && edgeP25Ratio > 0.80            // worst 25% edges still bright
+                     && edgeStdDev < 32
+                     && (edgeContrast > 12 || edgeBrightRatio > 0.95);
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -380,11 +383,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
-        const hint = avgBright <= 140 ? 'Yoritishni yaxshilang'
-          : (edgeBright <= 165 || edgeP25 <= 150 || edgeStdDev >= 28
-            || (edgeContrast <= 20 && edgeBright <= 180))
+        const hint = avgBright <= 120 ? 'Yoritishni yaxshilang'
+          : (edgeBrightRatio <= 0.88 || edgeP25Ratio <= 0.80 || edgeStdDev >= 32
+            || (edgeContrast <= 12 && edgeBrightRatio <= 0.95))
             ? 'Varoqni yaqinroq tutib ramkaga to\'liq moslang'
-          : whiteRatio <= 0.45 ? 'Varoqni ramkaga moslang'
+          : whiteRatio <= 0.40 ? 'Varoqni ramkaga moslang'
           : uniformity >= 50 ? 'Yoritish notekis'
           : sharpness <= 3 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
