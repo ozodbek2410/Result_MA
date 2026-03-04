@@ -1569,7 +1569,8 @@ class HybridOMR:
             self.log(f"  Q1-A: ({q1a['x']},{q1a['y']}), Q{total}-D: ({qlast['x']},{qlast['y']})")
 
         # X calibration: detect actual circles and compare with grid
-        x_shift = self._calibrate_grid_x(image, grid, bubble_size_px, rows_per_col, n_cols)
+        x_shift, x_corr = self._calibrate_grid_x(image, grid, bubble_size_px, rows_per_col, n_cols)
+        self._layout_x_corr = x_corr
         if x_shift != 0:
             self.log(f"  X-calibration shift: {x_shift}px ({x_shift/px_per_mm_x:.1f}mm)")
             for q_num in grid:
@@ -1617,6 +1618,7 @@ class HybridOMR:
 
         # Sample rows 8-18 from column 1 (mostly empty)
         shifts_all = []
+        corrs_all = []
         for col in range(min(2, n_cols)):  # only check first 2 columns for speed
             q_base = col * rows_per_col + 1
             sample_qs = [q_base + r for r in range(8, min(19, rows_per_col)) if q_base + r in grid]
@@ -1656,14 +1658,16 @@ class HybridOMR:
                     best_shift = (x0 + bubble_px // 2) - expected_A_x
 
             shifts_all.append(best_shift)
+            corrs_all.append(best_corr)
             self.log(f"  X-cal col{col}: shift={best_shift}px, corr={best_corr:.3f}")
 
         if len(shifts_all) >= 1:
             median_shift = int(np.median(shifts_all))
-            self.log(f"  X-calibration: {len(shifts_all)} cols, median={median_shift}")
-            return median_shift
+            avg_corr = float(np.mean(corrs_all)) if corrs_all else 0.0
+            self.log(f"  X-calibration: {len(shifts_all)} cols, median={median_shift}, avg_corr={avg_corr:.3f}")
+            return median_shift, avg_corr
 
-        return 0
+        return 0, 0.0
 
     def _calibrate_grid_y(self, image, grid, bubble_size_px):
         """Calibrate layout grid Y using vertical cross-correlation.
@@ -2760,11 +2764,13 @@ class HybridOMR:
         detected_answers, invalid_answers, shifted = self._check_header_shift(
             grid, detected_answers, invalid_answers, enhanced, bubble_w, w_proc, h_proc)
 
-        # Layout→Detection fallback (layer 3): if layout grid gave poor results
+        # Layout→Detection fallback (layer 3): poor results OR poor X-calibration
         total_q = self.TOTAL_QUESTIONS or (max(grid.keys()) if grid else 0)
         det_rate = (len(detected_answers) / total_q * 100) if total_q > 0 else 0
-        if grid_method == "layout" and det_rate < 60 and len(bubbles) >= 16:
-            self.log(f"\n--- Layout failed ({det_rate:.0f}%), switching to detection grid ---")
+        layout_x_corr = getattr(self, "_layout_x_corr", 1.0) if grid_method == "layout" else 1.0
+        needs_fallback = (grid_method == "layout" and det_rate < 60) or (grid_method == "layout" and layout_x_corr < 0.5)
+        if needs_fallback and len(bubbles) >= 16:
+            self.log(f"\n--- Layout fallback (x_corr={layout_x_corr:.3f}), switching to detection grid ---")
             grid2 = self._build_grid(bubbles, w_proc, h_proc)
             if len(grid2) >= 4:
                 grid = grid2
