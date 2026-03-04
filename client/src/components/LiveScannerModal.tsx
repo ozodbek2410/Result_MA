@@ -261,11 +261,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
     // ---- Corner marks: check KNOWN A4 positions with RELATIVE brightness ----
-    // Professional approach: no absolute thresholds, only relative comparison
-    // Mark = dark spot, Ring = surrounding paper. Mark must be darker RELATIVE to ring.
-    const markR = Math.max(3, Math.round(afw * 0.02));
-    const ringR = markR + Math.max(4, Math.round(markR * 1.2));
-    const tol = Math.max(8, Math.round(afw * 0.12)); // ±12% tolerance (paper may not fill frame exactly)
+    // Mark is 5mm on 210mm paper. At afw≈394px: mark≈9.4px. markR must match mark size!
+    // Too large markR dilutes dark mark with white paper → ratio≈0.74 → barely detects
+    const markR = Math.max(3, Math.round(afw * 0.011)); // ~4px = 9px diameter ≈ 9.4px mark
+    const ringR = markR + Math.max(3, Math.round(markR * 1.0)); // ring just outside mark
+    const tol = Math.max(8, Math.round(afw * 0.12)); // ±12% tolerance
     const step = Math.max(2, Math.round(markR * 0.7));
     // 4 target positions based on A4 corner mark layout
     const targets = [
@@ -275,12 +275,13 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       { tx: afx + afw * (1 - MARK_RX), ty: afy + afh * (1 - MARK_RY) },
     ];
     let cornersFound = 0;
+    const cornerRatios: number[] = [];
     for (const t of targets) {
       let bestRatio = 0;
+      let bestActualRatio = 1;
       for (let sy = Math.round(t.ty - tol); sy <= Math.round(t.ty + tol); sy += step) {
         for (let sx = Math.round(t.tx - tol); sx <= Math.round(t.tx + tol); sx += step) {
           if (sx < markR || sy < markR || sx >= ANALYSIS_W - markR || sy >= ah - markR) continue;
-          // Sample mark center
           let mSum = 0, mN = 0;
           for (let dy = -markR; dy <= markR; dy++) {
             for (let dx = -markR; dx <= markR; dx++) {
@@ -289,7 +290,6 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
               mN++;
             }
           }
-          // Sample ring (surrounding paper)
           let rSum = 0, rN = 0;
           for (let dy = -ringR; dy <= ringR; dy += 2) {
             for (let dx = -ringR; dx <= ringR; dx += 2) {
@@ -304,13 +304,14 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           if (mN < 4 || rN < 4) continue;
           const avgM = mSum / mN;
           const avgR = rSum / rN;
-          // RELATIVE check: mark must be ≤75% of ring brightness (works in any lighting)
           const ratio = avgR > 0 ? avgM / avgR : 1;
-          if (ratio < 0.75 && (1 - ratio) > bestRatio) {
+          if (ratio < bestActualRatio) bestActualRatio = ratio;
+          if (ratio < 0.80 && (1 - ratio) > bestRatio) {
             bestRatio = 1 - ratio;
           }
         }
       }
+      cornerRatios.push(bestActualRatio);
       if (bestRatio > 0) cornersFound++;
     }
 
@@ -402,8 +403,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
+        const ratioStr = cornerRatios.map(r => Math.round(r * 100)).join('/');
         const hint = cornersFound < 4
-          ? `Burchak belgilari: ${cornersFound}/4`
+          ? `Burchak: ${cornersFound}/4 [${ratioStr}]`
           : uniformity >= 40
             ? 'Yoritish notekis'
             : sharpness < 4 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
