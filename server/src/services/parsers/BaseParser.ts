@@ -1560,6 +1560,15 @@ export abstract class BaseParser {
   protected finalCleanText(text: string, mathBlocks: string[]): string {
     let cleaned = text;
 
+    // Merge split chemical formula LaTeX: N \(_2O\) → \(N_2O\), Cl \(_2O\) _7 → \(Cl_2O_7\)
+    // Pass 1: merge leading element letters into math block: N \(_2 → \(N_2
+    cleaned = cleaned.replace(/([A-Za-z]{1,3})\s*\\\((_)/g, '\\($1$2');
+    // Pass 2: merge trailing subscripts/digits after \) back in: \) _7 → _7\)
+    cleaned = cleaned.replace(/\\\)\s*((?:_\s*\d+)+)\)?/g, (_, trail) => {
+      const clean = trail.replace(/\s+/g, '');
+      return clean + '\\)';
+    });
+
     cleaned = cleaned.replace(/\*\*/g, '');
     cleaned = cleaned.replace(/(?<!\*)\*(?!\*)/g, ''); // standalone * (correct answer markers)
     // Remove markdown bold underscores (__text__) but preserve ___MATH_N___ placeholders and fill-in-the-blank _____
