@@ -261,51 +261,84 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
     // ---- Corner marks detection: scan each corner REGION for dark square ----
-    const scanR = Math.round(afw * 0.20); // search 20% area near each corner
-    const markR = Math.max(2, Math.round(afw * 0.02)); // mark size ~2%
+    // Reduced search radius (12%) to avoid matching section markers inside the grid
+    const scanR = Math.round(afw * 0.12);
+    const markR = Math.max(3, Math.round(afw * 0.025)); // mark size ~2.5% (5mm on A4)
     const cornerRegions = [
-      { cx: afx,       cy: afy       }, // TL
-      { cx: afx + afw, cy: afy       }, // TR
-      { cx: afx,       cy: afy + afh }, // BL
-      { cx: afx + afw, cy: afy + afh }, // BR
+      { cx: afx,       cy: afy,       label: 'TL' },
+      { cx: afx + afw, cy: afy,       label: 'TR' },
+      { cx: afx,       cy: afy + afh, label: 'BL' },
+      { cx: afx + afw, cy: afy + afh, label: 'BR' },
     ];
-    let cornersFound = 0;
-    const step = Math.max(2, Math.round(markR));
-    const ringR = markR + Math.max(3, Math.round(markR * 0.8));
+    const cornerHits: Array<{ x: number; y: number; label: string }> = [];
+    const step = Math.max(2, Math.round(markR * 0.8));
+    const ringR = markR + Math.max(4, Math.round(markR * 1.0));
     for (const cr of cornerRegions) {
-      let found = false;
-      for (let sy = Math.round(cr.cy - scanR); sy <= Math.round(cr.cy + scanR) && !found; sy += step) {
-        for (let sx = Math.round(cr.cx - scanR); sx <= Math.round(cr.cx + scanR) && !found; sx += step) {
+      let bestContrast = 0;
+      let bestPos: { x: number; y: number } | null = null;
+      for (let sy = Math.round(cr.cy - scanR); sy <= Math.round(cr.cy + scanR); sy += step) {
+        for (let sx = Math.round(cr.cx - scanR); sx <= Math.round(cr.cx + scanR); sx += step) {
           if (sx < 0 || sy < 0 || sx >= ANALYSIS_W || sy >= ah) continue;
-          let dkN = 0, ttN = 0;
+          // Inner mark: count dark pixels
+          let dkN = 0, ttN = 0, markSum = 0;
           for (let dy = -markR; dy <= markR; dy++) {
             for (let dx = -markR; dx <= markR; dx++) {
               const px2 = sx + dx, py2 = sy + dy;
               if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
               const idx = (py2 * ANALYSIS_W + px2) * 4;
               const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-              if (g < 130) dkN++;
+              if (g < 120) dkN++;
+              markSum += g;
               ttN++;
             }
           }
-          if (ttN > 0 && dkN / ttN > 0.45) {
-            // Contrast ring — mark atrofi yorug' (qog'oz) bo'lishi kerak
-            let ringSum = 0, ringCnt = 0;
-            for (let dy = -ringR; dy <= ringR; dy += 2) {
-              for (let dx = -ringR; dx <= ringR; dx += 2) {
-                if (Math.abs(dx) <= markR && Math.abs(dy) <= markR) continue;
-                const px2 = sx + dx, py2 = sy + dy;
-                if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
-                const idx = (py2 * ANALYSIS_W + px2) * 4;
-                const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-                ringSum += g;
-                ringCnt++;
-              }
+          if (ttN < 4 || dkN / ttN < 0.50) continue;
+          const avgMark = markSum / ttN;
+          // Contrast ring — mark atrofi yorug' (qog'oz) bo'lishi kerak
+          let ringSum = 0, ringCnt = 0;
+          for (let dy = -ringR; dy <= ringR; dy += 2) {
+            for (let dx = -ringR; dx <= ringR; dx += 2) {
+              if (Math.abs(dx) <= markR && Math.abs(dy) <= markR) continue;
+              const px2 = sx + dx, py2 = sy + dy;
+              if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
+              const idx = (py2 * ANALYSIS_W + px2) * 4;
+              const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+              ringSum += g;
+              ringCnt++;
             }
-            const avgRing = ringCnt > 0 ? ringSum / ringCnt : 0;
-            if (avgRing > 130) { found = true; cornersFound++; }
+          }
+          const avgRing = ringCnt > 0 ? ringSum / ringCnt : 0;
+          // Contrast ratio: ring must be significantly brighter than mark center
+          const contrast = avgRing - avgMark;
+          if (contrast > 50 && avgRing > 140 && contrast > bestContrast) {
+            bestContrast = contrast;
+            bestPos = { x: sx, y: sy };
           }
         }
+      }
+      if (bestPos) cornerHits.push({ ...bestPos, label: cr.label });
+    }
+
+    // Geometric validation: found corners must form a reasonable rectangle
+    let cornersFound = cornerHits.length;
+    if (cornersFound >= 4) {
+      const tl = cornerHits.find(c => c.label === 'TL')!;
+      const tr = cornerHits.find(c => c.label === 'TR')!;
+      const bl = cornerHits.find(c => c.label === 'BL')!;
+      const br = cornerHits.find(c => c.label === 'BR')!;
+      const wTop = Math.abs(tr.x - tl.x);
+      const wBot = Math.abs(br.x - bl.x);
+      const hLeft = Math.abs(bl.y - tl.y);
+      const hRight = Math.abs(br.y - tr.y);
+      // Width and height ratios must be close (parallelogram check)
+      const wRatio = Math.min(wTop, wBot) / (Math.max(wTop, wBot) || 1);
+      const hRatio = Math.min(hLeft, hRight) / (Math.max(hLeft, hRight) || 1);
+      // Aspect ratio should be ~A4 (1.41)
+      const avgW = (wTop + wBot) / 2;
+      const avgH = (hLeft + hRight) / 2;
+      const aspect = avgH / (avgW || 1);
+      if (wRatio < 0.75 || hRatio < 0.75 || aspect < 1.0 || aspect > 2.0 || avgW < afw * 0.4) {
+        cornersFound = 0; // Not a valid rectangle — reject
       }
     }
 
