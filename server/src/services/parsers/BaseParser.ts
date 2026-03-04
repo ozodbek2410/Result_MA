@@ -907,7 +907,7 @@ export abstract class BaseParser {
 
     // Match question numbers more flexibly: 1) or 1. at start of line or after newline
     // Allow optional space between number and bold-period (e.g. "17 **.**") and zero-space after period (e.g. "27.$\")
-    const questionPattern = /(?:^|\n)(?:\*\*|__)?(\d+)\s*(?:\*\*|__)?[.)]\s*/g;
+    const questionPattern = /(?:^|\n)(?:\*\*|__)?(\d+)\s*(?:\*\*|__)?[.)\u2026]+\s*/g;
     const matches = Array.from(text.matchAll(questionPattern));
     
     console.log(`🔍 [PARSER] Found ${matches.length} question markers`);
@@ -1365,14 +1365,13 @@ export abstract class BaseParser {
     // Example: "5) question text A) 1 B) 2\n**C) 3** D) 4"
     const fullBlock = nonImageLines.join(' ');
 
-    // Check if this block has inline variants (all variants on same line)
-    const variantPatternUpper = /(?:\*\*\s*)?[A-D]\s*\)(?:\s*\*\*)?/g;
-    const variantMatchesUpper = fullBlock.match(variantPatternUpper);
-    const variantCountUpper = variantMatchesUpper ? variantMatchesUpper.length : 0;
+    // Check if this block has inline variants — clean bold markers first so C**) becomes C )
+    const blockClean = fullBlock.replace(/\*\*/g, ' ').replace(/\s+/g, ' ');
+    const variantCountUpper = (blockClean.match(/[A-D]\s*\)/g) || []).length;
 
-    // If 4 variants found in full block, process as single line
-    if (variantCountUpper >= 4) {
-      console.log(`🔍 [PARSER] Detected 4 inline variants in block, processing as single line`);
+    // If 3+ variants found, process as inline
+    if (variantCountUpper >= 3) {
+      console.log(`🔍 [PARSER] Detected ${variantCountUpper} inline variants in block, processing as single line`);
       const result = this.extractInlineVariants(fullBlock, mathBlocks);
       if (result && extractedImageUrl && !result.imageUrl) {
         result.imageUrl = extractedImageUrl;
