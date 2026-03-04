@@ -309,7 +309,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const edgeMedianRatio = avgBright > 10 ? edgeMedian / avgBright : 0;
     const edgeBrightRatio = avgBright > 10 ? edgeBright / avgBright : 0;
     const detected = avgBright > 130 && whiteRatio > 0.40 && darkRatio < 0.30
-                     && sharpness > 8 && uniformity < 40
+                     && sharpness > 18 && uniformity < 40
                      && allSidesOK                        // ALL 4 sides must have paper
                      && edgeBrightRatio > 0.82
                      && edgeMedianRatio > 0.85
@@ -389,7 +389,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           : whiteRatio <= 0.40 ? 'Varoqni ramkaga moslang'
           : uniformity >= 40 ? 'Soya bor — tekis yoritish kerak'
           : darkRatio >= 0.30 ? 'Yoritishni yaxshilang'
-          : sharpness <= 8 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
+          : sharpness <= 18 ? 'Yaqinroq tuting va fokus qiling' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
       }
     }
