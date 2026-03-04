@@ -2768,7 +2768,7 @@ class HybridOMR:
         total_q = self.TOTAL_QUESTIONS or (max(grid.keys()) if grid else 0)
         det_rate = (len(detected_answers) / total_q * 100) if total_q > 0 else 0
         layout_x_corr = getattr(self, "_layout_x_corr", 1.0) if grid_method == "layout" else 1.0
-        needs_fallback = (grid_method == "layout" and det_rate < 60) or (grid_method == "layout" and layout_x_corr < 0.5)
+        needs_fallback = (grid_method == "layout" and det_rate < 85) or (grid_method == "layout" and layout_x_corr < 0.85)
         if needs_fallback and len(bubbles) >= 16:
             self.log(f"\n--- Layout fallback (x_corr={layout_x_corr:.3f}), switching to detection grid ---")
             grid2 = self._build_grid(bubbles, w_proc, h_proc)
