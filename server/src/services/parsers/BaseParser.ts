@@ -1294,8 +1294,8 @@ export abstract class BaseParser {
     const questionText = cleanLine.substring(0, variantStartIdx).trim();
     const variantsText = cleanLine.substring(variantStartIdx);
 
-    // Detect correct answer: match bold variant "** A) text**" or "** A)" (from MATHBOLD marker)
-    const boldVariantPattern = /\*\*\s*([A-D])\s*\)/g;
+    // Detect correct answer: match OPENING bold "** A)" — not closing bold like "text** D)"
+    const boldVariantPattern = /(?<![a-zA-Z\u0400-\u04FF])\*\*\s*([A-D])\s*\)/g;
     const boldMatches = Array.from(variantsText.matchAll(boldVariantPattern));
     let correctAnswer = '';
     if (boldMatches.length > 0) {
