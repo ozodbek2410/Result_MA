@@ -2619,7 +2619,7 @@ class HybridOMR:
         """Detect filled answers in grid using relative scoring."""
         detected_answers = {}
         invalid_answers = {}
-        SCORE_THRESHOLD = 6.0
+        SCORE_THRESHOLD = 3.0
 
         for q_num in sorted(grid.keys()):
             fills = {}
@@ -2781,6 +2781,25 @@ class HybridOMR:
                 self.log(f"  Detection grid: {len(detected_answers)} answers")
                 detected_answers, invalid_answers, shifted = self._check_header_shift(
                     grid, detected_answers, invalid_answers, enhanced, bubble_w, w_proc, h_proc)
+
+        # Two-pass: if still poor, retry with histogram-stretched + stronger CLAHE image
+        total_q_final = self.TOTAL_QUESTIONS or (max(grid.keys()) if grid else 0)
+        final_rate = (len(detected_answers) / total_q_final * 100) if total_q_final > 0 else 0
+        if final_rate < 85:
+            p5 = float(np.percentile(enhanced, 5))
+            p95 = float(np.percentile(enhanced, 95))
+            if p95 - p5 > 10:
+                stretched = np.clip((enhanced.astype(np.float32) - p5) * 255.0 / (p95 - p5), 0, 255).astype(np.uint8)
+            else:
+                stretched = enhanced
+            clahe_fill = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+            fill_enhanced = clahe_fill.apply(stretched)
+            self.log(f"  Pass2: det_rate={final_rate:.0f}%, retrying with enhanced fill image")
+            det2, inv2 = self._detect_fills(grid, fill_enhanced, bubble_w, w_proc, h_proc)
+            det2, inv2, _ = self._check_header_shift(grid, det2, inv2, fill_enhanced, bubble_w, w_proc, h_proc)
+            if len(det2) > len(detected_answers):
+                self.log(f"  Pass2 better: {len(det2)} vs {len(detected_answers)}")
+                detected_answers, invalid_answers = det2, inv2
 
         self.log(f"\nAniqlangan: {len(detected_answers)} ta javob")
 
