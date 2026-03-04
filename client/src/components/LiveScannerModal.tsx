@@ -258,13 +258,15 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
-    // ---- Edge coverage: paper must fill the guide frame ----
+    // ---- Edge + outer coverage: paper must fill the guide frame ----
     const edgeSamples = 8;
     let edgeBrightTotal = 0, edgeBrightN = 0;
     const edgeVals: number[] = [];
-    const edgeM = Math.max(6, Math.round(afw * 0.06)); // 6% inset (deep enough to catch desk)
+    const edgeM = Math.max(6, Math.round(afw * 0.06)); // 6% inset
+    let outerBrightTotal = 0, outerN = 0;
     for (let i = 1; i <= edgeSamples; i++) {
       const t = i / (edgeSamples + 1);
+      // Inner edge samples (inside frame)
       for (const [ex, ey] of [
         [Math.round(afx + afw * t), Math.round(afy + edgeM)],
         [Math.round(afx + afw * t), Math.round(afy + afh - edgeM)],
@@ -278,16 +280,37 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           edgeVals.push(val);
         }
       }
+      // Outer samples (outside frame — desk/background)
+      for (const [ex, ey] of [
+        [Math.round(afx + afw * t), Math.round(Math.max(0, afy - edgeM))],
+        [Math.round(afx + afw * t), Math.round(Math.min(ah - 1, afy + afh + edgeM))],
+        [Math.round(Math.max(0, afx - edgeM)), Math.round(afy + afh * t)],
+        [Math.round(Math.min(ANALYSIS_W - 1, afx + afw + edgeM)), Math.round(afy + afh * t)],
+      ]) {
+        if (ex >= 0 && ey >= 0 && ex < ANALYSIS_W && ey < ah) {
+          const idx = (ey * ANALYSIS_W + ex) * 4;
+          outerBrightTotal += (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+          outerN++;
+        }
+      }
     }
     const edgeBright = edgeBrightN > 0 ? edgeBrightTotal / edgeBrightN : 0;
-    // P25: worst 25% of edge samples must still be bright (catches partial desk)
     edgeVals.sort((a, b) => a - b);
     const edgeP25 = edgeVals.length > 3 ? edgeVals[Math.floor(edgeVals.length * 0.25)] : 0;
+    // Edge variance: low = uniform paper, high = paper+desk mix
+    let edgeVarSum = 0;
+    for (const v of edgeVals) edgeVarSum += (v - edgeBright) ** 2;
+    const edgeStdDev = edgeVals.length > 1 ? Math.sqrt(edgeVarSum / edgeVals.length) : 0;
+    // Inner vs outer contrast: paper should be brighter than background
+    const outerBright = outerN > 0 ? outerBrightTotal / outerN : 0;
+    const edgeContrast = edgeBright - outerBright;
 
-    // ---- Paper detection: quality + strict edge coverage ----
+    // ---- Paper detection: quality + strict edge + contrast ----
     const detected = avgBright > 140 && whiteRatio > 0.45 && darkRatio < 0.35
                      && sharpness > 3 && uniformity < 50
-                     && edgeBright > 160 && edgeP25 > 135;
+                     && edgeBright > 160 && edgeP25 > 140
+                     && edgeStdDev < 30
+                     && (edgeContrast > 15 || edgeBright > 175);
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -358,7 +381,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
         const hint = avgBright <= 140 ? 'Yoritishni yaxshilang'
-          : (edgeBright <= 160 || edgeP25 <= 135) ? 'Varoqni yaqinroq tutib ramkaga moslang'
+          : (edgeBright <= 160 || edgeP25 <= 140 || edgeStdDev >= 30
+            || (edgeContrast <= 15 && edgeBright <= 175))
+            ? 'Varoqni yaqinroq tutib ramkaga to\'liq moslang'
           : whiteRatio <= 0.45 ? 'Varoqni ramkaga moslang'
           : uniformity >= 50 ? 'Yoritish notekis'
           : sharpness <= 3 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
@@ -386,8 +411,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
             return;
           }
         } else {
-          detectionCountRef.current = Math.max(0, detectionCountRef.current - 1);
-          if (detectionCountRef.current === 0) { setPaperDetected(false); setAutoProgress(0); }
+          detectionCountRef.current = Math.max(0, detectionCountRef.current - 3);
+          if (detectionCountRef.current <= 0) { detectionCountRef.current = 0; setPaperDetected(false); setAutoProgress(0); }
         }
       }
       animFrameRef.current = requestAnimationFrame(loop);
