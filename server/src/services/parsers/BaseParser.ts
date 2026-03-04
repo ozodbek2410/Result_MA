@@ -1074,12 +1074,15 @@ export abstract class BaseParser {
       /\byakuniy\b/i,
       /\bfan\b.*\b(nomi|bo['']yicha)\b/i,
       /\bsinf\b/i,
-      /^\d+-\d+\b/, // e.g. "5-02"
+      /^\d+\s*-\s*\d+\b/, // e.g. "5-02", "7 -8"
+      /\bustozlar\b/i,
+      /\bo['']qituvchi/i,
     ];
     const subjectPatterns = [
       /biologiya/i, /matematika/i, /fizika/i, /kimyo/i,
       /adabiyot/i, /ona\s*tili/i, /ingliz/i, /tarix/i,
       /geografiya/i, /informatika/i, /tibbiyot/i,
+      /inyaz/i,
     ];
     const hasTitle = titlePatterns.some(p => p.test(clean));
     const hasSubject = subjectPatterns.some(p => p.test(clean));
