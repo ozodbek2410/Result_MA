@@ -51,7 +51,7 @@ const MARK_RY = 4.5 / 297; // corner mark center Y (relative to paper height)
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
 const AUTO_TH = 6; // ~0.5s debounce
-const ANALYSIS_W = 320;
+const ANALYSIS_W = 480;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -222,6 +222,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const stepX = afw / (grid + 1), stepY = afh / (grid + 1);
     let brightSum = 0, whiteN = 0, darkN = 0, total = 0;
     const grayVals: number[] = [];
+    const quadBright = [0, 0, 0, 0];
+    const quadCount = [0, 0, 0, 0];
     for (let gy = 1; gy <= grid; gy++) {
       for (let gx = 1; gx <= grid; gx++) {
         const px = Math.round(afx + gx * stepX);
@@ -234,11 +236,22 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         if (gray > 180) whiteN++;
         if (gray < 80) darkN++;
         total++;
+        // Quadrant tracking for uniformity
+        const qi = (gy <= grid / 2 ? 0 : 2) + (gx <= grid / 2 ? 0 : 1);
+        quadBright[qi] += gray;
+        quadCount[qi]++;
       }
     }
     const avgBright = total > 0 ? brightSum / total : 0;
     const whiteRatio = total > 0 ? whiteN / total : 0;
     const darkRatio = total > 0 ? darkN / total : 0;
+
+    // Quadrant uniformity — reject uneven lighting
+    const quadAvgs = quadBright.map((s, i) => quadCount[i] > 0 ? s / quadCount[i] : 0);
+    const activeQuads = quadAvgs.filter(v => v > 0);
+    const uniformity = activeQuads.length > 1
+      ? Math.max(...activeQuads) - Math.min(...activeQuads)
+      : 0;
 
     // Sharpness: variance of neighboring pixel differences (low = blurry)
     let sharpSum = 0;
@@ -258,6 +271,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     ];
     let cornersFound = 0;
     const step = Math.max(2, Math.round(markR));
+    const ringR = markR + Math.max(3, Math.round(markR * 0.8));
     for (const cr of cornerRegions) {
       let found = false;
       for (let sy = Math.round(cr.cy - scanR); sy <= Math.round(cr.cy + scanR) && !found; sy += step) {
@@ -270,17 +284,33 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
               if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
               const idx = (py2 * ANALYSIS_W + px2) * 4;
               const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-              if (g < 110) dkN++;
+              if (g < 130) dkN++;
               ttN++;
             }
           }
-          if (ttN > 0 && dkN / ttN > 0.55) { found = true; cornersFound++; }
+          if (ttN > 0 && dkN / ttN > 0.45) {
+            // Contrast ring — mark atrofi yorug' (qog'oz) bo'lishi kerak
+            let ringSum = 0, ringCnt = 0;
+            for (let dy = -ringR; dy <= ringR; dy += 2) {
+              for (let dx = -ringR; dx <= ringR; dx += 2) {
+                if (Math.abs(dx) <= markR && Math.abs(dy) <= markR) continue;
+                const px2 = sx + dx, py2 = sy + dy;
+                if (px2 < 0 || py2 < 0 || px2 >= ANALYSIS_W || py2 >= ah) continue;
+                const idx = (py2 * ANALYSIS_W + px2) * 4;
+                const g = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+                ringSum += g;
+                ringCnt++;
+              }
+            }
+            const avgRing = ringCnt > 0 ? ringSum / ringCnt : 0;
+            if (avgRing > 130) { found = true; cornersFound++; }
+          }
         }
       }
     }
 
-    // Detection: all 4 corner marks + basic quality
-    const detected = cornersFound >= 4 && avgBright > 120 && sharpness > 4;
+    // Detection: all 4 corner marks + basic quality + even lighting
+    const detected = cornersFound >= 4 && avgBright > 120 && sharpness > 4 && uniformity < 40;
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -369,7 +399,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         ctx.font = '11px system-ui';
         const hint = cornersFound < 4
           ? `Burchak belgilari: ${cornersFound}/4`
-          : sharpness < 4 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
+          : uniformity >= 40
+            ? 'Yoritish notekis'
+            : sharpness < 4 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
       }
     }
