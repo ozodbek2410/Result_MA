@@ -265,7 +265,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     // Mark = dark spot, Ring = surrounding paper. Mark must be darker RELATIVE to ring.
     const markR = Math.max(3, Math.round(afw * 0.02));
     const ringR = markR + Math.max(4, Math.round(markR * 1.2));
-    const tol = Math.max(4, Math.round(afw * 0.05)); // ±5% search tolerance
+    const tol = Math.max(8, Math.round(afw * 0.12)); // ±12% tolerance (paper may not fill frame exactly)
     const step = Math.max(2, Math.round(markR * 0.7));
     // 4 target positions based on A4 corner mark layout
     const targets = [
@@ -304,9 +304,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           if (mN < 4 || rN < 4) continue;
           const avgM = mSum / mN;
           const avgR = rSum / rN;
-          // RELATIVE check: mark must be ≤60% of ring brightness (works in any lighting)
+          // RELATIVE check: mark must be ≤75% of ring brightness (works in any lighting)
           const ratio = avgR > 0 ? avgM / avgR : 1;
-          if (ratio < 0.65 && (1 - ratio) > bestRatio) {
+          if (ratio < 0.75 && (1 - ratio) > bestRatio) {
             bestRatio = 1 - ratio;
           }
         }
