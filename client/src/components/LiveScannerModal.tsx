@@ -258,10 +258,35 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
     const sharpness = grayVals.length > 1 ? sharpSum / (grayVals.length - 1) : 0;
 
-    // ---- Paper detection: simple quality checks ----
-    // Python backend handles corner marks at full resolution (much more reliable)
+    // ---- Edge coverage: check that paper fills the guide frame ----
+    // Sample 4 edges (just inside frame border) — should be bright (paper, not desk)
+    const edgeSamples = 6; // points per edge
+    let edgeBrightTotal = 0, edgeBrightN = 0;
+    const margin = Math.max(4, Math.round(afw * 0.02)); // 2% inset from frame edge
+    for (let i = 1; i <= edgeSamples; i++) {
+      const t = i / (edgeSamples + 1);
+      // Top edge
+      const tpx = Math.round(afx + afw * t), tpy = Math.round(afy + margin);
+      // Bottom edge
+      const bpx = Math.round(afx + afw * t), bpy = Math.round(afy + afh - margin);
+      // Left edge
+      const lpx = Math.round(afx + margin), lpy = Math.round(afy + afh * t);
+      // Right edge
+      const rpx = Math.round(afx + afw - margin), rpy = Math.round(afy + afh * t);
+      for (const [ex, ey] of [[tpx, tpy], [bpx, bpy], [lpx, lpy], [rpx, rpy]]) {
+        if (ex >= 0 && ey >= 0 && ex < ANALYSIS_W && ey < ah) {
+          const idx = (ey * ANALYSIS_W + ex) * 4;
+          edgeBrightTotal += (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+          edgeBrightN++;
+        }
+      }
+    }
+    const edgeBright = edgeBrightN > 0 ? edgeBrightTotal / edgeBrightN : 0;
+
+    // ---- Paper detection: quality + edge coverage ----
+    // edgeBright > 150: frame edges must be bright (paper covers full frame)
     const detected = avgBright > 140 && whiteRatio > 0.45 && darkRatio < 0.35
-                     && sharpness > 3 && uniformity < 50;
+                     && sharpness > 3 && uniformity < 50 && edgeBright > 150;
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -332,7 +357,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
         const hint = avgBright <= 140 ? 'Yoritishni yaxshilang'
-          : whiteRatio <= 0.45 ? 'Varoqni ramkaga moslang'
+          : whiteRatio <= 0.45 || edgeBright <= 150 ? 'Varoqni ramkaga moslang'
           : uniformity >= 50 ? 'Yoritish notekis'
           : sharpness <= 3 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
         ctx.fillText(hint, ow / 2, labelY + 2);
