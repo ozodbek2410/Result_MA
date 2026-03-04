@@ -945,25 +945,38 @@ export abstract class BaseParser {
         }
         preText = preText.replace(/___IMAGE_\d+___/g, '').trim();
       }
-      // Check for embedded question header (e.g., "Title\n1. Question text...")
-      // This happens when filterSequentialMarkers picks "1)" sub-item over "1." question
-      const embeddedQ = preText.match(/(\d+)\s*[.)]\s+/);
-      if (embeddedQ && embeddedQ.index != null) {
-        const beforeQ = preText.substring(0, embeddedQ.index).trim();
-        const afterQ = preText.substring(embeddedQ.index).trim();
-        if (this.isLikelyTitle(beforeQ) || beforeQ.length <= 30) {
-          // afterQ = "1. Assimilatsiya..." — keep raw text to prepend to first question block
-          pendingQuestionPrefix = afterQ;
-          console.log(`📝 [PARSER] Extracted question header from title: "${pendingQuestionPrefix.substring(0, 80)}"`);
-        } else if (preText.length > 30) {
+      // Check for range pattern like "1-2." indicating passage context for multiple questions
+      const rangeMatch = preText.match(/(\d+)\s*[-\u2013]\s*(\d+)\s*[.)]/);
+      if (rangeMatch && rangeMatch.index != null) {
+        // Everything from range marker onward is context (e.g., "1-2. Matn asosida... Xasis...")
+        const afterRange = preText.substring(rangeMatch.index).trim();
+        // Remove the range marker itself (e.g., "1-2.") to keep only the passage
+        const ctxBody = afterRange.replace(/^\d+\s*[-\u2013]\s*\d+\s*[.)]\s*/, '').trim();
+        if (ctxBody.length > 20) {
+          pendingContextText = this.finalCleanText(this.restoreMath(ctxBody, mathBlocks), mathBlocks);
+          console.log(`📖 [PARSER] Context text from range marker ${rangeMatch[0]} (${pendingContextText.length} chars)`);
+        }
+      } else {
+        // Check for embedded question header (e.g., "Title\n1. Question text...")
+        // Use lookbehind to avoid matching "2." inside range "1-2."
+        const embeddedQ = preText.match(/(?<!\d[-\u2013])(\d+)\s*[.)]\s+/);
+        if (embeddedQ && embeddedQ.index != null) {
+          const beforeQ = preText.substring(0, embeddedQ.index).trim();
+          const afterQ = preText.substring(embeddedQ.index).trim();
+          if (this.isLikelyTitle(beforeQ) || beforeQ.length <= 30) {
+            // afterQ = "1. Assimilatsiya..." — keep raw text to prepend to first question block
+            pendingQuestionPrefix = afterQ;
+            console.log(`📝 [PARSER] Extracted question header from title: "${pendingQuestionPrefix.substring(0, 80)}"`);
+          } else if (preText.length > 30) {
+            pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
+            console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+          }
+        } else if (preText.length > 30 && !this.isLikelyTitle(preText)) {
           pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
           console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+        } else if (preText.length > 0) {
+          console.log(`⏭️ [PARSER] Skipped pre-question text as title/header: "${preText.substring(0, 80)}"`);
         }
-      } else if (preText.length > 30 && !this.isLikelyTitle(preText)) {
-        pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
-        console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
-      } else if (preText.length > 0) {
-        console.log(`⏭️ [PARSER] Skipped pre-question text as title/header: "${preText.substring(0, 80)}"`);
       }
     }
 
@@ -1072,11 +1085,11 @@ export abstract class BaseParser {
       /\bnazorat\b/i,
       /\bjoriy\b/i,
       /\byakuniy\b/i,
-      /\bfan\b.*\b(nomi|bo['']yicha)\b/i,
+      /\bfan\b.*\b(nomi|bo['\u2018\u2019\u02BB]yicha)\b/i,
       /\bsinf\b/i,
       /^\d+\s*-\s*\d+\b/, // e.g. "5-02", "7 -8"
       /\bustozlar\b/i,
-      /\bo['']qituvchi/i,
+      /\bo['\u2018\u2019\u02BB]qituvchi/i,
     ];
     const subjectPatterns = [
       /biologiya/i, /matematika/i, /fizika/i, /kimyo/i,

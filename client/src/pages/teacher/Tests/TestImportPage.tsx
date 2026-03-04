@@ -711,12 +711,26 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
                       <div className="flex-1 space-y-3">
                         {(q.contextText || q.contextImage) && (
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
-                            <div className="text-xs font-medium text-amber-600 mb-1">Matn (kontekst)</div>
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="text-xs font-medium text-amber-600">Matn (kontekst)</div>
+                              <button type="button" onClick={() => { handleQuestionChange(idx, 'contextText', undefined); handleQuestionChange(idx, 'contextImage', undefined); }}
+                                className="p-0.5 hover:bg-amber-100 rounded text-amber-500 hover:text-red-500" title="Kontekstni o'chirish">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                             {q.contextImage && (
                               <img src={q.contextImage} alt="Context" className="rounded" style={{ float: 'right', width: q.contextImageWidth ? q.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 250, margin: '0 0 4px 8px' }} />
                             )}
+                            {q.contextText != null && (
+                              <textarea
+                                value={q.contextText}
+                                onChange={(e) => handleQuestionChange(idx, 'contextText', e.target.value)}
+                                className="w-full min-h-[60px] text-sm text-gray-900 bg-white border border-amber-200 rounded p-2 resize-y"
+                                placeholder="Kontekst matni..."
+                              />
+                            )}
                             {q.contextText && (
-                              <div className="text-sm text-gray-700 italic">
+                              <div className="mt-1 text-xs text-amber-600">
                                 <MathText text={q.contextText} />
                               </div>
                             )}
