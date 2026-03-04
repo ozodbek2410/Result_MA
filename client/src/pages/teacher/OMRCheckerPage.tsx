@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, CheckCircle, XCircle, Scan, Save, ArrowLeft, Edit2, Camera } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, Scan, Save, ArrowLeft, Edit2, Camera, Download } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../hooks/useToast';
@@ -212,22 +212,34 @@ export default function OMRCheckerPage() {
     }
     setSaving(true);
     try {
-      const finalAnswers = { ...result.detected_answers, ...editedAnswers };
-      
-      // Используем обновленную статистику
+      // Original detected answers (tahrir audit trail uchun)
+      const originalDetected = result.detected_answers || {};
+
       const finalComparison = updatedComparison || result.comparison;
-      
+
+      // Details ni tahrirlangan javoblar bilan yangilash
+      const finalDetails = result.comparison.details.map((detail: any) => {
+        const currentAnswer = editedAnswers[detail.question] || detail.student_answer;
+        const effectiveAnswer = (!currentAnswer || currentAnswer === '-') ? null : currentAnswer;
+        return {
+          ...detail,
+          student_answer: effectiveAnswer,
+          is_correct: effectiveAnswer ? effectiveAnswer === detail.correct_answer : false,
+        };
+      });
+
       await api.post('/omr/save-result', {
         variantCode: result.qr_code.variantCode,
         studentId: result.qr_code.studentId,
         testId: result.qr_code.testId,
-        detectedAnswers: finalAnswers,
+        detectedAnswers: originalDetected,
         comparison: {
           ...result.comparison,
           correct: finalComparison.correct,
           incorrect: finalComparison.incorrect,
           unanswered: finalComparison.unanswered,
-          score: finalComparison.score
+          score: finalComparison.score,
+          details: finalDetails,
         },
         annotatedImage: result.annotated_image,
         originalImagePath: result.uploaded_image
@@ -249,6 +261,26 @@ export default function OMRCheckerPage() {
     setResult(null);
     setEditedAnswers({});
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleExportExcel = async () => {
+    const testId = result?.qr_code?.testId;
+    if (!testId) return toast("Test ID topilmadi", 'error');
+    try {
+      const resp = await api.get(`/test-results/export/test/${testId}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([resp.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      const disposition = resp.headers['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      a.download = match ? decodeURIComponent(match[1]) : 'natijalar.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast("Natijalar topilmadi yoki xatolik", 'error');
+    }
   };
 
   const getAnnotatedImageUrl = () => {
@@ -502,6 +534,30 @@ export default function OMRCheckerPage() {
               </Card>
             )}
 
+            {/* Detection Rate */}
+            {result.detection_rate != null && (
+              <Card className="border shadow-sm overflow-hidden">
+                <div className="px-4 py-2.5 flex items-center gap-3">
+                  <span className="text-xs font-medium text-gray-500 whitespace-nowrap">Aniqlik</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        result.detection_rate >= 80 ? 'bg-green-500' :
+                        result.detection_rate >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(100, result.detection_rate)}%` }}
+                    />
+                  </div>
+                  <span className={`text-sm font-bold ${
+                    result.detection_rate >= 80 ? 'text-green-600' :
+                    result.detection_rate >= 60 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {Math.round(result.detection_rate)}%
+                  </span>
+                </div>
+              </Card>
+            )}
+
             {/* Stats Grid */}
             {result.comparison && updatedComparison && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -695,17 +751,27 @@ export default function OMRCheckerPage() {
             {/* Debug Info - показываем RAW данные */}
             {/* Navigation */}
             <div className="flex gap-3">
-              <Button 
-                onClick={resetAll} 
-                variant="outline" 
+              <Button
+                onClick={resetAll}
+                variant="outline"
                 className="h-11 sm:h-12 px-4 sm:px-6 text-sm sm:text-base"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Orqaga
               </Button>
-              <Button 
-                onClick={handleSave} 
-                disabled={saving} 
+              {result?.qr_code?.testId && (
+                <Button
+                  onClick={handleExportExcel}
+                  className="h-11 sm:h-12 px-4 sm:px-6 bg-emerald-600 hover:bg-emerald-700 text-sm sm:text-base"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Excel yuklash</span>
+                  <span className="sm:hidden">Excel</span>
+                </Button>
+              )}
+              <Button
+                onClick={handleSave}
+                disabled={saving}
                 className="flex-1 h-11 sm:h-12 bg-green-600 hover:bg-green-700 text-sm sm:text-base"
               >
                 {saving ? (

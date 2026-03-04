@@ -1095,6 +1095,8 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
           score,
           details: comparison,
           subjectBreakdown,
+          detection_rate: result.detection_rate || 0,
+          grid_method: result.grid_method || 'unknown',
         };
 
         console.log('✅ Natija:', {

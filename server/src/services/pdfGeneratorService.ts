@@ -1069,10 +1069,10 @@ export class PDFGeneratorService {
       return `
       <div class="sheet">
         <!-- Corner Marks for OMR -->
-        <div class="corner-mark" style="top:5mm;left:5mm"></div>
-        <div class="corner-mark" style="top:5mm;right:5mm"></div>
-        <div class="corner-mark" style="bottom:5mm;left:5mm"></div>
-        <div class="corner-mark" style="bottom:5mm;right:5mm"></div>
+        <div class="corner-mark" style="top:2mm;left:2mm"></div>
+        <div class="corner-mark" style="top:2mm;right:2mm"></div>
+        <div class="corner-mark" style="bottom:2mm;left:2mm"></div>
+        <div class="corner-mark" style="bottom:2mm;right:2mm"></div>
 
         <!-- Academy Header -->
         <div class="academy-header">

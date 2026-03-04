@@ -1450,7 +1450,7 @@ class HybridOMR:
         self.log(f"  Template grid yaratildi: {len(grid)} ta savol")
         return grid
 
-    def build_grid_from_layout(self, image):
+    def build_grid_from_layout(self, image, bubbles=None):
         """Layout-based grid - EXACT mm calculations matching answer sheet CSS.
         After perspective transform, warped image maps corner-to-corner.
         Corner marks at 2mm from page edge."""
@@ -1501,23 +1501,35 @@ class HybridOMR:
         px_per_mm_y = h_img / warped_h_mm
         self.log(f"  px/mm: x={px_per_mm_x:.2f}, y={px_per_mm_y:.2f}")
 
-        # Detect grid top from circle positions
-        grid_top_mm = self._detect_grid_top(image, px_per_mm_y, bubble_mm, header_row_mm=header_row_mm, row_margin_mm=row_margin_mm)
-
-        if grid_top_mm is None:
-            grid_top_mm = 95.0
-            self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm")
-
         grid_left_mm = grid_left_page_mm - corner_offset_mm
 
         # Bubble positions within a column (from column left edge)
         # [timing_area][number_area][A gap B gap C gap D]
         bubble_offset_mm = timing_mark_area_mm + num_w_mm
-        # Bubble centers from column start
         bubble_centers_mm = []
         for bi in range(4):
             cx_mm = bubble_offset_mm + bi * (bubble_mm + gap_mm) + bubble_mm / 2
             bubble_centers_mm.append(cx_mm)
+
+        # Find grid_top: try bubble-based first, then cross-correlation fallback
+        grid_top_mm = None
+        if bubbles and len(bubbles) >= 16:
+            grid_top_mm = self._grid_top_from_bubbles(
+                bubbles, px_per_mm_y, row_height_mm,
+                header_row_mm, row_margin_mm, bubble_mm, rows_per_col
+            )
+
+        if grid_top_mm is None:
+            grid_top_mm = self._search_grid_top(
+                image, px_per_mm_x, px_per_mm_y,
+                bubble_mm, gap_mm, row_margin_mm, header_row_mm,
+                grid_left_mm, bubble_centers_mm, rows_per_col,
+                col_width_mm, col_gap_mm
+            )
+
+        if grid_top_mm is None:
+            grid_top_mm = 95.0
+            self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm")
 
         self.log(f"  Layout: {n_cols} cols, {rows_per_col} rows, bubble={bubble_mm}mm, gap={gap_mm}mm")
         self.log(f"  Grid area: ({grid_left_mm:.0f},{grid_top_mm:.0f})mm, col_w={col_width_mm:.0f}mm")
@@ -1653,6 +1665,339 @@ class HybridOMR:
 
         return 0
 
+    def _calibrate_grid_y(self, image, grid, bubble_size_px):
+        """Calibrate layout grid Y using vertical cross-correlation.
+        Creates a template of expected row pattern (dark band per row) and
+        correlates with the actual vertical profile to find correct Y."""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        h_img, w_img = gray.shape[:2]
+
+        q_nums = sorted(grid.keys())
+        if len(q_nums) < 4:
+            return 0
+
+        # Find column 1 questions (all have similar X)
+        q1_x = grid[q_nums[0]]['A']['x']
+        col1_qs = [q for q in q_nums if abs(grid[q]['A']['x'] - q1_x) < bubble_size_px * 2]
+        if len(col1_qs) < 4:
+            return 0
+
+        # Row spacing from grid
+        if len(col1_qs) >= 2:
+            row_spacing = abs(grid[col1_qs[1]]['A']['y'] - grid[col1_qs[0]]['A']['y'])
+        else:
+            return 0
+        if row_spacing < 4:
+            return 0
+
+        # Expected Y of first row in column 1
+        expected_y = grid[col1_qs[0]]['A']['y']
+
+        # Get X range for column 1 (A to D)
+        x_left = grid[col1_qs[0]]['A']['x'] - bubble_size_px
+        x_right = grid[col1_qs[0]]['D']['x'] + bubble_size_px
+        x_left = max(0, min(x_left, w_img - 1))
+        x_right = max(x_left + 1, min(x_right, w_img))
+
+        # Vertical profile: average darkness per row in column 1 region
+        col_region = gray[:, x_left:x_right]
+        v_profile = 255.0 - np.mean(col_region, axis=1).astype(float)
+
+        # Build template: periodic dark bands at row_spacing intervals
+        n_rows = len(col1_qs)
+        template_len = int(n_rows * row_spacing)
+        if template_len < 10 or template_len > h_img:
+            return 0
+        template = np.zeros(template_len)
+        band_w = max(3, bubble_size_px // 2)
+        for i in range(n_rows):
+            cy = int(i * row_spacing + row_spacing * 0.5)
+            y1 = max(0, cy - band_w)
+            y2 = min(template_len, cy + band_w + 1)
+            template[y1:y2] = 1.0
+
+        # Normalize template
+        template = template - np.mean(template)
+        t_norm = np.sqrt(np.sum(template ** 2))
+        if t_norm < 1e-6:
+            return 0
+
+        # Search range: expected_y ± 3*row_spacing
+        search_margin = int(3 * row_spacing)
+        # Template starts at y0, first row center would be at y0 + row_spacing*0.5
+        # So expected start = expected_y - row_spacing*0.5
+        expected_start = int(expected_y - row_spacing * 0.5)
+        y_start = max(0, expected_start - search_margin)
+        y_end = min(h_img - template_len, expected_start + search_margin)
+
+        best_shift = 0
+        best_corr = -1
+        for y0 in range(y_start, y_end + 1):
+            segment = v_profile[y0:y0 + template_len]
+            if len(segment) < template_len:
+                continue
+            segment = segment - np.mean(segment)
+            s_norm = np.sqrt(np.sum(segment ** 2))
+            if s_norm < 1e-6:
+                continue
+            corr = np.sum(template * segment) / (t_norm * s_norm)
+            if corr > best_corr:
+                best_corr = corr
+                # Found first row center = y0 + row_spacing*0.5
+                found_y = y0 + row_spacing * 0.5
+                best_shift = int(found_y - expected_y)
+
+        self.log(f"  Y-calibration: shift={best_shift}px, corr={best_corr:.3f}")
+
+        # Sanity: max shift 30% of grid height
+        max_reasonable = int(n_rows * row_spacing * 0.3)
+        if abs(best_shift) > max_reasonable:
+            self.log(f"  Y-cal: shift {best_shift}px too large, skipping")
+            return 0
+
+        return best_shift
+
+    def _grid_top_from_bubbles(self, bubbles, px_per_mm_y, row_height_mm,
+                                header_row_mm, row_margin_mm, bubble_mm, rows_per_col):
+        """Find grid_top_mm from detected bubble Y positions.
+        Clusters bubble Y, finds rows with consistent spacing = row_height."""
+        if len(bubbles) < 16:
+            return None
+
+        row_height_px = row_height_mm * px_per_mm_y
+        bubble_px = bubble_mm * px_per_mm_y
+        # Threshold: must separate adjacent rows but group bubbles within a row
+        cluster_thr = max(5, int(min(row_height_px * 0.4, bubble_px * 1.2)))
+
+        ys = sorted([b['y'] for b in bubbles])
+
+        # Cluster Y with anti-chaining (compare to FIRST element, not previous)
+        rows = []
+        cluster = [ys[0]]
+        for y in ys[1:]:
+            if y - cluster[0] < cluster_thr:
+                cluster.append(y)
+            else:
+                if len(cluster) >= 4:  # ABCD = 4 bubbles minimum
+                    rows.append(int(np.median(cluster)))
+                cluster = [y]
+        if len(cluster) >= 4:
+            rows.append(int(np.median(cluster)))
+
+        self.log(f"  Bubble Y clustering: {len(rows)} rows (thr={cluster_thr}px, rh={row_height_px:.0f}px)")
+
+        if len(rows) < 5:
+            return None
+
+        # Find longest arithmetic sequence with spacing ≈ row_height_px
+        # Allows noise rows between grid rows (skips them)
+        tolerance = row_height_px * 0.3
+        best_chain = []
+        for i in range(len(rows)):
+            chain = [rows[i]]
+            current_y = rows[i]
+            for _ in range(rows_per_col + 3):
+                expected_next = current_y + row_height_px
+                best_match = None
+                best_dist = tolerance
+                for j in range(len(rows)):
+                    if rows[j] <= current_y + row_height_px * 0.3:
+                        continue
+                    dist = abs(rows[j] - expected_next)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_match = rows[j]
+                if best_match is not None:
+                    chain.append(best_match)
+                    current_y = best_match
+                else:
+                    break
+            if len(chain) > len(best_chain):
+                best_chain = chain
+
+        if len(best_chain) < 5:
+            self.log(f"  Bubble grid_top: only {len(best_chain)} chain rows, skipping")
+            return None
+
+        first_row_y_px = best_chain[0]
+        first_row_y_mm = first_row_y_px / px_per_mm_y
+        grid_top_mm = first_row_y_mm - header_row_mm - row_margin_mm - bubble_mm / 2
+
+        # Validate: grid should fit within image
+        grid_end_mm = grid_top_mm + header_row_mm + rows_per_col * row_height_mm
+        warped_h_mm = 288.0  # from corner offset
+        if grid_end_mm > warped_h_mm + 5:
+            self.log(f"  Bubble grid_top: grid extends beyond image ({grid_end_mm:.0f}mm > {warped_h_mm:.0f}mm)")
+            return None
+
+        self.log(f"  Bubble grid_top: {grid_top_mm:.1f}mm (first row Y={first_row_y_px}px, {len(best_chain)} rows)")
+        return grid_top_mm
+
+    def _search_grid_top(self, image, px_per_mm_x, px_per_mm_y,
+                          bubble_mm, gap_mm, row_margin_mm, header_row_mm,
+                          grid_left_mm, bubble_centers_mm, rows_per_col,
+                          col_width_mm, col_gap_mm):
+        """Find grid_top_mm using horizontal cross-correlation search (fallback).
+        Scans candidate Y positions and matches ABCD circle pattern across ALL columns."""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        h_img, w_img = gray.shape[:2]
+
+        # Build 1D horizontal template: 4 circles (dark border / bright interior)
+        bubble_px = int(bubble_mm * px_per_mm_x)
+        gap_px = int(gap_mm * px_per_mm_x)
+        spacing_px = bubble_px + gap_px
+        template_len = 4 * bubble_px + 3 * gap_px
+        if template_len < 8 or bubble_px < 4:
+            return None
+
+        template = np.ones(template_len) * 0.5
+        for bi in range(4):
+            center = bi * spacing_px + bubble_px // 2
+            r = bubble_px // 2
+            border_w = max(2, r // 4)
+            for x in range(max(0, center - r), min(template_len, center + r + 1)):
+                dist = abs(x - center)
+                if dist > r - border_w:
+                    template[x] = 0.0  # dark border
+                else:
+                    template[x] = 1.0  # bright interior
+
+        template = template - np.mean(template)
+        t_norm = np.sqrt(np.sum(template ** 2))
+        if t_norm < 1e-6:
+            return None
+
+        row_height_mm = bubble_mm + 2 * row_margin_mm
+
+        # Sample rows: include row 0-1 (critical for disambiguation!) and every 2nd row after
+        sample_rows = [0, 1] + list(range(3, max(4, rows_per_col - 2), 2))
+        if len(sample_rows) < 4:
+            sample_rows = list(range(0, min(rows_per_col, 8)))
+
+        # Use ALL columns with WIDE X search range (handles both AnswerSheet.tsx and pdfGenerator layouts)
+        n_cols = max(1, int(w_img / px_per_mm_x / (col_width_mm + col_gap_mm)))
+        n_cols = min(n_cols, 5)  # max 5 columns
+        col_configs = []
+        for col in range(n_cols):
+            col_left = grid_left_mm + col * (col_width_mm + col_gap_mm)
+            expected_A_x = int((col_left + bubble_centers_mm[0]) * px_per_mm_x)
+            # Wide search: ±5*spacing covers ~15mm tolerance for layout differences
+            x_start = max(0, expected_A_x - 5 * spacing_px)
+            x_end = min(w_img - template_len, expected_A_x + 5 * spacing_px)
+            if x_end > x_start:
+                col_configs.append((col, x_start, x_end))
+
+        if not col_configs:
+            return None
+
+        def correlate_profile(profile, x_start, x_end):
+            """Find best NCC correlation of template in profile[x_start:x_end]."""
+            best_corr = -1.0
+            for x0 in range(x_start, x_end + 1):
+                segment = profile[x0:x0 + template_len]
+                if len(segment) < template_len:
+                    continue
+                segment = segment - np.mean(segment)
+                s_norm = np.sqrt(np.sum(segment ** 2))
+                if s_norm < 1e-6:
+                    continue
+                corr = float(np.sum(template * segment) / (t_norm * s_norm))
+                if corr > best_corr:
+                    best_corr = corr
+            return best_corr
+
+        def score_candidate(candidate_mm):
+            """Score by counting columns with consistent ABCD pattern matches."""
+            col_scores = []
+            for col_idx, x_start, x_end in col_configs:
+                row_corrs = []
+                for row_idx in sample_rows:
+                    cy_mm = candidate_mm + header_row_mm + row_idx * row_height_mm + row_margin_mm + bubble_mm / 2
+                    cy_px = int(cy_mm * px_per_mm_y)
+                    if cy_px < 1 or cy_px >= h_img - 1:
+                        continue
+                    # Average 3 adjacent rows for noise reduction
+                    y1 = max(0, cy_px - 1)
+                    y2 = min(h_img, cy_px + 2)
+                    profile = np.mean(gray[y1:y2, :].astype(float), axis=0)
+                    corr = correlate_profile(profile, x_start, x_end)
+                    if corr > 0.2:
+                        row_corrs.append(corr)
+                # Column score: fraction of rows with good correlation × median correlation
+                if len(row_corrs) >= 2:
+                    hit_rate = len(row_corrs) / len(sample_rows)
+                    col_scores.append(hit_rate * float(np.median(row_corrs)))
+            if len(col_scores) < 2:
+                return -1.0
+            # Require at least 2 columns with good matches — noise rarely spans multiple columns
+            return float(np.median(col_scores))
+
+        def check_above_row(candidate_mm):
+            """Check if area ABOVE row 0 has ABCD circles (should NOT for correct grid_top).
+            At correct grid_top, above row 0 is header text 'A B C D' — no circles.
+            At wrong grid_top (shifted by n*row_height), above row 0 is a data row WITH circles."""
+            # Check 1 row above row 0
+            above_mm = candidate_mm + header_row_mm + (-1) * row_height_mm + row_margin_mm + bubble_mm / 2
+            above_px = int(above_mm * px_per_mm_y)
+            if above_px < 1 or above_px >= h_img - 1:
+                return 0.0
+            y1 = max(0, above_px - 1)
+            y2 = min(h_img, above_px + 2)
+            profile = np.mean(gray[y1:y2, :].astype(float), axis=0)
+            corrs = []
+            for _, x_start, x_end in col_configs:
+                c = correlate_profile(profile, x_start, x_end)
+                if c > 0:
+                    corrs.append(c)
+            return float(np.mean(corrs)) if corrs else 0.0
+
+        # Phase 1: Coarse search (1mm steps, 40-140mm)
+        best_score = -1.0
+        best_grid_top = 95.0
+        for candidate_10 in range(400, 1401, 10):
+            candidate_mm = candidate_10 / 10.0
+            score = score_candidate(candidate_mm)
+            if score > best_score:
+                best_score = score
+                best_grid_top = candidate_mm
+
+        # Phase 2: Fine search (0.2mm steps, ±2mm around best)
+        fine_start = int((best_grid_top - 2.0) * 10)
+        fine_end = int((best_grid_top + 2.0) * 10)
+        for candidate_10 in range(fine_start, fine_end + 1, 2):
+            candidate_mm = candidate_10 / 10.0
+            score = score_candidate(candidate_mm)
+            if score > best_score:
+                best_score = score
+                best_grid_top = candidate_mm
+
+        # Phase 3: Disambiguate periodicity — check candidates at ±n*row_height
+        # The correct grid_top has NO circles above row 0 (it's the header)
+        candidates = []
+        for n in range(-3, 4):
+            c = best_grid_top + n * row_height_mm
+            if 30.0 <= c <= 150.0:
+                data_score = score_candidate(c)
+                if data_score > best_score * 0.85:  # within 15% of best
+                    above_corr = check_above_row(c)
+                    # Lower above_corr = more likely correct (no circles above)
+                    disambig_score = data_score * (1.0 - above_corr * 0.5)
+                    candidates.append((c, data_score, above_corr, disambig_score))
+                    self.log(f"    candidate {c:.1f}mm: data={data_score:.3f}, above={above_corr:.3f}, final={disambig_score:.3f}")
+
+        if candidates:
+            candidates.sort(key=lambda x: x[3], reverse=True)
+            best_grid_top = candidates[0][0]
+            best_score = candidates[0][1]
+
+        self.log(f"  Grid top search: {best_grid_top:.1f}mm, corr={best_score:.3f}")
+
+        if best_score < 0.10:
+            self.log(f"  Grid top search: low correlation, fallback")
+            return None
+
+        return best_grid_top
+
     def _detect_grid_top(self, image, px_per_mm_y, bubble_mm, header_row_mm, row_margin_mm):
         """Detect where the answer grid starts using multi-threshold circle detection."""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -1699,8 +2044,9 @@ class HybridOMR:
         if len(circles_y) < 16:
             return None
 
-        # Cluster by Y with generous threshold
-        cluster_thr = max(12, int(bubble_px * 2.0))
+        # Cluster by Y — threshold must be LESS than row_height to separate adjacent rows
+        row_height_px = int((bubble_mm + 2 * row_margin_mm) * px_per_mm_y)
+        cluster_thr = max(8, int(row_height_px * 0.55))
         rows = []
         cluster = [circles_y[0]]
         for i in range(1, len(circles_y)):
@@ -2261,9 +2607,9 @@ class HybridOMR:
         return False, darkness_pct
     
     def scan(self, image_path, correct_answers=None):
-        """Detection-first scan: detect bubbles first, build grid from positions"""
+        """Layout-first scan: corner marks → mm-based grid (professional approach)"""
         self.log("=" * 60)
-        self.log("HYBRID OMR SCANNER v2 (detection-first)")
+        self.log("HYBRID OMR SCANNER v3 (layout-first)")
         self.log("=" * 60)
 
         image = cv2.imread(image_path)
@@ -2274,11 +2620,9 @@ class HybridOMR:
         # 1. Corner marks -> perspective transform
         corners = self.find_corner_marks(image)
         if corners:
-            self.log("\nMode: Corner marks")
             warped = self.four_point_transform(image, corners)
             mode = "corner_marks"
         else:
-            self.log("\nMode: No corners")
             warped = image
             mode = "marker_free"
 
@@ -2286,22 +2630,43 @@ class HybridOMR:
         resized, enhanced, scale = self._preprocess(warped)
         h_proc, w_proc = enhanced.shape[:2]
 
-        # 3. Detect bubbles
+        # 3. Detect bubbles (always — needed for Y calibration)
         bubbles = self._detect_bubbles(enhanced)
-        if len(bubbles) < 16:
-            return {"success": False, "error": f"Too few bubbles: {len(bubbles)}"}
 
-        # 4. Build grid from detected positions
-        grid = self._build_grid(bubbles, w_proc, h_proc)
+        # 4. Build grid — LAYOUT-FIRST when corners found
+        grid = {}
+        grid_method = "none"
+        if mode == "corner_marks" and self.TOTAL_QUESTIONS and len(bubbles) >= 16:
+            # Professional approach: mm-based exact positions
+            self.log(f"\n--- Layout grid (mm-based, {self.TOTAL_QUESTIONS}q) ---")
+            grid = self.build_grid_from_layout(resized, bubbles=bubbles)
+            if len(grid) >= self.TOTAL_QUESTIONS * 0.9:
+                grid_method = "layout"
+                self.log(f"Layout grid OK: {len(grid)} questions")
+            else:
+                self.log(f"Layout grid failed ({len(grid)}), falling back to detection")
+                grid = {}
+
+        if len(grid) < 4:
+            # Fallback: detection-based (old method)
+            self.log("\n--- Detection grid (fallback) ---")
+            if len(bubbles) < 16:
+                return {"success": False, "error": f"Too few bubbles: {len(bubbles)}"}
+            grid = self._build_grid(bubbles, w_proc, h_proc)
+            grid_method = "detection"
 
         if len(grid) < 4:
             return {"success": False, "error": "Cannot build grid"}
 
-        # 5. Fill detection (relative scoring on CLAHE-enhanced image)
-        self.log("\nJavoblarni aniqlash...")
+        # 4. Fill detection (relative scoring)
+        self.log(f"\nJavoblarni aniqlash ({grid_method})...")
         detected_answers = {}
-        SCORE_THRESHOLD = 8.0
-        median_w = int(np.median([b['w'] for b in bubbles]))
+        invalid_answers = {}
+        SCORE_THRESHOLD = 6.0
+
+        # Bubble size: from grid cell or default
+        sample_q = next(iter(grid.values()))
+        bubble_w = sample_q.get('A', {}).get('w', int(w_proc / 45))
 
         for q_num in sorted(grid.keys()):
             fills = {}
@@ -2309,8 +2674,8 @@ class HybridOMR:
                 if letter not in grid[q_num]:
                     continue
                 b = grid[q_num][letter]
-                # Inner 50% ROI (wider = catches more fill area)
-                r = max(3, int(median_w * 0.25))
+                # Inner 70% ROI — wider catches fill even with small offset
+                r = max(4, int(bubble_w * 0.35))
                 y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
                 x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
                 if x2 - x1 < 2 or y2 - y1 < 2:
@@ -2335,16 +2700,17 @@ class HybridOMR:
             else:
                 score_1, score_2 = score, 0
 
-            # Adaptive threshold: high baseline = shadow, need more contrast
+            # Adaptive threshold: softer for shadows
             min_fill = min(fills.values())
-            eff_threshold = SCORE_THRESHOLD if min_fill < 35 else max(SCORE_THRESHOLD, 12.0)
+            eff_threshold = SCORE_THRESHOLD if min_fill < 40 else max(SCORE_THRESHOLD, 9.0)
 
-            # MULTI requires: very strict — both must be clearly filled, big gap from unfilled
+            # MULTI: both filled
             is_multi = (score_1 >= eff_threshold and score_2 >= 15.0
                         and second_val >= 55.0 and second_val >= darkest_val * 0.70
                         and darkest_val >= 60.0)
             if is_multi:
                 self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
+                invalid_answers[str(q_num)] = [darkest_letter, second_letter]
             elif score >= eff_threshold:
                 detected_answers[str(q_num)] = darkest_letter
                 self.log(f"  Q{q_num}: {darkest_letter} (dark={darkest_val:.1f}%, base={baseline:.1f}%, score={score:.1f})")
@@ -2354,17 +2720,26 @@ class HybridOMR:
         self.log(f"\nAniqlangan: {len(detected_answers)} ta javob")
 
         total = self.TOTAL_QUESTIONS or (max(grid.keys()) if grid else 0)
+        detection_rate = (len(detected_answers) / total * 100) if total > 0 else 0
+        grid_coverage = (len(grid) / total * 100) if total > 0 else 0
+        self.log(f"Aniqlik: detection={detection_rate:.0f}%, grid={grid_coverage:.0f}%, method={grid_method}")
+
         result = {
             "success": True,
             "detected_answers": detected_answers,
+            "invalid_answers": invalid_answers,
             "total_questions": total,
-            "mode": mode
+            "mode": mode,
+            "grid_method": grid_method,
+            "detection_rate": round(detection_rate, 1),
+            "grid_coverage": round(grid_coverage, 1),
+            "rows_found": len(grid)
         }
 
         if correct_answers and isinstance(correct_answers, dict) and len(correct_answers) > 0:
             correct_count = sum(1 for q, a in detected_answers.items() if correct_answers.get(q) == a)
             incorrect_count = sum(1 for q, a in detected_answers.items() if q in correct_answers and correct_answers.get(q) != a)
-            unanswered = total - len(detected_answers)
+            unanswered = total - len(detected_answers) - len(invalid_answers)
             pct = (correct_count / total * 100) if total > 0 else 0
             result.update({"correct": correct_count, "incorrect": incorrect_count, "unanswered": unanswered, "score": f"{pct:.1f}%"})
             self.log(f"Natija: {correct_count} correct, {incorrect_count} wrong, {unanswered} empty = {pct:.1f}%")
