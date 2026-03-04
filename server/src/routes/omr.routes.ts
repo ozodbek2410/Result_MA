@@ -1249,13 +1249,20 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
       console.log('📸 Annotated image URL:', result.annotated_image_url);
     }
     
+    // Quality check: warn user if detection rate is poor
+    const detRate = result.detection_rate || 0;
+    if (detRate < 75 && result.total_questions > 0) {
+      result.quality_warning = 'Rasm sifati past — javoblarning ko\'p qismi aniqlanmadi. Yaxshiroq yoritishda qayta skanerlang.';
+      console.log(`⚠️ Quality warning: detection_rate=${detRate}%`);
+    }
+
     console.log('📤 Sending response to client...');
     console.log('📤 Response keys:', Object.keys(result));
     console.log('📤 Response success:', result.success);
-    
+
     // Очищаем таймаут перед отправкой ответа
     clearTimeout(requestTimeout);
-    
+
     res.json(result);
     
     console.log('✅ Response sent successfully');

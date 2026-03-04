@@ -16,6 +16,7 @@ interface CheckResult {
   error?: string;
   detection_rate?: number;
   grid_method?: string;
+  quality_warning?: string;
   qr_found?: boolean;
   qr_code?: {
     variantCode: string;
@@ -556,6 +557,16 @@ export default function OMRCheckerPage() {
                   }`}>
                     {Math.round(result.detection_rate)}%
                   </span>
+                </div>
+              </Card>
+            )}
+
+            {/* Quality Warning */}
+            {result.quality_warning && (
+              <Card className="border border-orange-300 shadow-sm bg-orange-50">
+                <div className="px-4 py-3 flex items-center gap-2">
+                  <span className="text-orange-500 text-lg">⚠️</span>
+                  <span className="text-sm text-orange-700 font-medium">{result.quality_warning}</span>
                 </div>
               </Card>
             )}
