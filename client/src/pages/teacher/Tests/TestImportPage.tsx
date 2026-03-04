@@ -724,8 +724,9 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
                             {q.contextText != null && (
                               <textarea
                                 value={q.contextText}
-                                onChange={(e) => handleQuestionChange(idx, 'contextText', e.target.value)}
-                                className="w-full min-h-[60px] text-sm text-gray-900 bg-white border border-amber-200 rounded p-2 resize-y"
+                                onChange={(e) => { handleQuestionChange(idx, 'contextText', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }}
+                                className="w-full min-h-[80px] text-sm text-gray-900 bg-white border border-amber-200 rounded p-2 resize-y overflow-hidden"
                                 placeholder="Kontekst matni..."
                               />
                             )}
