@@ -48,7 +48,7 @@ interface LiveScannerModalProps {
 const A4_RATIO = 297 / 210;
 const FRAME_W_RATIO = 0.82;
 const CROP_MARGIN = 0.08; // 8% extra margin when cropping
-const AUTO_TH = 8; // ~1.3s consecutive detection required
+const AUTO_TH = 6; // ~1s detection (with soft decay)
 const ANALYSIS_W = 480;
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
@@ -296,24 +296,31 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
     const edgeBright = edgeBrightN > 0 ? edgeBrightTotal / edgeBrightN : 0;
     edgeVals.sort((a, b) => a - b);
+    const edgeMedian = edgeVals.length > 3 ? edgeVals[Math.floor(edgeVals.length * 0.5)] : 0;
     const edgeP25 = edgeVals.length > 3 ? edgeVals[Math.floor(edgeVals.length * 0.25)] : 0;
-    // Edge variance: low = uniform paper, high = paper+desk mix
+    // Edge variance: low = uniform paper, high = paper+desk mix (shadow OK up to ~40)
     let edgeVarSum = 0;
     for (const v of edgeVals) edgeVarSum += (v - edgeBright) ** 2;
     const edgeStdDev = edgeVals.length > 1 ? Math.sqrt(edgeVarSum / edgeVals.length) : 0;
     // Inner vs outer contrast: paper should be brighter than background
     const outerBright = outerN > 0 ? outerBrightTotal / outerN : 0;
     const edgeContrast = edgeBright - outerBright;
+    // Count how many edge samples are "bright enough" (>60% of center brightness)
+    const brightEdgeCount = edgeVals.filter(v => v > avgBright * 0.6).length;
+    const brightEdgeRatio = edgeVals.length > 0 ? brightEdgeCount / edgeVals.length : 0;
 
-    // ---- Paper detection: RELATIVE thresholds (cross-phone compatible) ----
-    const edgeP25Ratio = avgBright > 10 ? edgeP25 / avgBright : 0;
+    // ---- Paper detection: shadow-tolerant + cross-phone ----
+    const edgeMedianRatio = avgBright > 10 ? edgeMedian / avgBright : 0;
     const edgeBrightRatio = avgBright > 10 ? edgeBright / avgBright : 0;
+    const edgeP25Ratio = avgBright > 10 ? edgeP25 / avgBright : 0;
     const detected = avgBright > 120 && whiteRatio > 0.40 && darkRatio < 0.35
                      && sharpness > 3 && uniformity < 50
-                     && edgeBrightRatio > 0.88        // edge ~ center brightness
-                     && edgeP25Ratio > 0.80            // worst 25% edges still bright
-                     && edgeStdDev < 32
-                     && (edgeContrast > 12 || edgeBrightRatio > 0.95);
+                     && edgeBrightRatio > 0.82         // avg edge ~ center (shadow pulls down)
+                     && edgeMedianRatio > 0.85          // MEDIAN: half of edges bright enough
+                     && edgeP25Ratio > 0.55             // P25 lenient: shadow OK if partial
+                     && brightEdgeRatio > 0.65           // 65%+ of edges are bright
+                     && edgeStdDev < 40                  // shadow creates variance, allow more
+                     && (edgeContrast > 8 || edgeBrightRatio > 0.92);
 
     // ======== DRAW OVERLAY ========
     ctx.clearRect(0, 0, ow, oh);
@@ -384,9 +391,8 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         ctx.fillStyle = 'rgba(255,255,255,0.65)';
         ctx.font = '11px system-ui';
         const hint = avgBright <= 120 ? 'Yoritishni yaxshilang'
-          : (edgeBrightRatio <= 0.88 || edgeP25Ratio <= 0.80 || edgeStdDev >= 32
-            || (edgeContrast <= 12 && edgeBrightRatio <= 0.95))
-            ? 'Varoqni yaqinroq tutib ramkaga to\'liq moslang'
+          : (edgeMedianRatio <= 0.85 || brightEdgeRatio <= 0.65 || edgeStdDev >= 40)
+            ? 'Varoqni ramkaga to\'liq moslang'
           : whiteRatio <= 0.40 ? 'Varoqni ramkaga moslang'
           : uniformity >= 50 ? 'Yoritish notekis'
           : sharpness <= 3 ? 'Fokus qiling' : 'Varoqni ramkaga moslang';
@@ -414,8 +420,12 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
             return;
           }
         } else {
-          detectionCountRef.current = 0;
-          setPaperDetected(false); setAutoProgress(0);
+          detectionCountRef.current = Math.max(0, detectionCountRef.current - 2);
+          if (detectionCountRef.current === 0) {
+            setPaperDetected(false); setAutoProgress(0);
+          } else {
+            setAutoProgress(Math.min(detectionCountRef.current / AUTO_TH, 1));
+          }
         }
       }
       animFrameRef.current = requestAnimationFrame(loop);
