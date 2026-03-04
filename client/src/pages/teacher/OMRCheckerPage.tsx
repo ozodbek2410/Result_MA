@@ -14,6 +14,8 @@ interface CheckResult {
   annotated_image?: string;
   uploaded_image?: string;
   error?: string;
+  detection_rate?: number;
+  grid_method?: string;
   qr_found?: boolean;
   qr_code?: {
     variantCode: string;
