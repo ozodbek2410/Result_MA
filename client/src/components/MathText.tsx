@@ -68,24 +68,48 @@ function renderMathToHtml(text: string): string {
   cleanedText = cleanedText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
   cleanedText = cleanedText.trim();
 
+  // Find all existing formula-delimited regions BEFORE auto-wrap
+  // This prevents auto-wrap from double-wrapping formulas inside \(...\) or $...$
+  const formulaRegions: Array<{start: number; end: number}> = [];
+  {
+    const delimRe = /\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$(?!\$)[^$\n]*?\$/g;
+    let dm;
+    while ((dm = delimRe.exec(cleanedText)) !== null) {
+      formulaRegions.push({ start: dm.index, end: dm.index + dm[0].length });
+    }
+  }
+  const isInsideFormula = (s: number, e: number) =>
+    formulaRegions.some(f => s >= f.start && e <= f.end);
+
   // Auto-wrap bare superscript/subscript patterns in $..$ for KaTeX
   // E^+ → $E^{+}$, Cr^{+2} → $Cr^{+2}$, H_2O → $H_2O$
-  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, '$1^{$2}');
-  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, '$1^{$2}');
-  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
+  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, (match, p1, p2, offset) => {
+    if (isInsideFormula(offset, offset + match.length)) return match;
+    return p1 + '^{' + p2 + '}';
+  });
+  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, (match, p1, p2, offset) => {
+    if (isInsideFormula(offset, offset + match.length)) return match;
+    return p1 + '^{' + p2 + '}';
+  });
+  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, (match, p1, p2, offset) => {
+    if (isInsideFormula(offset, offset + match.length)) return match;
+    return p1 + '^{' + p2 + '}';
+  });
   {
     const wrapped: Array<{start: number; end: number; formula: string}> = [];
     // Formulas with subscript: H_2O, CO_2, H_2SO_4
     const subPattern = /((?:[A-Z][A-Za-z0-9]*_\d+)+(?:\^(?:\{[^}]+\}|\d+))?)/g;
     let m;
     while ((m = subPattern.exec(cleanedText)) !== null) {
-      wrapped.push({ start: m.index, end: m.index + m[0].length, formula: m[0] });
+      if (!isInsideFormula(m.index, m.index + m[0].length)) {
+        wrapped.push({ start: m.index, end: m.index + m[0].length, formula: m[0] });
+      }
     }
     // Element with charge: E^{+}, Cr^{+2}, Fe^{3+}, O^{2-}
     const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+|[+-]))/g;
     while ((m = chargePattern.exec(cleanedText)) !== null) {
       const s = m.index, e = m.index + m[0].length;
-      if (!wrapped.some(w => s >= w.start && e <= w.end)) {
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
         wrapped.push({ start: s, end: e, formula: m[0] });
       }
     }
@@ -93,7 +117,7 @@ function renderMathToHtml(text: string): string {
     const supPattern = /(\d+)\^(\d+|\{[^}]+\})/g;
     while ((m = supPattern.exec(cleanedText)) !== null) {
       const s = m.index, e = m.index + m[0].length;
-      if (!wrapped.some(w => s >= w.start && e <= w.end)) {
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
         wrapped.push({ start: s, end: e, formula: m[0] });
       }
     }

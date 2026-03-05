@@ -782,8 +782,8 @@ export default function TestPrintPage() {
                       </div>
                       <hr className="border-t-2 border-gray-800 mb-3" />
                     </div>
-                    {/* Questions — 2-column section */}
-                    <div style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
+                    {/* Questions section */}
+                    <div>
                       {isBlockTest && test.subjectTests?.length > 0 ? (() => {
                         // Shuffled savollarni subjectId bo'yicha guruhlash
                         const hasShuffled = variant?.shuffledQuestions?.length > 0;
@@ -809,10 +809,12 @@ export default function TestPrintPage() {
 
                         return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => (
                           <div key={sgIndex}>
-                            <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px`, columnSpan: 'all' }}>
+                            {/* Subject header — full width, outside columns */}
+                            <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px` }}>
                               {sg.name}{sg.groupLetter ? ` (${sg.groupLetter} guruh)` : ''} — {sg.questions.length} ta savol
                             </div>
-                            <div className={spacingClasses.questions}>
+                            {/* Questions — 2-column per subject */}
+                            <div className={spacingClasses.questions} style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
                               {sg.questions.map((question: any, qi: number) => {
                                 const currentIndex = globalIndex++;
                                 const questionText = convertTiptapJsonToText(question.text);
@@ -858,7 +860,7 @@ export default function TestPrintPage() {
                           </div>
                         ));
                       })() : (
-                        <div className={spacingClasses.questions}>
+                        <div className={spacingClasses.questions} style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
                           {questionsToRender?.map((question: any, index: number) => {
                             const questionText = convertTiptapJsonToText(question.text);
                             const optsLen2 = (question.variants || []).reduce((s: number, v: any) => s + (convertTiptapJsonToText(v.text) || '').length, 0);
