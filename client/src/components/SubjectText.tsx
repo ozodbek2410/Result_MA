@@ -15,23 +15,22 @@ interface SubjectTextProps {
  * Автоматически выбирает правильный рендерер в зависимости от предмета
  */
 export default function SubjectText({ text, subject = 'math', className = '' }: SubjectTextProps) {
-  const s = (subject || '').toLowerCase().trim();
-
-  if (s === 'chemistry' || s === 'kimyo' || s.includes('kimyo')) {
+  if (subject === 'chemistry' || subject === 'kimyo') {
     return <ChemistryText text={text} className={className} />;
   }
-
-  if (s === 'biology' || s === 'biologiya' || s.includes('biolog')) {
+  
+  if (subject === 'biology' || subject === 'biologiya') {
     return <BiologyText text={text} className={className} />;
   }
-
-  if (s === 'physics' || s === 'fizika' || s.includes('fizik')) {
+  
+  if (subject === 'physics' || subject === 'fizika') {
     return <PhysicsText text={text} className={className} />;
   }
-
-  if (s === 'literature' || s === 'adabiyot' || s.includes('adabiyot') || s.includes('ona tili')) {
+  
+  if (subject === 'literature' || subject === 'adabiyot' || subject === 'ona tili') {
     return <LiteratureText text={text} className={className} />;
   }
-
+  
+  // По умолчанию используем MathText (для математики)
   return <MathText text={text} className={className} />;
 }

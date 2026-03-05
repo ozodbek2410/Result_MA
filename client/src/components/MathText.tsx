@@ -55,7 +55,10 @@ function renderMathToHtml(text: string): string {
 
   // Extract formulas from HTML tags, decode entities and detect display mode
   cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_: string, latex: string) => {
-    const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    let decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    // Strip any existing $ delimiters from data-latex to prevent $$...$$ display mode
+    while (decoded.startsWith('$$') && decoded.endsWith('$$') && decoded.length > 4) decoded = decoded.slice(2, -2).trim();
+    while (decoded.startsWith('$') && decoded.endsWith('$') && decoded.length > 2) decoded = decoded.slice(1, -1).trim();
     if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
       return '$$' + decoded + '$$';
     }
@@ -139,10 +142,14 @@ function renderMathToHtml(text: string): string {
   let normalizedText = cleanedText;
   // Convert \(...\) to $ or $$ based on content (multi-line environments → display mode)
   normalizedText = normalizedText.replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula: string) => {
-    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(formula)) {
-      return '$$' + formula + '$$';
+    // Strip any existing $ delimiters to prevent \($SO_3$\) → $$SO_3$$ (display mode)
+    let clean = formula.trim();
+    while (clean.startsWith('$$') && clean.endsWith('$$') && clean.length > 4) clean = clean.slice(2, -2).trim();
+    while (clean.startsWith('$') && clean.endsWith('$') && clean.length > 2) clean = clean.slice(1, -1).trim();
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(clean)) {
+      return '$$' + clean + '$$';
     }
-    return '$' + formula + '$';
+    return '$' + clean + '$';
   });
   normalizedText = normalizedText.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
 

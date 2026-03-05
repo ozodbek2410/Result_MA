@@ -185,7 +185,10 @@ export function convertTiptapJsonToText(json: any): string {
     
     // Формула - возвращаем в LaTeX формате для MathText
     if (node.type === 'formula') {
-      const latex = node.attrs?.latex || '';
+      let latex = node.attrs?.latex || '';
+      // Strip any existing $ delimiters to prevent \($SO_3$\) → $$SO_3$$ in MathText
+      while (latex.startsWith('$$') && latex.endsWith('$$') && latex.length > 4) latex = latex.slice(2, -2).trim();
+      while (latex.startsWith('$') && latex.endsWith('$') && latex.length > 2) latex = latex.slice(1, -1).trim();
       return `\\(${latex}\\)`;
     }
     

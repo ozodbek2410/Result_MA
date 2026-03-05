@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
+import SubjectText from '@/components/SubjectText';
 import { Printer, ArrowLeft, FileText, Download, FileDown, X } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
@@ -807,7 +808,9 @@ export default function TestPrintPage() {
 
                         let globalIndex = 0;
 
-                        return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => (
+                        return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => {
+                          const subjectSlug = sg.name.toLowerCase();
+                          return (
                           <div key={sgIndex}>
                             {/* Subject header — full width, outside columns */}
                             <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px` }}>
@@ -825,13 +828,13 @@ export default function TestPrintPage() {
                                     {(question.contextText || question.contextImage) && (
                                       <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
                                         {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
-                                        {question.contextText && <MathText text={question.contextText} />}
+                                        {question.contextText && <SubjectText text={question.contextText} subject={subjectSlug} />}
                                         <div style={{ clear: 'both' }} />
                                       </div>
                                     )}
                                     <div className="mb-1">
                                       <span className="font-bold">{currentIndex + 1}. </span>
-                                      <span><MathText text={questionText} /></span>
+                                      <span><SubjectText text={questionText} subject={subjectSlug} /></span>
                                     </div>
                                     {question.imageUrl && (
                                       <div className="my-1 ml-6">
@@ -847,7 +850,7 @@ export default function TestPrintPage() {
                                             {qVariant.imageUrl ? (
                                               <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={qVariant.imageWidth ? { width: Math.round(qVariant.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.5); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
                                             ) : (
-                                              <MathText text={variantText} />
+                                              <SubjectText text={variantText} subject={subjectSlug} />
                                             )}
                                           </span>
                                         );
@@ -858,8 +861,11 @@ export default function TestPrintPage() {
                               })}
                             </div>
                           </div>
-                        ));
-                      })() : (
+                          );
+                        });
+                      })() : (() => {
+                        const testSubjectSlug = (test.subjectId?.nameUzb || '').toLowerCase();
+                        return (
                         <div className={spacingClasses.questions} style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
                           {questionsToRender?.map((question: any, index: number) => {
                             const questionText = convertTiptapJsonToText(question.text);
@@ -870,13 +876,13 @@ export default function TestPrintPage() {
                                 {(question.contextText || question.contextImage) && (
                                   <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
                                     {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
-                                    {question.contextText && <MathText text={question.contextText} />}
+                                    {question.contextText && <SubjectText text={question.contextText} subject={testSubjectSlug} />}
                                     <div style={{ clear: 'both' }} />
                                   </div>
                                 )}
                                 <div className="mb-1">
                                   <span className="font-bold">{index + 1}. </span>
-                                  <span><MathText text={questionText} /></span>
+                                  <span><SubjectText text={questionText} subject={testSubjectSlug} /></span>
                                 </div>
                                 {question.imageUrl && (
                                   <div className="my-1 ml-6">
@@ -892,7 +898,7 @@ export default function TestPrintPage() {
                                         {qVariant.imageUrl ? (
                                           <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={qVariant.imageWidth ? { width: Math.round(qVariant.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.5); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
                                         ) : (
-                                          <MathText text={variantText} />
+                                          <SubjectText text={variantText} subject={testSubjectSlug} />
                                         )}
                                       </span>
                                     );
@@ -902,7 +908,8 @@ export default function TestPrintPage() {
                             );
                           })}
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -1436,6 +1443,25 @@ export default function TestPrintPage() {
         body:has(.print-view-mode) .sidebar { display: none !important; }
         body:has(.print-view-mode) main { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
         body:has(.print-view-mode) main > div { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+
+        /* Force inline rendering for KaTeX formulas inside question text */
+        .print-page .katex-inline .katex-display,
+        .print-page .katex-inline .katex-display > .katex {
+          display: inline !important;
+          text-align: initial !important;
+          margin: 0 !important;
+        }
+        /* Prevent katex-block from centering when inside question flow */
+        .print-page .mb-1 .katex-block .katex-display,
+        .print-page .mr-3 .katex-block .katex-display {
+          display: inline !important;
+          text-align: initial !important;
+          margin: 0 !important;
+        }
+        .print-page .mb-1 .katex-block .katex-display > .katex,
+        .print-page .mr-3 .katex-block .katex-display > .katex {
+          display: inline !important;
+        }
       `}</style>
     </div>
   );
