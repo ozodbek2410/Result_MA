@@ -767,6 +767,9 @@ export abstract class BaseParser {
               }
             }
             if (missingTables.length > 0) {
+              for (const mt of missingTables) {
+                console.log(`📋 [AST-TABLE] ${mt.id} HTML:\n${mt.html}`);
+              }
               console.log(`🔄 [PARSER] Rendering ${missingTables.length} AST-detected tables missed by XML extractor...`);
               const rendered = await this.tableRenderer.renderMultipleTables(missingTables);
               for (const [tableId, imageUrl] of rendered) {
