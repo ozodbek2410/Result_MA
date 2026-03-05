@@ -1511,8 +1511,7 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     const resultMap = new Map<string, any>();
     for (const r of results) { resultMap.set(r.studentId.toString(), r); }
 
-    const variants = await StudentVariant.find({ testId: { $in: allTestIds }, testType: 'BlockTest', studentId: { $in: studentIds } })
-      .populate('shuffledQuestions.subjectId', 'nameUzb').lean();
+    const variants = await StudentVariant.find({ testId: { $in: allTestIds }, testType: 'BlockTest', studentId: { $in: studentIds } }).lean();
     const variantMap = new Map<string, any>();
     for (const v of variants) { variantMap.set(v.studentId.toString(), v); }
 
@@ -1528,6 +1527,14 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       }
     }
 
+    // Helper: extract subjectId string from shuffledQuestion
+    const getSubId = (q: any): string => {
+      if (!q?.subjectId) return 'unknown';
+      if (typeof q.subjectId === 'string') return q.subjectId;
+      if (q.subjectId._id) return q.subjectId._id.toString();
+      return q.subjectId.toString();
+    };
+
     type SubjectScores = Map<string, { correct: number; total: number }>;
     const studentSubjectScores = new Map<string, SubjectScores>();
     for (const student of students) {
@@ -1537,8 +1544,7 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       if (!result || !variant?.shuffledQuestions?.length) continue;
       const scores: SubjectScores = new Map();
       for (let i = 0; i < variant.shuffledQuestions.length; i++) {
-        const q = variant.shuffledQuestions[i];
-        const subId = q?.subjectId?._id?.toString() || q?.subjectId?.toString() || 'unknown';
+        const subId = getSubId(variant.shuffledQuestions[i]);
         if (!scores.has(subId)) scores.set(subId, { correct: 0, total: 0 });
         const entry = scores.get(subId)!;
         entry.total++;
