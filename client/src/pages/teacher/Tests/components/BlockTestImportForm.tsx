@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import MathText from '@/components/MathText';
+import { convertChemistryToTiptapJson, convertPhysicsToTiptapJson, convertLatexToTiptapJson } from '@/lib/latexUtils';
 
 export interface BlockTestFormData {
   classNumber: number;
@@ -240,7 +241,20 @@ export function BlockTestImportForm({
           headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000,
         });
         if (data.questions?.length > 0) {
-          upd(tab.id, { questions: data.questions, status: 'done' });
+          // Convert raw text to TipTap JSON with formula nodes
+          const hasFormula = (t: string) => typeof t === 'string' && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
+          const convert = (t: string) => {
+            if (!hasFormula(t)) return t;
+            if (pk === 'chemistry') return convertChemistryToTiptapJson(t);
+            if (pk === 'physics') return convertPhysicsToTiptapJson(t);
+            return convertLatexToTiptapJson(t);
+          };
+          const converted = (data.questions as ParsedQuestion[]).map((q: ParsedQuestion) => ({
+            ...q,
+            text: convert(q.text),
+            variants: q.variants.map(v => ({ ...v, text: convert(v.text) })),
+          }));
+          upd(tab.id, { questions: converted, status: 'done' });
           setActiveId(tab.id);
           // Alert: to'g'ri javob belgilanmagan savollar
           const noAns = (data.questions as ParsedQuestion[])
