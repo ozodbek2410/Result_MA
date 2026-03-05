@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
-import SubjectText from '@/components/SubjectText';
 import { Printer, ArrowLeft, FileText, Download, FileDown, X } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
@@ -300,6 +299,70 @@ export default function TestPrintPage() {
     }
   };
   
+  // Booklet PDF export (kitobcha format)
+  const handleDownloadBookletPDF = async () => {
+    try {
+      setExporting(true);
+      setExportProgress(0);
+      success('Kitobcha PDF yaratilmoqda...');
+
+      const endpoint = isBlockTest
+        ? `/block-tests/${id}/export-booklet-pdf-async`
+        : `/tests/${id}/export-booklet-pdf-async`;
+
+      const { data } = await api.post(endpoint, {
+        students: selectedStudents.map(s => s._id),
+        settings: { fontSize, fontFamily, lineHeight, columnsCount, backgroundOpacity,
+          backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined }
+      });
+
+      const { jobId } = data;
+      setExportJobId(jobId);
+
+      const pollStatus = async () => {
+        try {
+          const statusEndpoint = isBlockTest
+            ? `/block-tests/pdf-export-status/${jobId}`
+            : `/tests/pdf-export-status/${jobId}`;
+          const { data: status } = await api.get(statusEndpoint);
+          setExportProgress(status.progress || 0);
+
+          if (status.status === 'completed') {
+            success('Kitobcha PDF tayyor!');
+            const link = document.createElement('a');
+            link.href = status.result.fileUrl;
+            link.download = status.result.fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          if (status.status === 'failed') {
+            showError(`Xatolik: ${status.error}`);
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          setTimeout(pollStatus, 2000);
+        } catch {
+          showError('Status tekshirishda xatolik');
+          setExporting(false);
+          setExportJobId(null);
+        }
+      };
+      setTimeout(pollStatus, 1000);
+    } catch (error: any) {
+      console.error('Error starting booklet export:', error);
+      showError(error.response?.data?.message || 'Kitobcha PDF xatolik');
+      setExporting(false);
+      setExportJobId(null);
+    }
+  };
+
   // Fallback: Sync PDF version (old method)
   const handleDownloadPDFSync = async () => {
     let progressTimer: ReturnType<typeof setInterval> | null = null;
@@ -732,11 +795,11 @@ export default function TestPrintPage() {
                           );
                         }
 
-                        const map = new Map<string, { name: string; subjectKey: string; groupLetter: string | null; questions: any[] }>();
+                        const map = new Map<string, { name: string; groupLetter: string | null; questions: any[] }>();
                         for (const q of variant.shuffledQuestions) {
                           const sid = (q.subjectId?._id || q.subjectId || '').toString();
                           const name = q.subjectId?.nameUzb || 'Fan';
-                          if (!map.has(sid)) map.set(sid, { name, subjectKey: name.toLowerCase(), groupLetter: q.studentGroupLetter || null, questions: [] });
+                          if (!map.has(sid)) map.set(sid, { name, groupLetter: q.studentGroupLetter || null, questions: [] });
                           map.get(sid)!.questions.push(q);
                         }
                         const subjectGroups = Array.from(map.values());
@@ -759,13 +822,13 @@ export default function TestPrintPage() {
                                     {(question.contextText || question.contextImage) && (
                                       <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
                                         {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
-                                        {question.contextText && <SubjectText text={question.contextText} subject={sg.subjectKey} />}
+                                        {question.contextText && <MathText text={question.contextText} />}
                                         <div style={{ clear: 'both' }} />
                                       </div>
                                     )}
                                     <div className="mb-1">
                                       <span className="font-bold">{currentIndex + 1}. </span>
-                                      <span><SubjectText text={questionText} subject={sg.subjectKey} /></span>
+                                      <span><MathText text={questionText} /></span>
                                     </div>
                                     {question.imageUrl && (
                                       <div className="my-1 ml-6">
@@ -781,7 +844,7 @@ export default function TestPrintPage() {
                                             {qVariant.imageUrl ? (
                                               <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={qVariant.imageWidth ? { width: Math.round(qVariant.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.5); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
                                             ) : (
-                                              <SubjectText text={variantText} subject={sg.subjectKey} />
+                                              <MathText text={variantText} />
                                             )}
                                           </span>
                                         );
@@ -1073,6 +1136,18 @@ export default function TestPrintPage() {
                   <FileText className="w-4 h-4 mr-1" />
                   {exporting ? `${exportProgress}%` : (type === 'sheets' ? 'Titul Word' : 'Word')}
                 </Button>
+                {type === 'questions' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDownloadBookletPDF}
+                    disabled={exporting}
+                    className="border-green-300 text-green-600 hover:bg-green-50"
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha PDF'}
+                  </Button>
+                )}
               </div>
 
               {/* Settings Button */}

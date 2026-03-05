@@ -939,6 +939,55 @@ router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res)
 });
 
 /**
+ * Booklet PDF export (kitobcha format)
+ * POST /tests/:id/export-booklet-pdf-async
+ */
+router.post('/:id/export-booklet-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  req.setTimeout(0);
+  res.setTimeout(0);
+  try {
+    const { id } = req.params;
+    const { students, settings } = req.body;
+
+    if (process.env.REDIS_ENABLED !== 'true') {
+      return res.status(503).json({ message: 'Queue service mavjud emas', error: 'redis_disabled' });
+    }
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ message: 'O\'quvchilar tanlanmagan' });
+    }
+
+    const test = await Test.findById(id).select('branchId name').lean();
+    if (!test) return res.status(404).json({ message: 'Test topilmadi' });
+
+    if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+
+    const job = await pdfExportQueue.add('export', {
+      testId: id,
+      studentIds: students,
+      userId: req.user?.id || 'unknown',
+      isBlockTest: false,
+      booklet: true,
+      settings
+    }, {
+      priority: students.length > 50 ? 2 : 1,
+      jobId: `booklet-test-${id}-${Date.now()}`
+    });
+
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'Kitobcha PDF yaratilmoqda...',
+      estimatedTime: Math.ceil(students.length * 2)
+    });
+  } catch (error: any) {
+    console.error('❌ [API] Error queueing booklet export:', error);
+    res.status(500).json({ message: 'Xatolik yuz berdi', error: error.message });
+  }
+});
+
+/**
  * Check PDF export job status
  * GET /tests/pdf-export-status/:jobId
  */

@@ -23,6 +23,7 @@ export interface PDFExportJobData {
   studentIds: string[];
   userId: string;
   isBlockTest?: boolean;
+  booklet?: boolean;
   settings?: {
     fontSize?: number;
     fontFamily?: string;
@@ -163,10 +164,18 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     await job.updateProgress(70);
     
     console.log(`📄 [PDF Worker ${process.pid}] Generating PDF...`);
-    const pdfBuffer = await PDFGeneratorService.generatePDF(testData);
-    
+    let pdfBuffer = await PDFGeneratorService.generatePDF(testData);
+
     console.log(`✅ [PDF Worker ${process.pid}] PDF generated: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
-    
+
+    // Step 4.5: Booklet imposition (if requested)
+    if (job.data.booklet) {
+      await job.updateProgress(80);
+      console.log(`📖 [PDF Worker ${process.pid}] Applying booklet imposition...`);
+      pdfBuffer = await PDFGeneratorService.imposeBooklet(pdfBuffer, students.length);
+      console.log(`✅ [PDF Worker ${process.pid}] Booklet PDF: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
+    }
+
     // Step 5: Upload to storage (85%)
     await job.updateProgress(85);
     
