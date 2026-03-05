@@ -1526,8 +1526,8 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       const firstV = variants[0];
       console.log('📊 EXCEL DEBUG: first variant testId =', firstV.testId?.toString());
       console.log('📊 EXCEL DEBUG: first variant studentId =', firstV.studentId?.toString());
-      console.log('📊 EXCEL DEBUG: first variant shuffledQuestions count =', firstV.shuffledQuestions?.length);
-      if (firstV.shuffledQuestions?.length > 0) {
+      console.log('📊 EXCEL DEBUG: first variant shuffledQuestions count =', firstV.shuffledQuestions?.length || 0);
+      if (firstV.shuffledQuestions && firstV.shuffledQuestions.length > 0) {
         const q0 = firstV.shuffledQuestions[0];
         console.log('📊 EXCEL DEBUG: q0.subjectId =', JSON.stringify(q0?.subjectId));
         console.log('📊 EXCEL DEBUG: q0.subjectId type =', typeof q0?.subjectId);
