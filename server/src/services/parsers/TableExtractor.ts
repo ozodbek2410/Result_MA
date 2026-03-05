@@ -89,29 +89,50 @@ export class TableExtractor {
    */
   private parseTable(tableTag: any, index: number): ExtractedTable | null {
     try {
-      const rows: TableRow[] = [];
-      
-      // Jadval qatorlarini topish (w:tr)
+      // 1. Raw parse — vMerge info bilan
+      const rawRows: Array<{ cells: Array<{ text: string; colSpan?: number; vMerge?: 'restart' | 'continue' }> }> = [];
       const tableRows = tableTag['w:tr'] || [];
-      
+
       for (const rowTag of tableRows) {
-        const row = this.parseRow(rowTag);
-        if (row) {
-          rows.push(row);
+        const cells: Array<{ text: string; colSpan?: number; vMerge?: 'restart' | 'continue' }> = [];
+        const cellTags = rowTag['w:tc'] || [];
+        for (const cellTag of cellTags) {
+          const cell = this.parseCellRaw(cellTag);
+          if (cell) cells.push(cell);
+        }
+        rawRows.push({ cells });
+      }
+
+      if (rawRows.length === 0) return null;
+
+      // 2. vMerge → rowSpan hisoblash va continue hujayralarini olib tashlash
+      const rows: TableRow[] = rawRows.map(r => ({ cells: r.cells.map(c => ({ text: c.text, colSpan: c.colSpan })) }));
+
+      // Har bir ustun bo'yicha vMerge ni hisoblash
+      const numCols = Math.max(...rawRows.map(r => r.cells.length));
+      for (let col = 0; col < numCols; col++) {
+        for (let row = 0; row < rawRows.length; row++) {
+          const rawCell = rawRows[row]?.cells[col];
+          if (rawCell?.vMerge === 'restart') {
+            // restart — qancha davom qilishini hisoblash
+            let span = 1;
+            for (let r2 = row + 1; r2 < rawRows.length; r2++) {
+              if (rawRows[r2]?.cells[col]?.vMerge === 'continue') {
+                span++;
+              } else break;
+            }
+            if (span > 1) rows[row].cells[col].rowSpan = span;
+          }
         }
       }
-      
-      if (rows.length === 0) {
-        return null;
+
+      // continue hujayralarini olib tashlash
+      for (let row = 0; row < rawRows.length; row++) {
+        rows[row].cells = rows[row].cells.filter((_, col) => rawRows[row].cells[col]?.vMerge !== 'continue');
       }
-      
+
       const html = this.convertToHtml(rows);
-      
-      return {
-        id: `table${index + 1}`,
-        rows,
-        html,
-      };
+      return { id: `table${index + 1}`, rows, html };
     } catch (error) {
       console.error('❌ [TABLE] Error parsing table:', error);
       return null;
@@ -119,55 +140,31 @@ export class TableExtractor {
   }
 
   /**
-   * Jadval qatorini parse qilish
+   * Jadval katakchani parse qilish (vMerge info bilan)
    */
-  private parseRow(rowTag: any): TableRow | null {
-    try {
-      const cells: TableCell[] = [];
-      
-      // Qator katakchalarini topish (w:tc)
-      const cellTags = rowTag['w:tc'] || [];
-      
-      for (const cellTag of cellTags) {
-        const cell = this.parseCell(cellTag);
-        if (cell) {
-          cells.push(cell);
-        }
-      }
-      
-      return { cells };
-    } catch (error) {
-      console.error('❌ [TABLE] Error parsing row:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Jadval katakchani parse qilish
-   */
-  private parseCell(cellTag: any): TableCell | null {
+  private parseCellRaw(cellTag: any): { text: string; colSpan?: number; vMerge?: 'restart' | 'continue' } | null {
     try {
       let text = '';
-      
-      // Katakcha ichidagi paragraflarni topish (w:p)
       const paragraphs = cellTag['w:p'] || [];
-      
       for (const para of paragraphs) {
         const paraText = this.extractTextFromParagraph(para);
-        if (paraText) {
-          text += (text ? '\n' : '') + paraText;
-        }
+        if (paraText) text += (text ? '\n' : '') + paraText;
       }
-      
-      // Merge info (rowSpan, colSpan)
+
       const tcPr = cellTag['w:tcPr']?.[0];
       const gridSpan = tcPr?.['w:gridSpan']?.[0]?.['$']?.['w:val'];
-      const vMerge = tcPr?.['w:vMerge']?.[0];
-      
+      const vMergeTag = tcPr?.['w:vMerge']?.[0];
+
+      let vMerge: 'restart' | 'continue' | undefined;
+      if (vMergeTag !== undefined) {
+        const val = vMergeTag?.['$']?.['w:val'];
+        vMerge = val === 'restart' ? 'restart' : 'continue';
+      }
+
       return {
         text: text.trim(),
         colSpan: gridSpan ? parseInt(gridSpan) : undefined,
-        rowSpan: vMerge ? 2 : undefined, // Simplified
+        vMerge,
       };
     } catch (error) {
       console.error('❌ [TABLE] Error parsing cell:', error);
