@@ -163,8 +163,9 @@ export function BlockTestImportForm({
             const needsConvert = (t: string) => typeof t === 'string' && !t.startsWith('{') && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
             const convertText = (t: string) => {
               if (!t || !needsConvert(t)) return t;
-              if (pk === 'chemistry') return convertChemistryToTiptapJson(t);
               if (pk === 'physics') return convertPhysicsToTiptapJson(t);
+              // Chemistry converter handles ^/_ patterns for all subjects
+              if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
               return convertLatexToTiptapJson(t);
             };
             return {
@@ -257,8 +258,9 @@ export function BlockTestImportForm({
           const hasFormula = (t: string) => typeof t === 'string' && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
           const convert = (t: string) => {
             if (!hasFormula(t)) return t;
-            if (pk === 'chemistry') return convertChemistryToTiptapJson(t);
             if (pk === 'physics') return convertPhysicsToTiptapJson(t);
+            // Chemistry converter handles ^/_ patterns for all subjects
+            if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
             return convertLatexToTiptapJson(t);
           };
           const converted = (data.questions as ParsedQuestion[]).map((q: ParsedQuestion) => ({
