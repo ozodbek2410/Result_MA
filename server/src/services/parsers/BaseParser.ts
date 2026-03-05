@@ -86,6 +86,7 @@ export abstract class BaseParser {
   protected imageDimensions: Map<string, { widthPx: number; heightPx: number }> = new Map();
   protected extractedFormulas: Map<string, string> = new Map(); // imageNum -> LaTeX
   protected astTableIndex = 1;
+  protected pendingAstTables: Map<string, string> = new Map(); // tableId -> HTML (from Pandoc AST)
   protected tableExtractor: TableExtractor;
   protected tableRenderer: TableRenderer;
   
@@ -117,8 +118,15 @@ export abstract class BaseParser {
       case 'Para':
       case 'Plain':
         return this.serializeInlines(block.c);
-      case 'Table':
-        return `___TABLE_${this.astTableIndex++}___`;
+      case 'Table': {
+        const tableIdx = this.astTableIndex++;
+        const tableId = `table${tableIdx}`;
+        try {
+          const html = this.extractTableHtmlFromAst(block.c);
+          if (html) this.pendingAstTables.set(tableId, html);
+        } catch { /* ignore AST parse errors */ }
+        return `___TABLE_${tableIdx}___`;
+      }
       case 'BlockQuote':
         return block.c.map(b => this.serializeBlock(b)).join('\n');
       case 'Header':
@@ -214,6 +222,67 @@ export abstract class BaseParser {
         default: return '';
       }
     }).join('');
+  }
+
+  /**
+   * Extract HTML table from Pandoc Table AST content.
+   * Pandoc Table: [attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]
+   */
+  protected extractTableHtmlFromAst(tableContent: unknown[]): string {
+    const serializeCells = (rows: unknown[]): string => {
+      if (!Array.isArray(rows)) return '';
+      return rows.map(row => {
+        // Row: [attr, [Cell, ...]]
+        const rowArr = row as unknown[];
+        const cells = rowArr[1] as unknown[] || rowArr;
+        const actualCells = Array.isArray(cells) ? cells : [];
+        const tds = actualCells.map(cell => {
+          // Cell: [attr, alignment, rowSpan, colSpan, [Block, ...]]
+          const cellArr = cell as unknown[];
+          const blocks = (Array.isArray(cellArr) && cellArr.length >= 5 ? cellArr[4] : cellArr) as PandocBlock[];
+          if (!Array.isArray(blocks)) return '<td></td>';
+          const text = blocks.map(b => this.serializeBlock(b)).filter(s => s).join(' ');
+          return `<td>${text}</td>`;
+        }).join('');
+        return `<tr>${tds}</tr>`;
+      }).join('\n');
+    };
+
+    try {
+      // tableContent = [attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]
+      const tableHead = tableContent[3] as unknown[];
+      const tableBodies = tableContent[4] as unknown[];
+
+      let html = '<table>\n';
+
+      // TableHead: [attr, [Row, ...]]
+      if (tableHead && Array.isArray(tableHead)) {
+        const headRows = (tableHead[1] || tableHead) as unknown[];
+        if (Array.isArray(headRows) && headRows.length > 0) {
+          const headHtml = serializeCells(headRows);
+          if (headHtml) html += `<thead>${headHtml}</thead>\n`;
+        }
+      }
+
+      // TableBody: [[attr, rowHeadCount, [Row...headRows], [Row...bodyRows]], ...]
+      if (tableBodies && Array.isArray(tableBodies)) {
+        html += '<tbody>\n';
+        for (const body of tableBodies) {
+          const bodyArr = body as unknown[];
+          // bodyRows are at index 3
+          const bodyRows = (Array.isArray(bodyArr) && bodyArr.length >= 4 ? bodyArr[3] : bodyArr) as unknown[];
+          if (Array.isArray(bodyRows)) {
+            html += serializeCells(bodyRows);
+          }
+        }
+        html += '</tbody>\n';
+      }
+
+      html += '</table>';
+      return html;
+    } catch {
+      return '';
+    }
   }
 
   // ─── End AST Serializer ───────────────────────────────────────────────
@@ -680,7 +749,27 @@ export abstract class BaseParser {
         try {
           const doc: PandocDocument = JSON.parse(stdout);
           this.astTableIndex = 1;
+          this.pendingAstTables.clear();
           const serialized = this.serializeAstBlocks(doc.blocks);
+
+          // Render AST tables that XML extractor missed
+          if (this.pendingAstTables.size > 0) {
+            const missingTables: Array<{ id: string; html: string }> = [];
+            for (const [tableId, html] of this.pendingAstTables) {
+              if (!this.extractedTables.has(tableId)) {
+                missingTables.push({ id: tableId, html });
+              }
+            }
+            if (missingTables.length > 0) {
+              console.log(`🔄 [PARSER] Rendering ${missingTables.length} AST-detected tables missed by XML extractor...`);
+              const rendered = await this.tableRenderer.renderMultipleTables(missingTables);
+              for (const [tableId, imageUrl] of rendered) {
+                this.extractedTables.set(tableId, imageUrl);
+              }
+              console.log(`✅ [PARSER] AST tables rendered: ${rendered.size}/${missingTables.length}`);
+            }
+          }
+
           console.log('✅ [PARSER] Pandoc JSON AST serialized successfully');
           return serialized;
         } catch (parseErr) {
