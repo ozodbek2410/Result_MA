@@ -156,19 +156,30 @@ export function BlockTestImportForm({
         }
 
         if (allSubjectTests.length > 0) {
-          const loaded: SubjectTab[] = allSubjectTests.map((st) => ({
+          const loaded: SubjectTab[] = allSubjectTests.map((st) => {
+            const sid = typeof st.subjectId === 'object' ? st.subjectId?._id || '' : st.subjectId || '';
+            const subName = typeof st.subjectId === 'object' ? (st.subjectId as { nameUzb?: string })?.nameUzb || '' : '';
+            const pk = subName ? getParserKeyFromSubject(subName) : 'math';
+            const needsConvert = (t: string) => typeof t === 'string' && !t.startsWith('{') && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
+            const convertText = (t: string) => {
+              if (!t || !needsConvert(t)) return t;
+              if (pk === 'chemistry') return convertChemistryToTiptapJson(t);
+              if (pk === 'physics') return convertPhysicsToTiptapJson(t);
+              return convertLatexToTiptapJson(t);
+            };
+            return {
             id: Math.random().toString(36).slice(2),
-            subjectId: typeof st.subjectId === 'object' ? st.subjectId?._id || '' : st.subjectId || '',
+            subjectId: sid,
             groupLetter: st.groupLetter || '',
             file: null,
             questions: (st.questions || []).map((q: ParsedQuestion) => ({
-              text: q.text || '',
-              contextText: q.contextText,
+              text: convertText(q.text || ''),
+              contextText: q.contextText ? convertText(q.contextText) : q.contextText,
               contextImage: q.contextImage,
               contextImageWidth: q.contextImageWidth,
               contextImageHeight: q.contextImageHeight,
               formula: q.formula,
-              variants: (q.variants || []).map(v => ({ ...v })),
+              variants: (q.variants || []).map(v => ({ ...v, text: convertText(v.text || '') })),
               correctAnswer: q.correctAnswer || '',
               points: q.points || 1,
               pinned: q.pinned || false,
@@ -180,7 +191,8 @@ export function BlockTestImportForm({
             })),
             error: '',
             status: 'done' as const,
-          }));
+          };
+          });
           setTabs(loaded);
           setActiveId(loaded[0].id);
         }
