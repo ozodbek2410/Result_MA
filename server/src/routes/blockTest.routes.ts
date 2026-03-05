@@ -1659,9 +1659,9 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     }
 
     const buffer = await wb.xlsx.writeBuffer();
-    const fileName = encodeURIComponent(`Blok_test_${blockTest.classNumber}sinf_${periodName.replace('/', '_')}.xlsx`);
+    const safeName = `Blok_test_${blockTest.classNumber}sinf_${blockTest.periodMonth}_${blockTest.periodYear}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
     res.send(Buffer.from(buffer));
   } catch (error: any) {
     console.error('❌ Error exporting block test Excel:', error);
