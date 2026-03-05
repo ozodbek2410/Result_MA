@@ -1,11 +1,13 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import ExcelJS from 'exceljs';
 import BlockTest from '../models/BlockTest';
 import Student from '../models/Student';
 import StudentGroup from '../models/StudentGroup';
 import StudentVariant from '../models/StudentVariant';
 import StudentTestConfig from '../models/StudentTestConfig';
 import GroupSubjectConfig from '../models/GroupSubjectConfig';
+import TestResult from '../models/TestResult';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import { PDFExportService } from '../services/pdfExportService';
@@ -2003,5 +2005,284 @@ router.get('/variants/:variantCode/answer-sheet', authenticate, async (req: Auth
   } catch (error: any) {
     console.error('❌ Answer sheet generation error:', error);
     res.status(500).json({ message: 'Server xatosi', error: error.message });
+  }
+});
+
+
+// ─── EXCEL EXPORT FOR BLOCK TEST ───────────────────────────────────────────────
+router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const blockTestId = req.params.id;
+
+    // Load block test with populated subjects
+    const blockTest = await BlockTest.findById(blockTestId)
+      .populate('subjectTests.subjectId', 'nameUzb')
+      .populate('groupId', 'name letter')
+      .lean();
+
+    if (!blockTest) {
+      return res.status(404).json({ message: 'Blok test topilmadi' });
+    }
+
+    // Find all related block tests (same class/period/group)
+    const groupIdStr = blockTest.groupId
+      ? (typeof blockTest.groupId === 'object' ? (blockTest.groupId as any)._id : blockTest.groupId)
+      : undefined;
+
+    const relatedFilter: Record<string, unknown> = {
+      classNumber: blockTest.classNumber,
+      periodMonth: blockTest.periodMonth,
+      periodYear: blockTest.periodYear,
+      branchId: blockTest.branchId,
+    };
+    if (groupIdStr) relatedFilter.groupId = groupIdStr;
+
+    const relatedTests = await BlockTest.find(relatedFilter)
+      .populate('subjectTests.subjectId', 'nameUzb')
+      .lean();
+
+    // Merge all subjects from related tests
+    const allSubjects: { subjectId: any; groupLetter?: string; questionsCount: number; testId: string }[] = [];
+    for (const rt of relatedTests) {
+      for (const st of rt.subjectTests || []) {
+        if (st.subjectId) {
+          allSubjects.push({
+            subjectId: st.subjectId,
+            groupLetter: st.groupLetter,
+            questionsCount: st.questions?.length || 0,
+            testId: rt._id.toString(),
+          });
+        }
+      }
+    }
+
+    // Load students
+    const studentFilter: Record<string, unknown> = groupIdStr
+      ? { groupId: groupIdStr }
+      : { classNumber: blockTest.classNumber };
+    const students = await Student.find(studentFilter).sort({ fullName: 1 }).lean();
+
+    // Load student test configs
+    const studentIds = students.map(s => s._id);
+    const configs = await StudentTestConfig.find({ studentId: { $in: studentIds } }).lean();
+    const configMap = new Map(configs.map(c => [c.studentId.toString(), c]));
+
+    // Load test results for all related block tests
+    const allTestIds = relatedTests.map(t => t._id);
+    const results = await TestResult.find({ blockTestId: { $in: allTestIds }, studentId: { $in: studentIds } })
+      .lean();
+    const resultMap = new Map<string, any>();
+    for (const r of results) {
+      resultMap.set(r.studentId.toString(), r);
+    }
+
+    // Load student groups (for group letter info)
+    const studentGroups = await StudentGroup.find({ studentId: { $in: studentIds } })
+      .populate('subjectId', 'nameUzb')
+      .lean();
+    const studentGroupMap = new Map<string, any[]>();
+    for (const sg of studentGroups) {
+      const key = sg.studentId.toString();
+      if (!studentGroupMap.has(key)) studentGroupMap.set(key, []);
+      studentGroupMap.get(key)!.push(sg);
+    }
+
+    // Build unique subject columns
+    const subjectCols: { name: string; groupLetter?: string; questionsCount: number }[] = [];
+    const seenSubjects = new Set<string>();
+    for (const s of allSubjects) {
+      const subName = (s.subjectId as any)?.nameUzb || 'Fan';
+      const key = `${subName}_${s.groupLetter || ''}`;
+      if (!seenSubjects.has(key)) {
+        seenSubjects.add(key);
+        subjectCols.push({
+          name: subName,
+          groupLetter: s.groupLetter,
+          questionsCount: s.questionsCount,
+        });
+      }
+    }
+
+    // ── Build Excel ──
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Natijalar');
+
+    // Colors
+    const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } }; // indigo-700
+    const subHeaderFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6366F1' } }; // indigo-500
+    const lightRowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } }; // indigo-50
+    const whiteRowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+    const greenFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; // green-100
+    const yellowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } }; // yellow-100
+    const redFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; // red-100
+
+    const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+    const subHeaderFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    const bodyFont: Partial<ExcelJS.Font> = { size: 10 };
+    const boldFont: Partial<ExcelJS.Font> = { bold: true, size: 10 };
+    const border: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'FFC7D2FE' } },
+      left: { style: 'thin', color: { argb: 'FFC7D2FE' } },
+      bottom: { style: 'thin', color: { argb: 'FFC7D2FE' } },
+      right: { style: 'thin', color: { argb: 'FFC7D2FE' } },
+    };
+
+    // Column widths
+    const columns: Partial<ExcelJS.Column>[] = [
+      { key: 'num', width: 5 },
+      { key: 'name', width: 32 },
+    ];
+    subjectCols.forEach((_, i) => {
+      columns.push({ key: `subj_${i}`, width: 16 });
+    });
+    columns.push({ key: 'total', width: 12 });
+    columns.push({ key: 'percent', width: 12 });
+    ws.columns = columns;
+
+    // ── Title row ──
+    const periodName = `${blockTest.periodMonth}/${blockTest.periodYear}`;
+    const groupName = blockTest.groupId ? ` | ${(blockTest.groupId as any).name || (blockTest.groupId as any).letter || ''}` : '';
+    const titleText = `Blok test natijalar — ${blockTest.classNumber}-sinf${groupName} | ${periodName}`;
+
+    const titleRow = ws.addRow([titleText]);
+    ws.mergeCells(titleRow.number, 1, titleRow.number, columns.length);
+    titleRow.getCell(1).fill = headerFill;
+    titleRow.getCell(1).font = headerFont;
+    titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    titleRow.height = 36;
+
+    // ── Sub-header info row ──
+    const infoText = `O'quvchilar: ${students.length} | Fanlar: ${subjectCols.length} | Jami savollar: ${allSubjects.reduce((s, x) => s + x.questionsCount, 0)}`;
+    const infoRow = ws.addRow([infoText]);
+    ws.mergeCells(infoRow.number, 1, infoRow.number, columns.length);
+    infoRow.getCell(1).fill = subHeaderFill;
+    infoRow.getCell(1).font = subHeaderFont;
+    infoRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    infoRow.height = 24;
+
+    // ── Column headers ──
+    const headerValues = ['№', "F.I.O"];
+    subjectCols.forEach(sc => {
+      const label = sc.groupLetter ? `${sc.name} (${sc.groupLetter})` : sc.name;
+      headerValues.push(`${label}\n(${sc.questionsCount} ta)`);
+    });
+    headerValues.push('Jami ball');
+    headerValues.push('Foiz (%)');
+
+    const colHeaderRow = ws.addRow(headerValues);
+    colHeaderRow.eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      cell.border = border;
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    });
+    colHeaderRow.height = 36;
+
+    // ── Data rows ──
+    students.forEach((student, idx) => {
+      const sid = student._id.toString();
+      const result = resultMap.get(sid);
+      const config = configMap.get(sid);
+
+      const rowValues: (string | number)[] = [idx + 1, student.fullName || "Noma'lum"];
+
+      // Per-subject data
+      subjectCols.forEach(() => {
+        if (result) {
+          rowValues.push(result.totalPoints ?? 0);
+        } else if (config) {
+          rowValues.push('-');
+        } else {
+          rowValues.push('-');
+        }
+      });
+
+      // Total and percentage
+      if (result) {
+        rowValues.push(result.totalPoints ?? 0);
+        rowValues.push(`${Math.round(result.percentage ?? 0)}%`);
+      } else {
+        rowValues.push('-');
+        rowValues.push('-');
+      }
+
+      const row = ws.addRow(rowValues);
+      const isEven = idx % 2 === 0;
+      row.eachCell((cell, colNum) => {
+        cell.fill = isEven ? lightRowFill : whiteRowFill;
+        cell.font = bodyFont;
+        cell.border = border;
+        cell.alignment = { vertical: 'middle' };
+      });
+
+      // Num column centered
+      row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      row.getCell(1).font = boldFont;
+
+      // Subject columns centered
+      for (let i = 3; i <= 2 + subjectCols.length; i++) {
+        row.getCell(i).alignment = { vertical: 'middle', horizontal: 'center' };
+      }
+
+      // Total centered + bold
+      const totalCol = 3 + subjectCols.length;
+      row.getCell(totalCol).alignment = { vertical: 'middle', horizontal: 'center' };
+      row.getCell(totalCol).font = boldFont;
+
+      // Percentage with conditional color
+      const pctCol = totalCol + 1;
+      row.getCell(pctCol).alignment = { vertical: 'middle', horizontal: 'center' };
+      if (result) {
+        const pct = result.percentage ?? 0;
+        if (pct >= 70) {
+          row.getCell(pctCol).fill = greenFill;
+          row.getCell(pctCol).font = { bold: true, size: 10, color: { argb: 'FF166534' } };
+        } else if (pct >= 40) {
+          row.getCell(pctCol).fill = yellowFill;
+          row.getCell(pctCol).font = { bold: true, size: 10, color: { argb: 'FF854D0E' } };
+        } else {
+          row.getCell(pctCol).fill = redFill;
+          row.getCell(pctCol).font = { bold: true, size: 10, color: { argb: 'FF991B1B' } };
+        }
+      }
+
+      row.height = 24;
+    });
+
+    // ── Summary footer ──
+    const hasResults = results.length > 0;
+    if (hasResults) {
+      const avgPct = results.reduce((s, r) => s + (r.percentage || 0), 0) / results.length;
+      const maxScore = Math.max(...results.map(r => r.totalPoints || 0));
+      const minScore = Math.min(...results.map(r => r.totalPoints || 0));
+
+      ws.addRow([]); // empty row
+      const summaryHeader = ws.addRow(['', 'Statistika']);
+      summaryHeader.getCell(2).font = { bold: true, size: 11 };
+
+      const statsData = [
+        ['', "O'rtacha foiz", `${Math.round(avgPct)}%`],
+        ['', 'Eng yuqori ball', maxScore],
+        ['', 'Eng past ball', minScore],
+        ['', 'Natija bor', `${results.length} / ${students.length}`],
+      ];
+      statsData.forEach(row => {
+        const r = ws.addRow(row);
+        r.getCell(2).font = boldFont;
+        r.getCell(3).font = bodyFont;
+        r.getCell(2).border = border;
+        r.getCell(3).border = border;
+      });
+    }
+
+    // Write buffer and send
+    const buffer = await wb.xlsx.writeBuffer();
+    const fileName = encodeURIComponent(`Blok_test_${blockTest.classNumber}sinf_${periodName.replace('/', '_')}.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(Buffer.from(buffer));
+  } catch (error: any) {
+    console.error('❌ Error exporting block test Excel:', error);
+    res.status(500).json({ message: 'Excel export xatosi', error: error.message });
   }
 });
