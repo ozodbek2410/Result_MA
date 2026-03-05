@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
@@ -725,7 +725,8 @@ export default function TestPrintPage() {
     return (
       <div className="print:px-0 print:max-w-full print:mx-0" style={{ fontSize: `${fontSize}px` }}>
         {pages.map((studentsOnPage, pageIndex) => (
-          <div key={pageIndex} className="page-break print-page mb-8 print:mb-0" style={{ '--print-bg-image': backgroundImage ? `url(${backgroundImage})` : 'url(/logo.png)', '--print-bg-opacity': backgroundOpacity } as React.CSSProperties}>
+          <React.Fragment key={pageIndex}>
+          <div className="page-break print-page mb-8 print:mb-0" style={{ '--print-bg-image': backgroundImage ? `url(${backgroundImage})` : 'url(/logo.png)', '--print-bg-opacity': backgroundOpacity } as React.CSSProperties}>
             <div className={`grid gap-6 print:gap-0 ${testsPerPage === 2 ? 'grid-cols-2' : testsPerPage === 4 ? 'grid-cols-2' : ''}`}>
               {studentsOnPage.map((student) => {
                 const variant = variantsMap.get(student._id);
@@ -906,6 +907,36 @@ export default function TestPrintPage() {
               })}
             </div>
           </div>
+          {/* Answer sheets — one per student after their questions */}
+          {studentsOnPage.map((student) => {
+            const variant = variantsMap.get(student._id);
+            const variantCode = variant?.variantCode || '';
+            const questionsCount = variant?.shuffledQuestions?.length > 0
+              ? variant.shuffledQuestions.length
+              : (isBlockTest ? test.subjectTests?.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0) : test.questions?.length) || 0;
+            return (
+              <div key={`sheet-${student._id}`} className="page-break mb-8 print:mb-0" style={{ display: 'flex', justifyContent: 'center', padding: '20mm 0' }}>
+                <AnswerSheet
+                  student={{ fullName: student.fullName, variantCode, studentCode: student.studentCode }}
+                  test={{
+                    name: test.name || 'Test',
+                    subjectName: isBlockTest
+                      ? (test.subjectTests?.map((st: { subjectId?: { nameUzb?: string } }) => st.subjectId?.nameUzb).filter(Boolean).join(', ') || 'Blok test')
+                      : (test.subjectId?.nameUzb || 'Test'),
+                    classNumber: test.classNumber || 10,
+                    groupLetter: test.groupId?.nameUzb?.charAt(0) || 'A',
+                    groupName: test.groupId?.nameUzb,
+                    periodMonth: isBlockTest ? test.periodMonth : undefined,
+                    periodYear: isBlockTest ? test.periodYear : undefined
+                  }}
+                  questions={questionsCount}
+                  qrData={variantCode}
+                  sheetsPerPage={1}
+                />
+              </div>
+            );
+          })}
+          </React.Fragment>
         ))}
       </div>
     );
