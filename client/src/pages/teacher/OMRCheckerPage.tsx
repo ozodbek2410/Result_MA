@@ -63,6 +63,11 @@ export default function OMRCheckerPage() {
   const [scanProgress, setScanProgress] = useState(0);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isLiveScannerOpen, setIsLiveScannerOpen] = useState(false);
+  const [duplicateModal, setDuplicateModal] = useState<{
+    show: boolean;
+    existingResult: { studentName: string; totalPoints: number; maxPoints: number; percentage: number; scannedAt: string } | null;
+    pendingSaveData: Record<string, unknown> | null;
+  }>({ show: false, existingResult: null, pendingSaveData: null });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -209,48 +214,71 @@ export default function OMRCheckerPage() {
 
   const updatedComparison = getUpdatedComparison();
 
+  const buildSaveData = (forceOverwrite = false) => {
+    if (!result?.qr_code?.testId || !result?.comparison) return null;
+    const originalDetected = result.detected_answers || {};
+    const finalComparison = updatedComparison || result.comparison;
+    const finalDetails = result.comparison.details.map((detail: any) => {
+      const currentAnswer = editedAnswers[detail.question] || detail.student_answer;
+      const effectiveAnswer = (!currentAnswer || currentAnswer === '-') ? null : currentAnswer;
+      return {
+        ...detail,
+        student_answer: effectiveAnswer,
+        is_correct: effectiveAnswer ? effectiveAnswer === detail.correct_answer : false,
+      };
+    });
+    return {
+      variantCode: result.qr_code.variantCode,
+      studentId: result.qr_code.studentId,
+      testId: result.qr_code.testId,
+      detectedAnswers: originalDetected,
+      comparison: {
+        ...result.comparison,
+        correct: finalComparison.correct,
+        incorrect: finalComparison.incorrect,
+        unanswered: finalComparison.unanswered,
+        score: finalComparison.score,
+        details: finalDetails,
+      },
+      annotatedImage: result.annotated_image,
+      originalImagePath: result.uploaded_image,
+      forceOverwrite,
+    };
+  };
+
   const handleSave = async () => {
-    if (!result?.qr_code?.testId || !result?.comparison) {
-      return toast('Test topilmadi', 'error');
-    }
+    const data = buildSaveData(false);
+    if (!data) return toast('Test topilmadi', 'error');
     setSaving(true);
     try {
-      // Original detected answers (tahrir audit trail uchun)
-      const originalDetected = result.detected_answers || {};
-
-      const finalComparison = updatedComparison || result.comparison;
-
-      // Details ni tahrirlangan javoblar bilan yangilash
-      const finalDetails = result.comparison.details.map((detail: any) => {
-        const currentAnswer = editedAnswers[detail.question] || detail.student_answer;
-        const effectiveAnswer = (!currentAnswer || currentAnswer === '-') ? null : currentAnswer;
-        return {
-          ...detail,
-          student_answer: effectiveAnswer,
-          is_correct: effectiveAnswer ? effectiveAnswer === detail.correct_answer : false,
-        };
-      });
-
-      await api.post('/omr/save-result', {
-        variantCode: result.qr_code.variantCode,
-        studentId: result.qr_code.studentId,
-        testId: result.qr_code.testId,
-        detectedAnswers: originalDetected,
-        comparison: {
-          ...result.comparison,
-          correct: finalComparison.correct,
-          incorrect: finalComparison.incorrect,
-          unanswered: finalComparison.unanswered,
-          score: finalComparison.score,
-          details: finalDetails,
-        },
-        annotatedImage: result.annotated_image,
-        originalImagePath: result.uploaded_image
-      });
-      
+      await api.post('/omr/save-result', data);
       toast('Saqlandi', 'success');
       setTimeout(() => resetAll(), 1500);
-    } catch (error) {
+    } catch (err: any) {
+      if (err?.response?.status === 409 && err?.response?.data?.error === 'duplicate') {
+        setDuplicateModal({
+          show: true,
+          existingResult: err.response.data.existingResult,
+          pendingSaveData: data,
+        });
+      } else {
+        toast('Xatolik', 'error');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleForceOverwrite = async () => {
+    const data = duplicateModal.pendingSaveData;
+    if (!data) return;
+    setDuplicateModal({ show: false, existingResult: null, pendingSaveData: null });
+    setSaving(true);
+    try {
+      await api.post('/omr/save-result', { ...data, forceOverwrite: true });
+      toast('Natija yangilandi', 'success');
+      setTimeout(() => resetAll(), 1500);
+    } catch {
       toast('Xatolik', 'error');
     } finally {
       setSaving(false);
@@ -804,6 +832,60 @@ export default function OMRCheckerPage() {
         </div>
       )}
     </div>
+
+    {/* Duplikat natija modal */}
+    {duplicateModal.show && duplicateModal.existingResult && (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden animate-fade-in">
+          <div className="bg-amber-50 border-b border-amber-200 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-amber-900">Natija allaqachon mavjud!</h3>
+              </div>
+            </div>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold text-gray-900">{duplicateModal.existingResult.studentName}</span> uchun oldingi natija:
+            </p>
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Ball:</span>
+                <span className="font-semibold">{duplicateModal.existingResult.totalPoints}/{duplicateModal.existingResult.maxPoints}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Foiz:</span>
+                <span className="font-semibold">{Math.round(duplicateModal.existingResult.percentage)}%</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Sana:</span>
+                <span className="font-semibold">{new Date(duplicateModal.existingResult.scannedAt).toLocaleDateString('uz')}</span>
+              </div>
+            </div>
+            <p className="text-sm text-amber-700 font-medium">Ustiga yozilsinmi?</p>
+          </div>
+          <div className="flex gap-2 px-5 pb-5">
+            <button
+              onClick={() => setDuplicateModal({ show: false, existingResult: null, pendingSaveData: null })}
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Bekor qilish
+            </button>
+            <button
+              onClick={handleForceOverwrite}
+              className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Ustiga yozish
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
