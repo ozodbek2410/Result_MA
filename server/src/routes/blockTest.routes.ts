@@ -1507,13 +1507,36 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     const studentIds = students.map(s => s._id);
 
     const allTestIds = relatedTests.map(t => t._id);
+    console.log('📊 EXCEL DEBUG: allTestIds =', allTestIds.map(id => id.toString()));
+    console.log('📊 EXCEL DEBUG: studentIds count =', studentIds.length);
+    console.log('📊 EXCEL DEBUG: studentFilter =', JSON.stringify(studentFilter));
+
     const results = await TestResult.find({ blockTestId: { $in: allTestIds }, studentId: { $in: studentIds } }).lean();
     const resultMap = new Map<string, any>();
     for (const r of results) { resultMap.set(r.studentId.toString(), r); }
+    console.log('📊 EXCEL DEBUG: TestResults found =', results.length);
 
     const variants = await StudentVariant.find({ testId: { $in: allTestIds }, testType: 'BlockTest', studentId: { $in: studentIds } }).lean();
     const variantMap = new Map<string, any>();
     for (const v of variants) { variantMap.set(v.studentId.toString(), v); }
+    console.log('📊 EXCEL DEBUG: StudentVariants found =', variants.length);
+
+    // Debug: log first variant's shuffledQuestions subjectId format
+    if (variants.length > 0) {
+      const firstV = variants[0];
+      console.log('📊 EXCEL DEBUG: first variant testId =', firstV.testId?.toString());
+      console.log('📊 EXCEL DEBUG: first variant studentId =', firstV.studentId?.toString());
+      console.log('📊 EXCEL DEBUG: first variant shuffledQuestions count =', firstV.shuffledQuestions?.length);
+      if (firstV.shuffledQuestions?.length > 0) {
+        const q0 = firstV.shuffledQuestions[0];
+        console.log('📊 EXCEL DEBUG: q0.subjectId =', JSON.stringify(q0?.subjectId));
+        console.log('📊 EXCEL DEBUG: q0.subjectId type =', typeof q0?.subjectId);
+        if (q0?.subjectId && typeof q0.subjectId === 'object') {
+          console.log('📊 EXCEL DEBUG: q0.subjectId._id =', q0.subjectId._id?.toString());
+          console.log('📊 EXCEL DEBUG: q0.subjectId keys =', Object.keys(q0.subjectId));
+        }
+      }
+    }
 
     interface SubjectCol { name: string; subjectIdStr: string; groupLetter?: string; questionsCount: number }
     const subjectCols: SubjectCol[] = [];
@@ -1526,6 +1549,7 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
         subjectCols.push({ name: subName, subjectIdStr: s.subjectIdStr, groupLetter: s.groupLetter, questionsCount: s.questionsCount });
       }
     }
+    console.log('📊 EXCEL DEBUG: subjectCols =', subjectCols.map(sc => ({ name: sc.name, id: sc.subjectIdStr, letter: sc.groupLetter })));
 
     // Helper: extract subjectId string from shuffledQuestion
     const getSubId = (q: any): string => {
@@ -1541,7 +1565,12 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       const sid = student._id.toString();
       const result = resultMap.get(sid);
       const variant = variantMap.get(sid);
-      if (!result || !variant?.shuffledQuestions?.length) continue;
+      if (!result || !variant?.shuffledQuestions?.length) {
+        if (!result) console.log('📊 EXCEL DEBUG: no result for student', sid, student.fullName);
+        if (!variant) console.log('📊 EXCEL DEBUG: no variant for student', sid, student.fullName);
+        else if (!variant.shuffledQuestions?.length) console.log('📊 EXCEL DEBUG: empty shuffledQuestions for student', sid);
+        continue;
+      }
       const scores: SubjectScores = new Map();
       for (let i = 0; i < variant.shuffledQuestions.length; i++) {
         const subId = getSubId(variant.shuffledQuestions[i]);
@@ -1551,6 +1580,12 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
         if (result.answers?.[i]?.isCorrect) entry.correct++;
       }
       studentSubjectScores.set(sid, scores);
+      // Log first student's scores for debugging
+      if (studentSubjectScores.size === 1) {
+        console.log('📊 EXCEL DEBUG: first student scores:', student.fullName);
+        scores.forEach((v, k) => console.log('  subId:', k, '→', v.correct, '/', v.total));
+        console.log('📊 EXCEL DEBUG: subjectCols ids:', subjectCols.map(sc => sc.subjectIdStr));
+      }
     }
 
     const wb = new ExcelJS.Workbook();
