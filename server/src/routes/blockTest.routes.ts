@@ -1528,7 +1528,7 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     const allTestIds = relatedTests.map(t => t._id);
     console.log('📊 EXCEL DEBUG: allTestIds =', allTestIds.map(id => id.toString()));
     console.log('📊 EXCEL DEBUG: studentIds count =', studentIds.length);
-    console.log('📊 EXCEL DEBUG: studentFilter =', JSON.stringify(studentFilter));
+    console.log('📊 EXCEL DEBUG: groupIdStr =', groupIdStr?.toString());
 
     const results = await TestResult.find({ blockTestId: { $in: allTestIds }, studentId: { $in: studentIds } }).lean();
     const resultMap = new Map<string, any>();
