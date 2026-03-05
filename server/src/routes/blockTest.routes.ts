@@ -1502,9 +1502,28 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       }
     }
 
-    const studentFilter: Record<string, unknown> = groupIdStr ? { groupId: groupIdStr } : { classNumber: blockTest.classNumber };
-    const students = await Student.find(studentFilter).sort({ fullName: 1 }).lean();
-    const studentIds = students.map(s => s._id);
+    // O'quvchilarni StudentGroup orqali topish (Student modelda groupId yo'q)
+    let students: any[];
+    if (groupIdStr) {
+      const sgs = await StudentGroup.find({ groupId: groupIdStr })
+        .populate({ path: 'studentId', select: 'fullName _id classNumber' })
+        .lean();
+      const seenIds = new Set<string>();
+      students = sgs
+        .map(sg => sg.studentId)
+        .filter((s: any) => {
+          if (!s) return false;
+          const id = s._id?.toString();
+          if (!id || seenIds.has(id)) return false;
+          seenIds.add(id);
+          return true;
+        })
+        .sort((a: any, b: any) => (a.fullName || '').localeCompare(b.fullName || ''));
+    } else {
+      students = await Student.find({ classNumber: blockTest.classNumber }).sort({ fullName: 1 }).lean();
+    }
+    const studentIds = students.map((s: any) => s._id);
+    console.log('📊 EXCEL DEBUG: students count after proper filter =', students.length);
 
     const allTestIds = relatedTests.map(t => t._id);
     console.log('📊 EXCEL DEBUG: allTestIds =', allTestIds.map(id => id.toString()));
