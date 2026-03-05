@@ -808,7 +808,7 @@ export default function TestPrintPage() {
 
                         return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => (
                           <div key={sgIndex}>
-                            <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px` }}>
+                            <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px`, columnSpan: 'all' }}>
                               {sg.name}{sg.groupLetter ? ` (${sg.groupLetter} guruh)` : ''} — {sg.questions.length} ta savol
                             </div>
                             <div className={spacingClasses.questions}>
@@ -818,7 +818,7 @@ export default function TestPrintPage() {
                                 const optsLen = (question.variants || []).reduce((s: number, v: any) => s + (convertTiptapJsonToText(v.text) || '').length, 0);
                                 const isLongQ = questionText.length + optsLen > 600;
                                 return (
-                                  <div key={qi} className={`${isLongQ ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
+                                  <div key={qi} className={`page-break-inside-avoid ${spacingClasses.question}`}>
                                     {(question.contextText || question.contextImage) && (
                                       <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
                                         {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
@@ -863,7 +863,7 @@ export default function TestPrintPage() {
                             const optsLen2 = (question.variants || []).reduce((s: number, v: any) => s + (convertTiptapJsonToText(v.text) || '').length, 0);
                             const isLongQ2 = questionText.length + optsLen2 > 600;
                             return (
-                              <div key={index} className={`${isLongQ2 ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
+                              <div key={index} className={`page-break-inside-avoid ${spacingClasses.question}`}>
                                 {(question.contextText || question.contextImage) && (
                                   <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
                                     {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
@@ -1354,11 +1354,6 @@ export default function TestPrintPage() {
           }
           
           .no-print { display: none !important; }
-          .page-break-inside-avoid { 
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          
           aside, nav, header, .sidebar { display: none !important; }
           
           /* Принудительная печать фоновых изображений */
@@ -1395,11 +1390,19 @@ export default function TestPrintPage() {
           }
         }
         
+        /* Global (screen + print) — column/page break prevention */
+        .page-break-inside-avoid {
+          page-break-inside: avoid;
+          break-inside: avoid;
+          -webkit-column-break-inside: avoid;
+        }
+
         body:has(.print-view-mode) aside,
         body:has(.print-view-mode) nav,
         body:has(.print-view-mode) header,
         body:has(.print-view-mode) .sidebar { display: none !important; }
         body:has(.print-view-mode) main { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+        body:has(.print-view-mode) main > div { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
       `}</style>
     </div>
   );
