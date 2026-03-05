@@ -1530,7 +1530,11 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     console.log('📊 EXCEL DEBUG: studentIds count =', studentIds.length);
     console.log('📊 EXCEL DEBUG: groupIdStr =', groupIdStr?.toString());
 
-    const results = await TestResult.find({ blockTestId: { $in: allTestIds }, studentId: { $in: studentIds } }).lean();
+    // TestResult blockTestId yoki testId da saqlanishi mumkin
+    const results = await TestResult.find({
+      $or: [{ blockTestId: { $in: allTestIds } }, { testId: { $in: allTestIds } }],
+      studentId: { $in: studentIds }
+    }).lean();
     const resultMap = new Map<string, any>();
     for (const r of results) { resultMap.set(r.studentId.toString(), r); }
     console.log('📊 EXCEL DEBUG: TestResults found =', results.length);
