@@ -12,7 +12,8 @@ interface MathTextProps {
 // Quick check if text has any math markers
 function hasMathMarkers(text: string): boolean {
   return text.includes('$') || text.includes('\\(') || text.includes('\\[') ||
-         text.includes('<omml>') || text.includes('<math') || text.includes('data-latex');
+         text.includes('<omml>') || text.includes('<math') || text.includes('data-latex') ||
+         /[A-Za-z0-9)]\^/.test(text) || /[A-Za-z)]\d*_\d/.test(text);
 }
 
 // Escape HTML special chars for safe dangerouslySetInnerHTML
@@ -66,6 +67,49 @@ function renderMathToHtml(text: string): string {
   // Unescape HTML entities (TipTap escapes & inside formulas)
   cleanedText = cleanedText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
   cleanedText = cleanedText.trim();
+
+  // Auto-wrap bare superscript/subscript patterns in $..$ for KaTeX
+  // E^+ → $E^{+}$, Cr^{+2} → $Cr^{+2}$, H_2O → $H_2O$
+  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, '$1^{$2}');
+  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, '$1^{$2}');
+  cleanedText = cleanedText.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
+  {
+    const wrapped: Array<{start: number; end: number; formula: string}> = [];
+    // Formulas with subscript: H_2O, CO_2, H_2SO_4
+    const subPattern = /((?:[A-Z][A-Za-z0-9]*_\d+)+(?:\^(?:\{[^}]+\}|\d+))?)/g;
+    let m;
+    while ((m = subPattern.exec(cleanedText)) !== null) {
+      wrapped.push({ start: m.index, end: m.index + m[0].length, formula: m[0] });
+    }
+    // Element with charge: E^{+}, Cr^{+2}, Fe^{3+}, O^{2-}
+    const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+|[+-]))/g;
+    while ((m = chargePattern.exec(cleanedText)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
+      }
+    }
+    // Number superscript: 10^{23}
+    const supPattern = /(\d+)\^(\d+|\{[^}]+\})/g;
+    while ((m = supPattern.exec(cleanedText)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
+      }
+    }
+    if (wrapped.length > 0) {
+      wrapped.sort((a, b) => a.start - b.start);
+      let result = '';
+      let lastEnd = 0;
+      wrapped.forEach(w => {
+        if (w.start > lastEnd) result += cleanedText.substring(lastEnd, w.start);
+        result += '$' + w.formula + '$';
+        lastEnd = w.end;
+      });
+      if (lastEnd < cleanedText.length) result += cleanedText.substring(lastEnd);
+      cleanedText = result;
+    }
+  }
 
   // Normalize format
   let normalizedText = cleanedText;
