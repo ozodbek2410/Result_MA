@@ -236,6 +236,11 @@ export function convertChemistryToTiptapJson(text: string): any {
     if (inner) regions.push({ start: m.index, end: m.index + m[0].length, latex: inner });
   }
 
+  // Pre-process: add braces to bare charge superscripts: E^+ → E^{+}, E^- → E^{-}
+  text = text.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, '$1^{$2}');
+  text = text.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, '$1^{$2}');
+  text = text.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
+
   // 2. Complex formulas: X_3(PO_4)_2
   const complexPattern = /[A-Z][A-Za-z0-9]*_\d+\([A-Z][A-Za-z0-9]*_\d+\)_\d+/g;
   while ((m = complexPattern.exec(text)) !== null) {
