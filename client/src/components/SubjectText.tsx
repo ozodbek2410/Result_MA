@@ -15,27 +15,23 @@ interface SubjectTextProps {
  * Автоматически выбирает правильный рендерер в зависимости от предмета
  */
 export default function SubjectText({ text, subject = 'math', className = '' }: SubjectTextProps) {
-  // Debug log
-  console.log('📚 [SubjectText] Rendering with subject:', subject);
-  
-  // Определяем какой компонент использовать
-  if (subject === 'chemistry' || subject === 'kimyo') {
-    console.log('🧪 [SubjectText] Using ChemistryText');
+  const s = (subject || '').toLowerCase().trim();
+
+  if (s === 'chemistry' || s === 'kimyo' || s.includes('kimyo')) {
     return <ChemistryText text={text} className={className} />;
   }
-  
-  if (subject === 'biology' || subject === 'biologiya') {
+
+  if (s === 'biology' || s === 'biologiya' || s.includes('biolog')) {
     return <BiologyText text={text} className={className} />;
   }
-  
-  if (subject === 'physics' || subject === 'fizika') {
+
+  if (s === 'physics' || s === 'fizika' || s.includes('fizik')) {
     return <PhysicsText text={text} className={className} />;
   }
-  
-  if (subject === 'literature' || subject === 'adabiyot' || subject === 'ona tili') {
+
+  if (s === 'literature' || s === 'adabiyot' || s.includes('adabiyot') || s.includes('ona tili')) {
     return <LiteratureText text={text} className={className} />;
   }
-  
-  // По умолчанию используем MathText (для математики)
+
   return <MathText text={text} className={className} />;
 }
