@@ -239,10 +239,16 @@ export abstract class BaseParser {
         const tds = actualCells.map(cell => {
           // Cell: [attr, alignment, rowSpan, colSpan, [Block, ...]]
           const cellArr = cell as unknown[];
-          const blocks = (Array.isArray(cellArr) && cellArr.length >= 5 ? cellArr[4] : cellArr) as PandocBlock[];
+          if (!Array.isArray(cellArr) || cellArr.length < 5) return '<td></td>';
+          const rowSpan = cellArr[2] as number || 1;
+          const colSpan = cellArr[3] as number || 1;
+          const blocks = cellArr[4] as PandocBlock[];
           if (!Array.isArray(blocks)) return '<td></td>';
           const text = blocks.map(b => this.serializeBlock(b)).filter(s => s).join(' ');
-          return `<td>${text}</td>`;
+          let attrs = '';
+          if (rowSpan > 1) attrs += ` rowspan="${rowSpan}"`;
+          if (colSpan > 1) attrs += ` colspan="${colSpan}"`;
+          return `<td${attrs}>${text}</td>`;
         }).join('');
         return `<tr>${tds}</tr>`;
       }).join('\n');
