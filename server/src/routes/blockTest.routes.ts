@@ -2014,7 +2014,6 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
   try {
     const blockTestId = req.params.id;
 
-    // Load block test with populated subjects
     const blockTest = await BlockTest.findById(blockTestId)
       .populate('subjectTests.subjectId', 'nameUzb')
       .populate('groupId', 'name letter')
@@ -2024,11 +2023,11 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       return res.status(404).json({ message: 'Blok test topilmadi' });
     }
 
-    // Find all related block tests (same class/period/group)
     const groupIdStr = blockTest.groupId
       ? (typeof blockTest.groupId === 'object' ? (blockTest.groupId as any)._id : blockTest.groupId)
       : undefined;
 
+    // Find all related block tests (same class/period/group)
     const relatedFilter: Record<string, unknown> = {
       classNumber: blockTest.classNumber,
       periodMonth: blockTest.periodMonth,
@@ -2042,15 +2041,16 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       .lean();
 
     // Merge all subjects from related tests
-    const allSubjects: { subjectId: any; groupLetter?: string; questionsCount: number; testId: string }[] = [];
+    const allSubjects: { subjectId: any; subjectIdStr: string; groupLetter?: string; questionsCount: number }[] = [];
     for (const rt of relatedTests) {
       for (const st of rt.subjectTests || []) {
         if (st.subjectId) {
+          const sid = typeof st.subjectId === 'object' ? (st.subjectId as any)._id?.toString() : st.subjectId?.toString();
           allSubjects.push({
             subjectId: st.subjectId,
+            subjectIdStr: sid,
             groupLetter: st.groupLetter,
             questionsCount: st.questions?.length || 0,
-            testId: rt._id.toString(),
           });
         }
       }
@@ -2061,60 +2061,85 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       ? { groupId: groupIdStr }
       : { classNumber: blockTest.classNumber };
     const students = await Student.find(studentFilter).sort({ fullName: 1 }).lean();
-
-    // Load student test configs
     const studentIds = students.map(s => s._id);
-    const configs = await StudentTestConfig.find({ studentId: { $in: studentIds } }).lean();
-    const configMap = new Map(configs.map(c => [c.studentId.toString(), c]));
 
-    // Load test results for all related block tests
+    // Load test results
     const allTestIds = relatedTests.map(t => t._id);
-    const results = await TestResult.find({ blockTestId: { $in: allTestIds }, studentId: { $in: studentIds } })
-      .lean();
+    const results = await TestResult.find({ blockTestId: { $in: allTestIds }, studentId: { $in: studentIds } }).lean();
     const resultMap = new Map<string, any>();
     for (const r of results) {
       resultMap.set(r.studentId.toString(), r);
     }
 
-    // Load student groups (for group letter info)
-    const studentGroups = await StudentGroup.find({ studentId: { $in: studentIds } })
-      .populate('subjectId', 'nameUzb')
-      .lean();
-    const studentGroupMap = new Map<string, any[]>();
-    for (const sg of studentGroups) {
-      const key = sg.studentId.toString();
-      if (!studentGroupMap.has(key)) studentGroupMap.set(key, []);
-      studentGroupMap.get(key)!.push(sg);
+    // Load student variants (to map answers → subjects)
+    const variants = await StudentVariant.find({
+      testId: { $in: allTestIds },
+      testType: 'BlockTest',
+      studentId: { $in: studentIds },
+    }).populate('shuffledQuestions.subjectId', 'nameUzb').lean();
+    const variantMap = new Map<string, any>();
+    for (const v of variants) {
+      variantMap.set(v.studentId.toString(), v);
     }
 
-    // Build unique subject columns
-    const subjectCols: { name: string; groupLetter?: string; questionsCount: number }[] = [];
+    // Build unique subject columns from block test structure
+    interface SubjectCol { name: string; subjectIdStr: string; groupLetter?: string; questionsCount: number }
+    const subjectCols: SubjectCol[] = [];
     const seenSubjects = new Set<string>();
     for (const s of allSubjects) {
       const subName = (s.subjectId as any)?.nameUzb || 'Fan';
-      const key = `${subName}_${s.groupLetter || ''}`;
+      const key = `${s.subjectIdStr}_${s.groupLetter || ''}`;
       if (!seenSubjects.has(key)) {
         seenSubjects.add(key);
         subjectCols.push({
           name: subName,
+          subjectIdStr: s.subjectIdStr,
           groupLetter: s.groupLetter,
           questionsCount: s.questionsCount,
         });
       }
     }
 
+    // Calculate per-subject scores for each student
+    type SubjectScores = Map<string, { correct: number; total: number }>;
+    const studentSubjectScores = new Map<string, SubjectScores>();
+
+    for (const student of students) {
+      const sid = student._id.toString();
+      const result = resultMap.get(sid);
+      const variant = variantMap.get(sid);
+
+      if (!result || !variant?.shuffledQuestions?.length) continue;
+
+      const scores: SubjectScores = new Map();
+      const questions = variant.shuffledQuestions;
+
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const subId = q?.subjectId?._id?.toString() || q?.subjectId?.toString() || 'unknown';
+
+        if (!scores.has(subId)) scores.set(subId, { correct: 0, total: 0 });
+        const entry = scores.get(subId)!;
+        entry.total++;
+
+        const answer = result.answers?.[i];
+        if (answer?.isCorrect) entry.correct++;
+      }
+
+      studentSubjectScores.set(sid, scores);
+    }
+
     // ── Build Excel ──
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Natijalar');
 
-    // Colors
-    const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } }; // indigo-700
-    const subHeaderFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6366F1' } }; // indigo-500
-    const lightRowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } }; // indigo-50
+    const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } };
+    const subHeaderFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6366F1' } };
+    const lightRowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
     const whiteRowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-    const greenFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; // green-100
-    const yellowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } }; // yellow-100
-    const redFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; // red-100
+    const greenFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+    const yellowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
+    const redFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
 
     const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
     const subHeaderFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
@@ -2133,9 +2158,9 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       { key: 'name', width: 32 },
     ];
     subjectCols.forEach((_, i) => {
-      columns.push({ key: `subj_${i}`, width: 16 });
+      columns.push({ key: `subj_${i}`, width: 18 });
     });
-    columns.push({ key: 'total', width: 12 });
+    columns.push({ key: 'total', width: 14 });
     columns.push({ key: 'percent', width: 12 });
     ws.columns = columns;
 
@@ -2152,7 +2177,8 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     titleRow.height = 36;
 
     // ── Sub-header info row ──
-    const infoText = `O'quvchilar: ${students.length} | Fanlar: ${subjectCols.length} | Jami savollar: ${allSubjects.reduce((s, x) => s + x.questionsCount, 0)}`;
+    const totalQ = allSubjects.reduce((s, x) => s + x.questionsCount, 0);
+    const infoText = `O'quvchilar: ${students.length} | Fanlar: ${subjectCols.length} | Jami savollar: ${totalQ}`;
     const infoRow = ws.addRow([infoText]);
     ws.mergeCells(infoRow.number, 1, infoRow.number, columns.length);
     infoRow.getCell(1).fill = subHeaderFill;
@@ -2161,7 +2187,7 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     infoRow.height = 24;
 
     // ── Column headers ──
-    const headerValues = ['№', "F.I.O"];
+    const headerValues: string[] = ['№', "F.I.O"];
     subjectCols.forEach(sc => {
       const label = sc.groupLetter ? `${sc.name} (${sc.groupLetter})` : sc.name;
       headerValues.push(`${label}\n(${sc.questionsCount} ta)`);
@@ -2176,22 +2202,25 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       cell.border = border;
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     });
-    colHeaderRow.height = 36;
+    colHeaderRow.height = 40;
 
     // ── Data rows ──
     students.forEach((student, idx) => {
       const sid = student._id.toString();
       const result = resultMap.get(sid);
-      const config = configMap.get(sid);
+      const perSubject = studentSubjectScores.get(sid);
 
       const rowValues: (string | number)[] = [idx + 1, student.fullName || "Noma'lum"];
 
-      // Per-subject data
-      subjectCols.forEach(() => {
-        if (result) {
-          rowValues.push(result.totalPoints ?? 0);
-        } else if (config) {
-          rowValues.push('-');
+      // Per-subject scores
+      subjectCols.forEach(sc => {
+        if (perSubject) {
+          const score = perSubject.get(sc.subjectIdStr);
+          if (score) {
+            rowValues.push(`${score.correct}/${score.total}`);
+          } else {
+            rowValues.push('-');
+          }
         } else {
           rowValues.push('-');
         }
@@ -2199,7 +2228,7 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
 
       // Total and percentage
       if (result) {
-        rowValues.push(result.totalPoints ?? 0);
+        rowValues.push(`${result.totalPoints ?? 0}/${result.maxPoints ?? 0}`);
         rowValues.push(`${Math.round(result.percentage ?? 0)}%`);
       } else {
         rowValues.push('-');
@@ -2208,28 +2237,43 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
 
       const row = ws.addRow(rowValues);
       const isEven = idx % 2 === 0;
-      row.eachCell((cell, colNum) => {
+      row.eachCell((cell) => {
         cell.fill = isEven ? lightRowFill : whiteRowFill;
         cell.font = bodyFont;
         cell.border = border;
         cell.alignment = { vertical: 'middle' };
       });
 
-      // Num column centered
+      // Num column
       row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
       row.getCell(1).font = boldFont;
 
       // Subject columns centered
       for (let i = 3; i <= 2 + subjectCols.length; i++) {
         row.getCell(i).alignment = { vertical: 'middle', horizontal: 'center' };
+        // Color per-subject cells
+        if (perSubject) {
+          const sc = subjectCols[i - 3];
+          const score = perSubject.get(sc.subjectIdStr);
+          if (score && score.total > 0) {
+            const pct = (score.correct / score.total) * 100;
+            if (pct >= 70) {
+              row.getCell(i).fill = greenFill;
+              row.getCell(i).font = { size: 10, color: { argb: 'FF166534' } };
+            } else if (pct < 40) {
+              row.getCell(i).fill = redFill;
+              row.getCell(i).font = { size: 10, color: { argb: 'FF991B1B' } };
+            }
+          }
+        }
       }
 
-      // Total centered + bold
+      // Total column
       const totalCol = 3 + subjectCols.length;
       row.getCell(totalCol).alignment = { vertical: 'middle', horizontal: 'center' };
       row.getCell(totalCol).font = boldFont;
 
-      // Percentage with conditional color
+      // Percentage column with conditional color
       const pctCol = totalCol + 1;
       row.getCell(pctCol).alignment = { vertical: 'middle', horizontal: 'center' };
       if (result) {
@@ -2250,17 +2294,16 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     });
 
     // ── Summary footer ──
-    const hasResults = results.length > 0;
-    if (hasResults) {
+    if (results.length > 0) {
       const avgPct = results.reduce((s, r) => s + (r.percentage || 0), 0) / results.length;
       const maxScore = Math.max(...results.map(r => r.totalPoints || 0));
       const minScore = Math.min(...results.map(r => r.totalPoints || 0));
 
-      ws.addRow([]); // empty row
+      ws.addRow([]);
       const summaryHeader = ws.addRow(['', 'Statistika']);
       summaryHeader.getCell(2).font = { bold: true, size: 11 };
 
-      const statsData = [
+      const statsData: (string | number)[][] = [
         ['', "O'rtacha foiz", `${Math.round(avgPct)}%`],
         ['', 'Eng yuqori ball', maxScore],
         ['', 'Eng past ball', minScore],
@@ -2275,7 +2318,6 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
-    // Write buffer and send
     const buffer = await wb.xlsx.writeBuffer();
     const fileName = encodeURIComponent(`Blok_test_${blockTest.classNumber}sinf_${periodName.replace('/', '_')}.xlsx`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

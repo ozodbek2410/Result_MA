@@ -230,30 +230,32 @@ export default function ConfigureBlockTestPage() {
         </div>
       )}
 
-      {/* Action buttons row */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Actions Card */}
-        <button
-          onClick={() => setShowActionsModal(true)}
-          className="bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:bg-blue-50/50 transition-all group"
-        >
+      {/* Actions Card */}
+      <button
+        onClick={() => setShowActionsModal(true)}
+        className="w-full bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:bg-blue-50/50 transition-all group"
+      >
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
               <FileText className="w-5 h-5 text-blue-600" />
             </div>
             <div className="text-left">
-              <div className="font-semibold text-slate-900 text-sm">Ko'rish va chop etish</div>
-              <div className="text-xs text-slate-500">Variantlar, javoblar</div>
+              <div className="font-semibold text-slate-900 text-sm">Testni ko'rish va chop etish</div>
+              <div className="text-xs text-slate-500">Variantlar, javoblar va chop etish</div>
             </div>
           </div>
-        </button>
+          <Eye className="w-5 h-5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+        </div>
+      </button>
 
-        {/* Excel Export Card */}
-        <button
-          onClick={handleExportExcel}
-          disabled={isExporting}
-          className="bg-white border border-slate-200 rounded-xl p-4 hover:border-emerald-300 hover:bg-emerald-50/50 transition-all group disabled:opacity-50"
-        >
+      {/* Excel Export Card */}
+      <button
+        onClick={handleExportExcel}
+        disabled={isExporting}
+        className="w-full bg-white border border-slate-200 rounded-xl p-4 hover:border-emerald-300 hover:bg-emerald-50/50 transition-all group disabled:opacity-50"
+      >
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
               {isExporting ? (
@@ -264,11 +266,12 @@ export default function ConfigureBlockTestPage() {
             </div>
             <div className="text-left">
               <div className="font-semibold text-slate-900 text-sm">Excel yuklab olish</div>
-              <div className="text-xs text-slate-500">Umumiy natijalar</div>
+              <div className="text-xs text-slate-500">Fanlar bo'yicha natijalar</div>
             </div>
           </div>
-        </button>
-      </div>
+          <Download className="w-5 h-5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+        </div>
+      </button>
 
       {/* Students List */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
