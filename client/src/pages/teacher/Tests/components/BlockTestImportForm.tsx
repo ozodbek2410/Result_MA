@@ -726,7 +726,7 @@ export function BlockTestImportForm({
                           <div className="relative inline-block">
                             <img src={q.imageUrl || q.image} alt="Question"
                               className="rounded-lg border-2 border-gray-200"
-                              style={q.imageWidth ? { width: Math.round(q.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : { maxWidth: 300, height: 'auto' }}
+                              style={{ width: q.imageWidth ?? undefined, maxWidth: '100%', height: 'auto' }}
                             />
                             <button type="button" onClick={() => qUpd(active.id, idx, { image: undefined, imageUrl: undefined })}
                               className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
@@ -773,14 +773,7 @@ export function BlockTestImportForm({
                             {v.imageUrl && (
                               <img src={v.imageUrl} alt={`Variant ${v.letter}`}
                                 className="mt-1 rounded border border-gray-200"
-                                style={v.imageWidth ? { width: Math.round(v.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : { maxWidth: 200, height: 'auto' }}
-                                onLoad={e => {
-                                  const img = e.currentTarget;
-                                  if (!img.style.width) {
-                                    img.style.width = Math.round(img.naturalWidth * 0.5) + 'px';
-                                    img.style.height = 'auto';
-                                  }
-                                }} />
+                                style={{ width: v.imageWidth ?? undefined, maxWidth: '100%', height: 'auto' }} />
                             )}
                           </div>
                           <button onClick={() => removeVariant(active.id, idx, vi)}

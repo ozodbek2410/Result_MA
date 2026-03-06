@@ -121,6 +121,14 @@ export abstract class BaseParser {
       case 'Table': {
         const tableIdx = this.astTableIndex++;
         const tableId = `table${tableIdx}`;
+        // If table contains question numbering — extract as plain text (not image)
+        try {
+          const tableText = this.extractTextFromTableAst(block.c);
+          if (/(?:^|\n)?\*?\*?\d+\s*\*?\*?[.)\u2026]/m.test(tableText)) {
+            console.log(`📋 [TABLE] Table ${tableIdx} contains question — extracting as text`);
+            return '\n' + tableText + '\n';
+          }
+        } catch { /* ignore */ }
         try {
           const html = this.extractTableHtmlFromAst(block.c);
           if (html) this.pendingAstTables.set(tableId, html);
@@ -289,6 +297,40 @@ export abstract class BaseParser {
     } catch {
       return '';
     }
+  }
+
+  /** Extract plain text from all cells of a Pandoc Table AST node */
+  private extractTextFromTableAst(tableContent: unknown[]): string {
+    const lines: string[] = [];
+    const processCell = (cell: unknown) => {
+      const cellArr = cell as unknown[];
+      if (!Array.isArray(cellArr) || cellArr.length < 5) return;
+      const blocks = cellArr[4] as PandocBlock[];
+      if (!Array.isArray(blocks)) return;
+      const text = blocks.map(b => this.serializeBlock(b)).filter(s => s.trim()).join(' ');
+      if (text.trim()) lines.push(text.trim());
+    };
+    const processRows = (rows: unknown[]) => {
+      for (const row of rows) {
+        const rowArr = row as unknown[];
+        const cells = (rowArr[1] || rowArr) as unknown[];
+        if (Array.isArray(cells)) cells.forEach(processCell);
+      }
+    };
+    const tableHead = tableContent[3] as unknown[];
+    if (tableHead && Array.isArray(tableHead)) {
+      const headRows = (tableHead[1] || tableHead) as unknown[];
+      if (Array.isArray(headRows)) processRows(headRows);
+    }
+    const tableBodies = tableContent[4] as unknown[];
+    if (tableBodies && Array.isArray(tableBodies)) {
+      for (const body of tableBodies) {
+        const bodyArr = body as unknown[];
+        const bodyRows = (Array.isArray(bodyArr) && bodyArr.length >= 4 ? bodyArr[3] : bodyArr) as unknown[];
+        if (Array.isArray(bodyRows)) processRows(bodyRows);
+      }
+    }
+    return lines.join('\n');
   }
 
   // ─── End AST Serializer ───────────────────────────────────────────────
