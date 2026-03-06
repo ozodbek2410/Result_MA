@@ -485,12 +485,14 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
 
     let questions;
     let detectedType = 'generic';
+    let groups: Array<{ startIndex: number; endIndex: number; questions: unknown[] }> | undefined;
     let logs: any[] = [];
 
     try {
       const result = await TestImportService.importTest(absolutePath, format, subjectId);
       questions = result.questions;
       detectedType = result.detectedType;
+      groups = result.groups;
       logs = TestImportService.getParsingLogs();
     } catch (parseError: any) {
       console.error('Parse error:', parseError);
@@ -510,12 +512,13 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
       });
     }
 
-    console.log(`Successfully parsed ${questions.length} questions (type: ${detectedType})`);
+    console.log(`Successfully parsed ${questions.length} questions (type: ${detectedType})${groups ? `, ${groups.length} groups` : ''}`);
     res.json({
       message: 'Fayl muvaffaqiyatli tahlil qilindi',
       questions,
       detectedType,
       count: questions.length,
+      ...(groups && groups.length > 1 ? { groups } : {}),
       logs
     });
   } catch (error: any) {

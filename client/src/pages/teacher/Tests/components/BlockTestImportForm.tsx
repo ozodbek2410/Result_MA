@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import {
   Plus, X, Upload, CheckCircle, AlertCircle, Loader2,
-  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight,
+  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight, FileUp,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
@@ -289,6 +289,72 @@ export function BlockTestImportForm({
     setUploading(false);
   };
 
+  // --- PDF import for multiple subjects ---
+  const handlePdfImport = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('format', 'word');
+      const { data } = await api.post('/tests/import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000,
+      });
+      if (!data.questions?.length) {
+        showError('PDF dan savollar topilmadi');
+        setUploading(false);
+        return;
+      }
+
+      const convert = (t: string) => {
+        if (typeof t !== 'string' || (!t.includes('^') && !t.includes('_') && !t.includes('\\(') && !t.includes('\\['))) return t;
+        if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
+        return convertLatexToTiptapJson(t);
+      };
+
+      if (data.groups && data.groups.length > 1) {
+        // Auto-create tabs for each group
+        const newTabs: SubjectTab[] = data.groups.map((g: { questions: ParsedQuestion[] }, i: number) => ({
+          id: Math.random().toString(36).slice(2),
+          subjectId: '',
+          groupLetter: '',
+          file: null,
+          questions: g.questions.map((q: ParsedQuestion) => ({
+            ...q,
+            text: convert(q.text),
+            variants: q.variants.map(v => ({ ...v, text: convert(v.text) })),
+          })),
+          error: '',
+          status: 'done' as const,
+        }));
+        setTabs(newTabs);
+        setActiveId(newTabs[0].id);
+        success(`PDF dan ${data.groups.length} ta fan aniqlandi (${data.questions.length} ta savol). Har bir tabga fanni tanlang.`);
+      } else {
+        // Single group — put all questions in active tab
+        const converted = (data.questions as ParsedQuestion[]).map((q: ParsedQuestion) => ({
+          ...q,
+          text: convert(q.text),
+          variants: q.variants.map(v => ({ ...v, text: convert(v.text) })),
+        }));
+        if (active) {
+          upd(active.id, { questions: converted, status: 'done' });
+        }
+        success(`PDF dan ${data.questions.length} ta savol yuklandi`);
+      }
+
+      // Warn about missing correct answers
+      const noAns = (data.questions as ParsedQuestion[]).filter((q: ParsedQuestion) => !q.correctAnswer).length;
+      if (noAns > 0) {
+        showWarning(`${noAns} ta savolda to'g'ri javob belgilanmagan`);
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'PDF import xatolik';
+      showError(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // --- Save ---
   const handleSave = async () => {
     if (!classNumber || !selectedGroupId) { setError('Guruhni tanlang'); return; }
@@ -513,6 +579,11 @@ export function BlockTestImportForm({
           className="flex items-center gap-1 px-3 py-2.5 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-all flex-shrink-0 disabled:opacity-40">
           <Plus className="w-4 h-4" />Fan
         </button>
+        <label className="flex items-center gap-1 px-3 py-2.5 rounded-lg border-2 border-dashed border-purple-300 text-sm text-purple-500 hover:border-purple-400 hover:text-purple-600 transition-all flex-shrink-0 cursor-pointer disabled:opacity-40">
+          <FileUp className="w-4 h-4" />PDF import
+          <input type="file" accept=".pdf" className="hidden" disabled={busy}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfImport(f); e.target.value = ''; }} />
+        </label>
       </div>
 
       {/* Aktiv fan kontenti */}
@@ -539,8 +610,8 @@ export function BlockTestImportForm({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">.docx fayl {active.status !== 'done' && '*'}</label>
-              <input type="file" accept=".docx"
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fayl (.docx/.pdf) {active.status !== 'done' && '*'}</label>
+              <input type="file" accept=".docx,.pdf"
                 onChange={e => upd(active.id, { file: e.target.files?.[0] || null, status: 'idle', questions: [], error: '' })}
                 disabled={busy}
                 className="w-full text-sm text-gray-500 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
