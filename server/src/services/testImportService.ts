@@ -155,7 +155,7 @@ export class TestImportService {
           const questions = rawQuestions.map(q => ({
             ...q,
             text: this.wrapBareLatex(q.text),
-            variants: q.variants.map(v => ({ ...v, text: this.wrapBareLatex(v.text) })),
+            variants: q.variants.map((v: { letter: string; text: string; invalid?: boolean }) => ({ ...v, text: this.wrapBareLatex(v.text) })),
           }));
           const aiGroups = this.detectGroups(questions);
           if (aiGroups.length > 1) {
@@ -312,7 +312,7 @@ export class TestImportService {
       if (variantPositions.length < 2) continue;
 
       const questionText = content.substring(0, variantPositions[0].index).trim();
-      if (!questionText || questionText.length < 3) continue;
+      if (!questionText) continue; // Only reject truly empty question texts (fragments with length>=1 are OK)
 
       const variants: Array<{ letter: string; text: string }> = [];
       for (let i = 0; i < variantPositions.length; i++) {
@@ -355,8 +355,19 @@ export class TestImportService {
         currentGroup = [c.question];
         used.add(i);
         expectedNum = 2;
+      } else {
+        // c.num doesn't fit (too small OR too large gap).
+        // This is likely a false positive from PDF block splitting where a formula
+        // line looks like a question number. Only claim it if the expected number
+        // doesn't appear in the next 15 candidates (otherwise skip as noise).
+        const lookaheadNums = candidates.slice(i + 1, i + 16).map(cc => cc.num);
+        if (!lookaheadNums.includes(expectedNum)) {
+          currentGroup.push(c.question);
+          used.add(i);
+          expectedNum++;
+        }
+        // else: skip — real expectedNum is coming up soon
       }
-      // else: skip — likely a formula fragment, not a real question
     }
     if (currentGroup.length > 0) {
       allGroups.push(currentGroup);
@@ -375,7 +386,8 @@ export class TestImportService {
       });
     }
 
-    console.log(`[IMPORT] parsePdfText: ${candidates.length} candidates -> ${questions.length} valid questions, ${groups.length} groups`);
+    const candNums = candidates.map(c => c.num).join(',');
+    console.log(`[IMPORT] parsePdfText: ${candidates.length} candidates [${candNums}] -> ${questions.length} valid questions, ${groups.length} groups`);
     if (groups.length > 1) {
       groups.forEach((g, i) => console.log(`  Group ${i + 1}: ${g.questions.length} questions`));
     }
