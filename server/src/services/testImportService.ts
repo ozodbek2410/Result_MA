@@ -150,9 +150,24 @@ export class TestImportService {
         const aiQuestions = await GroqService.parseTestWithAI(cleanedText);
         if (aiQuestions.length > 0) {
           console.log(`[IMPORT] AI parsed ${aiQuestions.length} questions from PDF`);
-          const questions = GroqService.convertToOurFormat(aiQuestions);
-          const groups = this.detectGroups(questions);
-          return { questions, groups: groups.length > 1 ? groups : undefined };
+          const rawQuestions = GroqService.convertToOurFormat(aiQuestions);
+          // Wrap bare LaTeX commands (AI output style) in \(...\) for client rendering
+          const questions = rawQuestions.map(q => ({
+            ...q,
+            text: this.wrapBareLatex(q.text),
+            variants: q.variants.map(v => ({ ...v, text: this.wrapBareLatex(v.text) })),
+          }));
+          const aiGroups = this.detectGroups(questions);
+          if (aiGroups.length > 1) {
+            return { questions, groups: aiGroups };
+          }
+          // AI only found 1 group — also try regex to detect multi-group PDFs
+          const regexResult = this.parsePdfText(cleanedText);
+          if (regexResult.groups.length > 1) {
+            console.log(`[IMPORT] Regex found ${regexResult.groups.length} groups vs AI 1 — using regex`);
+            return { questions: regexResult.questions, groups: regexResult.groups };
+          }
+          return { questions, groups: undefined };
         }
       } catch (aiError) {
         console.log(`[IMPORT] AI parsing failed, using regex fallback`);
@@ -242,6 +257,18 @@ export class TestImportService {
     const sup: Record<string, string> = { '²': '^{2}', '³': '^{3}', '⁴': '^{4}', '⁵': '^{5}' };
     for (const [from, to] of Object.entries(sup)) result = result.split(from).join(to);
     return result;
+  }
+
+  /**
+   * Wrap bare LaTeX math commands (from AI output) in \(...\) delimiters
+   * so client's convert() function recognizes and renders them correctly
+   * e.g. \sqrt{n^2} → \(\sqrt{n^2}\)
+   */
+  private static wrapBareLatex(text: string): string {
+    if (!text || text.includes('\\(') || text.includes('\\[')) return text;
+    // Replace \command{arg} patterns with \(\command{arg}\)
+    return text.replace(/\\(sqrt|frac|sum|prod|int|lim|pm|cdot|times|div|log|ln|sin|cos|tan)\{([^}]+)\}/g,
+      (_m, cmd, arg) => `\\(\\${cmd}{${arg}}\\)`);
   }
 
   /**
