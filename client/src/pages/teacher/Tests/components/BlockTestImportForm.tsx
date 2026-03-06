@@ -594,7 +594,9 @@ export function BlockTestImportForm({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fan *</label>
               <select value={active.subjectId}
-                onChange={e => upd(active.id, { subjectId: e.target.value, status: 'idle', questions: [], error: '' })}
+                onChange={e => active.status === 'done'
+                  ? upd(active.id, { subjectId: e.target.value })
+                  : upd(active.id, { subjectId: e.target.value, status: 'idle', questions: [], error: '' })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled={busy}>
                 <option value="">Fanni tanlang</option>
                 {subjects.map(s => <option key={s._id} value={s._id}>{s.nameUzb}</option>)}
