@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, CheckCircle, XCircle, Scan, Save, ArrowLeft, Edit2, Camera, Download } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, Scan, Save, ArrowLeft, Edit2, Camera } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../hooks/useToast';
@@ -292,26 +292,6 @@ export default function OMRCheckerPage() {
     setResult(null);
     setEditedAnswers({});
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleExportExcel = async () => {
-    const testId = result?.qr_code?.testId;
-    if (!testId) return toast("Test ID topilmadi", 'error');
-    try {
-      const resp = await api.get(`/test-results/export/test/${testId}`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([resp.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      const disposition = resp.headers['content-disposition'] || '';
-      const match = disposition.match(/filename="?([^"]+)"?/);
-      a.download = match ? decodeURIComponent(match[1]) : 'natijalar.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      toast("Natijalar topilmadi yoki xatolik", 'error');
-    }
   };
 
   const getAnnotatedImageUrl = () => {
@@ -789,7 +769,6 @@ export default function OMRCheckerPage() {
               </Card>
             )}
 
-            {/* Debug Info - показываем RAW данные */}
             {/* Navigation */}
             <div className="flex gap-3">
               <Button
@@ -800,16 +779,6 @@ export default function OMRCheckerPage() {
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Orqaga
               </Button>
-              {result?.qr_code?.testId && (
-                <Button
-                  onClick={handleExportExcel}
-                  className="h-11 sm:h-12 px-4 sm:px-6 bg-emerald-600 hover:bg-emerald-700 text-sm sm:text-base"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Excel yuklash</span>
-                  <span className="sm:hidden">Excel</span>
-                </Button>
-              )}
               <Button
                 onClick={handleSave}
                 disabled={saving}
