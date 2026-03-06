@@ -1590,7 +1590,8 @@ export abstract class BaseParser {
       }
       
       const imageMatch = line.match(/___IMAGE_(\d+)___/);
-      if (imageMatch) {
+      const hasVariantPrefix = /(?:\*\*\s*)?[A-D]\s*\)/.test(line);
+      if (imageMatch && !hasVariantPrefix) {
         const imageNum = imageMatch[1];
         imageUrl = this.findImageByNumber(imageNum);
         const dims = this.imageDimensions.get(imageNum);
@@ -1633,10 +1634,18 @@ export abstract class BaseParser {
           if (match) {
             const letter = match[1];
             let text = match[2].trim();
-            
+
+            const varImgMatch = text.match(/^___IMAGE_(\d+)___/);
+            if (varImgMatch) {
+              const imgUrl = this.findImageByNumber(varImgMatch[1]);
+              const dims = this.imageDimensions.get(varImgMatch[1]);
+              variants.push({ letter, text: '', ...(imgUrl ? { imageUrl: imgUrl } : {}), ...(dims ? { imageWidth: dims.widthPx, imageHeight: dims.heightPx } : {}) });
+              continue;
+            }
+
             text = this.restoreMath(text, mathBlocks);
             text = this.finalCleanText(text, mathBlocks);
-            
+
             console.log(`  ✅ Variant ${letter}: ${text || '(empty)'}`);
             variants.push({ letter, text: text || '' });
           }
@@ -1650,17 +1659,25 @@ export abstract class BaseParser {
         inQuestion = false;
         const letter = variantMatch[2].toUpperCase();
         let text = variantMatch[4].trim();
-        
+
+        const varImgMatch = text.match(/^___IMAGE_(\d+)___/);
+        if (varImgMatch) {
+          const imgUrl = this.findImageByNumber(varImgMatch[1]);
+          const dims = this.imageDimensions.get(varImgMatch[1]);
+          variants.push({ letter, text: '', ...(imgUrl ? { imageUrl: imgUrl } : {}), ...(dims ? { imageWidth: dims.widthPx, imageHeight: dims.heightPx } : {}) });
+          continue;
+        }
+
         const textIsBold = text.startsWith('**') || text.startsWith('__');
         const isBold = !!(variantMatch[1] || variantMatch[3] || textIsBold);
         if (isBold) {
           correctAnswer = letter;
           text = text.replace(/^\*\*|\*\*$/g, '').replace(/^__|__$/g, '');
         }
-        
+
         text = this.restoreMath(text, mathBlocks);
         text = this.finalCleanText(text, mathBlocks);
-        
+
         variants.push({ letter, text });
         continue;
       }
