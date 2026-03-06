@@ -1487,6 +1487,8 @@ export abstract class BaseParser {
   protected extractQuestion(block: string, mathBlocks: string[]): ParsedQuestion | null {
     // Rasm markerlarini OLDIN ajratib olish (variant matniga kirib ketmasligi uchun)
     let extractedImageUrl: string | undefined;
+    let extractedImageWidth: number | undefined;
+    let extractedImageHeight: number | undefined;
     const allLines = block.split('\n').map(l => l.trim()).filter(l => l);
     const nonImageLines: string[] = [];
     for (const line of allLines) {
@@ -1495,6 +1497,11 @@ export abstract class BaseParser {
         const imgMatch = line.match(/___IMAGE_(\d+)___/);
         if (imgMatch && !extractedImageUrl) {
           extractedImageUrl = this.findImageByNumber(imgMatch[1]);
+          const dims = this.imageDimensions.get(imgMatch[1]);
+          if (dims) {
+            extractedImageWidth = dims.widthPx;
+            extractedImageHeight = dims.heightPx;
+          }
         }
       } else {
         nonImageLines.push(line);
@@ -1515,6 +1522,8 @@ export abstract class BaseParser {
       const result = this.extractInlineVariants(fullBlock, mathBlocks);
       if (result && extractedImageUrl && !result.imageUrl) {
         result.imageUrl = extractedImageUrl;
+        if (extractedImageWidth && !result.imageWidth) result.imageWidth = extractedImageWidth;
+        if (extractedImageHeight && !result.imageHeight) result.imageHeight = extractedImageHeight;
       }
       return result;
     }
@@ -1524,7 +1533,11 @@ export abstract class BaseParser {
     if (dotSepCount >= 2) {
       const dotResult = this.extractDotSepVariants(fullBlock, mathBlocks);
       if (dotResult) {
-        if (extractedImageUrl && !dotResult.imageUrl) dotResult.imageUrl = extractedImageUrl;
+        if (extractedImageUrl && !dotResult.imageUrl) {
+          dotResult.imageUrl = extractedImageUrl;
+          if (extractedImageWidth && !dotResult.imageWidth) dotResult.imageWidth = extractedImageWidth;
+          if (extractedImageHeight && !dotResult.imageHeight) dotResult.imageHeight = extractedImageHeight;
+        }
         return dotResult;
       }
     }
@@ -1534,7 +1547,11 @@ export abstract class BaseParser {
     if (spaceSepCount >= 2) {
       const spaceResult = this.extractSpaceSepVariants(fullBlock, mathBlocks);
       if (spaceResult) {
-        if (extractedImageUrl && !spaceResult.imageUrl) spaceResult.imageUrl = extractedImageUrl;
+        if (extractedImageUrl && !spaceResult.imageUrl) {
+          spaceResult.imageUrl = extractedImageUrl;
+          if (extractedImageWidth && !spaceResult.imageWidth) spaceResult.imageWidth = extractedImageWidth;
+          if (extractedImageHeight && !spaceResult.imageHeight) spaceResult.imageHeight = extractedImageHeight;
+        }
         return spaceResult;
       }
     }
@@ -1555,7 +1572,9 @@ export abstract class BaseParser {
     let correctAnswer = 'A';
     let points = 1;
     let imageUrl: string | undefined;
-    
+    let imageWidth: number | undefined;
+    let imageHeight: number | undefined;
+
     let inQuestion = true;
     
     for (const line of lines) {
@@ -1574,6 +1593,8 @@ export abstract class BaseParser {
       if (imageMatch) {
         const imageNum = imageMatch[1];
         imageUrl = this.findImageByNumber(imageNum);
+        const dims = this.imageDimensions.get(imageNum);
+        if (dims) { imageWidth = dims.widthPx; imageHeight = dims.heightPx; }
         continue;
       }
       
@@ -1656,12 +1677,17 @@ export abstract class BaseParser {
     questionText = this.restoreMath(questionText, mathBlocks);
     questionText = this.finalCleanText(questionText, mathBlocks);
     
+    const finalImageUrl = imageUrl || extractedImageUrl;
+    const finalImageWidth = imageWidth ?? extractedImageWidth;
+    const finalImageHeight = imageHeight ?? extractedImageHeight;
     return {
       text: questionText,
       variants,
       correctAnswer,
       points,
-      imageUrl: imageUrl || extractedImageUrl,
+      imageUrl: finalImageUrl,
+      ...(finalImageWidth ? { imageWidth: finalImageWidth } : {}),
+      ...(finalImageHeight ? { imageHeight: finalImageHeight } : {}),
     };
   }
 
