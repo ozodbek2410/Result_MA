@@ -1064,21 +1064,48 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
         
         const score = totalQuestionsFromVariant > 0 ? Math.round((correct / totalQuestionsFromVariant) * 100) : 0;
         
+        // Fan bo'yicha natijalarni guruhlash (subjectBreakdown)
+        const subjectMap: Record<string, { name: string; correct: number; incorrect: number; unanswered: number; total: number }> = {};
+        if (variantInfo.shuffledQuestions) {
+          for (let i = 0; i < totalQuestionsFromVariant; i++) {
+            const sq = variantInfo.shuffledQuestions[i];
+            const subId = sq?.subjectId?._id?.toString() || sq?.subjectId?.toString() || 'unknown';
+            const subName = sq?.subjectId?.nameUzb || 'Boshqa';
+            if (!subjectMap[subId]) {
+              subjectMap[subId] = { name: subName, correct: 0, incorrect: 0, unanswered: 0, total: 0 };
+            }
+            subjectMap[subId].total++;
+            const det = comparison[i];
+            if (!det) continue;
+            if (!det.student_answer) subjectMap[subId].unanswered++;
+            else if (det.is_correct) subjectMap[subId].correct++;
+            else subjectMap[subId].incorrect++;
+          }
+        }
+        const subjectBreakdown = Object.values(subjectMap).map(s => ({
+          ...s,
+          score: s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0,
+        }));
+
         result.comparison = {
           correct,
           incorrect,
           unanswered,
           total: totalQuestionsFromVariant,
           score,
-          details: comparison
+          details: comparison,
+          subjectBreakdown,
+          detection_rate: result.detection_rate || 0,
+          grid_method: result.grid_method || 'unknown',
         };
-        
+
         console.log('✅ Natija:', {
           correct,
           incorrect,
           unanswered,
           total: totalQuestionsFromVariant,
-          score: `${score}%`
+          score: `${score}%`,
+          subjects: subjectBreakdown.map((s: any) => `${s.name}: ${s.correct}/${s.total}`)
         });
       } else {
         console.log('⚠️ To\'g\'ri javoblar topilmadi, faqat aniqlangan javoblarni qaytaramiz');
@@ -1222,13 +1249,20 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
       console.log('📸 Annotated image URL:', result.annotated_image_url);
     }
     
+    // Quality check: warn user if detection rate is poor
+    const detRate = result.detection_rate || 0;
+    if (detRate < 75 && result.total_questions > 0) {
+      result.quality_warning = 'Rasm sifati past — javoblarning ko\'p qismi aniqlanmadi. Yaxshiroq yoritishda qayta skanerlang.';
+      console.log(`⚠️ Quality warning: detection_rate=${detRate}%`);
+    }
+
     console.log('📤 Sending response to client...');
     console.log('📤 Response keys:', Object.keys(result));
     console.log('📤 Response success:', result.success);
-    
+
     // Очищаем таймаут перед отправкой ответа
     clearTimeout(requestTimeout);
-    
+
     res.json(result);
     
     console.log('✅ Response sent successfully');
@@ -1295,22 +1329,48 @@ router.post('/save-result', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Yetarli ma\'lumot yo\'q' });
     }
 
+    const { forceOverwrite } = req.body;
+
     const TestResult = require('../models/TestResult').default;
     const StudentVariant = require('../models/StudentVariant').default;
-    
+
     // Variant ID ni topish
     const variant = await StudentVariant.findOne({ variantCode });
     if (!variant) {
       return res.status(404).json({ error: 'Variant topilmadi' });
     }
 
+    // Duplikat tekshirish — testId yoki blockTestId bo'yicha
+    const isBlockTest = variant.testType === 'BlockTest';
+    const existingQuery = isBlockTest
+      ? { $or: [{ blockTestId: testId }, { testId }], studentId }
+      : { testId, studentId };
+    const existingResult = await TestResult.findOne(existingQuery)
+      .populate('studentId', 'fullName')
+      .lean();
+
+    if (existingResult && !forceOverwrite) {
+      return res.status(409).json({
+        error: 'duplicate',
+        message: 'Bu o\'quvchi uchun natija allaqachon mavjud',
+        existingResult: {
+          _id: existingResult._id,
+          studentName: (existingResult.studentId as any)?.fullName || '',
+          totalPoints: existingResult.totalPoints,
+          maxPoints: existingResult.maxPoints,
+          percentage: existingResult.percentage,
+          scannedAt: existingResult.scannedAt
+        }
+      });
+    }
+
     // Javoblarni to'g'ri formatga o'tkazish
     const answers = comparison.details.map((detail: any) => {
       const questionNum = detail.question;
-      const detectedAnswer = detectedAnswers[questionNum]; // Оригинальный ответ с фото
-      const finalAnswer = detail.student_answer; // Финальный ответ (может быть отредактирован)
-      const wasEdited = detectedAnswer !== finalAnswer; // Проверяем, был ли отредактирован
-      
+      const detectedAnswer = detectedAnswers[questionNum];
+      const finalAnswer = detail.student_answer;
+      const wasEdited = detectedAnswer !== finalAnswer;
+
       return {
         questionIndex: detail.question - 1,
         selectedAnswer: finalAnswer || undefined,
@@ -1321,15 +1381,41 @@ router.post('/save-result', authenticate, async (req, res) => {
       };
     });
 
-    // Natijani saqlash - annotatedImage ni birinchi o'rinda ishlatish
     const imagePath = annotatedImage || originalImagePath;
-    console.log('💾 Saqlanayotgan rasm yo\'li:', imagePath);
-    
+
+    // Agar forceOverwrite bo'lsa — mavjudini yangilash
+    if (existingResult && forceOverwrite) {
+      const updated = await TestResult.findByIdAndUpdate(existingResult._id, {
+        variantId: variant._id,
+        answers,
+        totalPoints: comparison.correct,
+        maxPoints: comparison.total,
+        percentage: comparison.score,
+        scannedImagePath: imagePath,
+        scannedAt: new Date(),
+        ...(isBlockTest ? { blockTestId: testId } : { testId })
+      }, { new: true });
+      console.log('✅ Natija yangilandi (overwrite):', updated?._id);
+
+      await Promise.all([
+        invalidateCache('/api/statistics'),
+        invalidateCache('/api/branches')
+      ]);
+
+      return res.json({
+        success: true,
+        message: 'Natija yangilandi',
+        result: updated,
+        updated: true
+      });
+    }
+
+    // Yangi natija yaratish
     const testResult = new TestResult({
       studentId,
-      testId,
+      ...(isBlockTest ? { blockTestId: testId } : { testId }),
       variantId: variant._id,
-      answers: answers,
+      answers,
       totalPoints: comparison.correct,
       maxPoints: comparison.total,
       percentage: comparison.score,
@@ -1338,8 +1424,8 @@ router.post('/save-result', authenticate, async (req, res) => {
     });
 
     await testResult.save();
-    
-    console.log('✅ Natija saqlandi, rasm yo\'li:', testResult.scannedImagePath);
+
+    console.log('✅ Natija saqlandi:', testResult._id);
 
     // Инвалидируем кэш статистики
     await Promise.all([

@@ -266,13 +266,18 @@ export class SmartUniversalParser extends BaseParser {
 
 
     // 5. Extract variant letters from inside formulas (safe — no match if absent)
-    // Added ( to lookback to handle variant at start of math block: \(A){Cl}^{-1}...
-    cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (mathBlock) => {
+    // ___MATHBOLD_X___ marker from AST serializer indicates bold variant (correct answer)
+    cleaned = cleaned.replace(/\\\([\s\S]*?\\\)(___MATHBOLD_([A-D])___)?/g, (fullMatch, _marker, boldLetter) => {
+      const mathBlock = fullMatch.replace(/___MATHBOLD_[A-D]___$/, '');
       return mathBlock.replace(
         /([0-9}\s(])(\*\*|__)?([A-D])(\*\*|__)?(?:\\?\)|\\?\.)/g,
-        '$1 \\) $2$3) \\( '
+        (_, pre, b1, letter, b2) => {
+          const isBold = (boldLetter && letter === boldLetter) || !!b1 || !!b2;
+          return `${pre} \\) ${isBold ? '**' : ''}${letter}) \\( `;
+        }
       );
     });
+    cleaned = cleaned.replace(/___MATHBOLD_[A-D]___/g, '');
     cleaned = cleaned.replace(/\\\(\s*\\\)/g, ' ');
 
     // 6. ALWAYS hide math blocks as ___MATH_N___ (CRITICAL — safe for ALL)
@@ -370,6 +375,9 @@ export class SmartUniversalParser extends BaseParser {
       cleaned = cleaned.replace(/<->/g, '\u21CC'); // ⇌
       cleaned = cleaned.replace(/->/g, '\u2192');  // →
 
+      // Fix spaced subscripts: _ 3 → _3, ^ 2 → ^2
+      cleaned = cleaned.replace(/([_^])\s+(\d)/g, '$1$2');
+
       // Wrap chemistry formulas with subscript/superscript in LaTeX blocks
       // Skip text already inside \(...\)
       const chemBlocks: string[] = [];
@@ -379,7 +387,8 @@ export class SmartUniversalParser extends BaseParser {
       cleaned = cleaned.replace(/(\^(?:\{[^}]+\}|\d))([A-Z][a-z]?)(?=\s|$|[^_^{a-z\d])/g, '\\($1$2\\)');
 
       // Isotope with atomic number: _{19}K^{39}, _{17}Cl^{35}
-      cleaned = cleaned.replace(/(_(?:\{[^}]+\}|\d))([A-Z][a-z]?)(\^(?:\{[^}]+\}|\d))?/g, (m, sub, elem, sup) => {
+      // Negative lookbehind: skip chemistry subscripts like N_2O (letter before _)
+      cleaned = cleaned.replace(/(?<![A-Za-z])(_(?:\{[^}]+\}|\d))([A-Z][a-z]?)(\^(?:\{[^}]+\}|\d))?/g, (m, sub, elem, sup) => {
         return sup ? `\\(${sub}${elem}${sup}\\)` : `\\(${sub}${elem}\\)`;
       });
 
@@ -392,7 +401,12 @@ export class SmartUniversalParser extends BaseParser {
         (match) => {
           if (!/[_^]/.test(match)) return match;
           if (/^[A-D]$/.test(match)) return match;
-          return `\\(${match}\\)`;
+          // Strip unmatched trailing parens
+          let formula = match;
+          const opens = (formula.match(/\(/g) || []).length;
+          const closes = (formula.match(/\)/g) || []).length;
+          if (closes > opens) formula = formula.replace(/\)+$/, (m) => m.substring(0, Math.max(0, opens - closes + m.length)));
+          return `\\(${formula}\\)`;
         }
       );
 

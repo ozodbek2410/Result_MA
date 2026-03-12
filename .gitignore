@@ -122,7 +122,7 @@ server/media/
 server/scripts/
 
 # Test files
-test/*.jpg
-test/*.png
-test/*.xlsx
+test/
+media/
 guruhlar/
+mongo_dump/

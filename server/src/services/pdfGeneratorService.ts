@@ -1069,10 +1069,10 @@ export class PDFGeneratorService {
       return `
       <div class="sheet">
         <!-- Corner Marks for OMR -->
-        <div class="corner-mark" style="top:5mm;left:5mm"></div>
-        <div class="corner-mark" style="top:5mm;right:5mm"></div>
-        <div class="corner-mark" style="bottom:5mm;left:5mm"></div>
-        <div class="corner-mark" style="bottom:5mm;right:5mm"></div>
+        <div class="corner-mark" style="top:2mm;left:2mm"></div>
+        <div class="corner-mark" style="top:2mm;right:2mm"></div>
+        <div class="corner-mark" style="bottom:2mm;left:2mm"></div>
+        <div class="corner-mark" style="bottom:2mm;right:2mm"></div>
 
         <!-- Academy Header -->
         <div class="academy-header">
@@ -1240,5 +1240,85 @@ export class PDFGeneratorService {
       return { columns: 4, bubbleSize: 5.5, bubbleGap: 2.5, rowMargin: 1.0, columnGap: 4, numberWidth: 7, fontSize: 7.5, bubbleFontSize: 6.5, borderWidth: 1.5 };
     }
     return { columns: 5, bubbleSize: 5.5, bubbleGap: 1.2, rowMargin: 0.4, columnGap: 3, numberWidth: 6, fontSize: 7, bubbleFontSize: 6, borderWidth: 1.5 };
+  }
+
+  /**
+   * Booklet imposition — har bir o'quvchi PDF ni kitobcha formatga aylantirish
+   * Natija: A4 landscape, har sahifada 2 ta A5 portrait sahifa yonma-yon
+   */
+  static async imposeBooklet(pdfBuffer: Buffer, studentCount: number): Promise<Buffer> {
+    const src = await PDFDocument.load(pdfBuffer);
+    const totalPages = src.getPageCount();
+    const pagesPerStudent = Math.ceil(totalPages / studentCount);
+
+    console.log(`📖 [BOOKLET] ${studentCount} students, ${totalPages} pages, ~${pagesPerStudent} per student`);
+
+    const dest = await PDFDocument.create();
+
+    // A4 landscape dimensions (pts)
+    const LW = 841.89;
+    const LH = 595.28;
+    const halfW = LW / 2;
+
+    // Original page size
+    const origPage = src.getPage(0);
+    const { width: origW, height: origH } = origPage.getSize();
+
+    // Scale to fit half of landscape A4 with small margin
+    const scale = Math.min(halfW / origW, LH / origH) * 0.95;
+    const scaledW = origW * scale;
+    const scaledH = origH * scale;
+    const xOffLeft = (halfW - scaledW) / 2;
+    const xOffRight = halfW + (halfW - scaledW) / 2;
+    const yOff = (LH - scaledH) / 2;
+
+    // Embed all pages at once
+    const embeddedPages = await dest.embedPages(src.getPages());
+
+    for (let s = 0; s < studentCount; s++) {
+      const startPage = s * pagesPerStudent;
+      const endPage = Math.min(startPage + pagesPerStudent, totalPages);
+      const n = endPage - startPage;
+      const padded = Math.ceil(n / 4) * 4;
+
+      // Collect student pages (with null for padding)
+      const studentPages: (typeof embeddedPages[0] | null)[] = [];
+      for (let i = 0; i < padded; i++) {
+        const srcIdx = startPage + i;
+        studentPages.push(srcIdx < endPage ? embeddedPages[srcIdx] : null);
+      }
+
+      // Booklet imposition: each sheet has front and back
+      for (let si = 0; si < padded / 4; si++) {
+        const fl = padded - 1 - 2 * si;  // front left page index
+        const fr = 2 * si;                // front right page index
+        const bl = 2 * si + 1;            // back left page index
+        const br = padded - 2 - 2 * si;   // back right page index
+
+        // Front side
+        const frontPage = dest.addPage([LW, LH]);
+        if (studentPages[fl]) {
+          frontPage.drawPage(studentPages[fl]!, { x: xOffLeft, y: yOff, width: scaledW, height: scaledH });
+        }
+        if (studentPages[fr]) {
+          frontPage.drawPage(studentPages[fr]!, { x: xOffRight, y: yOff, width: scaledW, height: scaledH });
+        }
+
+        // Back side
+        const backPage = dest.addPage([LW, LH]);
+        if (studentPages[bl]) {
+          backPage.drawPage(studentPages[bl]!, { x: xOffLeft, y: yOff, width: scaledW, height: scaledH });
+        }
+        if (studentPages[br]) {
+          backPage.drawPage(studentPages[br]!, { x: xOffRight, y: yOff, width: scaledW, height: scaledH });
+        }
+      }
+
+      console.log(`📖 [BOOKLET] Student ${s + 1}: ${n} pages → ${padded} padded → ${padded / 2} sheets`);
+    }
+
+    const bytes = await dest.save();
+    console.log(`✅ [BOOKLET] Done: ${dest.getPageCount()} landscape pages`);
+    return Buffer.from(bytes);
   }
 }

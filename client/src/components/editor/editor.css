@@ -2,6 +2,7 @@
 .ProseMirror {
   outline: none;
   font-size: 14px;
+  color: #1f2937;
 }
 
 @media (min-width: 640px) {

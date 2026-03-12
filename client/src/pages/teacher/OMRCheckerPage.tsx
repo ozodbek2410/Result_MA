@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../hooks/useToast';
 import { CameraModal } from '../../components/CameraModal';
+import { LiveScannerModal } from '../../components/LiveScannerModal';
 import api from '../../lib/api';
 
 interface CheckResult {
@@ -13,6 +14,9 @@ interface CheckResult {
   annotated_image?: string;
   uploaded_image?: string;
   error?: string;
+  detection_rate?: number;
+  grid_method?: string;
+  quality_warning?: string;
   qr_found?: boolean;
   qr_code?: {
     variantCode: string;
@@ -34,6 +38,14 @@ interface CheckResult {
       correct_answer: string;
       is_correct: boolean;
     }>;
+    subjectBreakdown?: Array<{
+      name: string;
+      correct: number;
+      incorrect: number;
+      unanswered: number;
+      total: number;
+      score: number;
+    }>;
   };
 }
 
@@ -50,7 +62,13 @@ export default function OMRCheckerPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-  
+  const [isLiveScannerOpen, setIsLiveScannerOpen] = useState(false);
+  const [duplicateModal, setDuplicateModal] = useState<{
+    show: boolean;
+    existingResult: { studentName: string; totalPoints: number; maxPoints: number; percentage: number; scannedAt: string } | null;
+    pendingSaveData: Record<string, unknown> | null;
+  }>({ show: false, existingResult: null, pendingSaveData: null });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -71,6 +89,15 @@ export default function OMRCheckerPage() {
     setPreviewUrl(URL.createObjectURL(file));
     setIsCameraOpen(false);
     toast('Rasm muvaffaqiyatli olindi', 'success');
+  };
+
+  const handleLiveScanResult = (scanResult: CheckResult, file: File) => {
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setResult(scanResult);
+    if (scanResult.success) {
+      setStep('review');
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -187,36 +214,71 @@ export default function OMRCheckerPage() {
 
   const updatedComparison = getUpdatedComparison();
 
+  const buildSaveData = (forceOverwrite = false) => {
+    if (!result?.qr_code?.testId || !result?.comparison) return null;
+    const originalDetected = result.detected_answers || {};
+    const finalComparison = updatedComparison || result.comparison;
+    const finalDetails = result.comparison.details.map((detail: any) => {
+      const currentAnswer = editedAnswers[detail.question] || detail.student_answer;
+      const effectiveAnswer = (!currentAnswer || currentAnswer === '-') ? null : currentAnswer;
+      return {
+        ...detail,
+        student_answer: effectiveAnswer,
+        is_correct: effectiveAnswer ? effectiveAnswer === detail.correct_answer : false,
+      };
+    });
+    return {
+      variantCode: result.qr_code.variantCode,
+      studentId: result.qr_code.studentId,
+      testId: result.qr_code.testId,
+      detectedAnswers: originalDetected,
+      comparison: {
+        ...result.comparison,
+        correct: finalComparison.correct,
+        incorrect: finalComparison.incorrect,
+        unanswered: finalComparison.unanswered,
+        score: finalComparison.score,
+        details: finalDetails,
+      },
+      annotatedImage: result.annotated_image,
+      originalImagePath: result.uploaded_image,
+      forceOverwrite,
+    };
+  };
+
   const handleSave = async () => {
-    if (!result?.qr_code?.testId || !result?.comparison) {
-      return toast('Test topilmadi', 'error');
-    }
+    const data = buildSaveData(false);
+    if (!data) return toast('Test topilmadi', 'error');
     setSaving(true);
     try {
-      const finalAnswers = { ...result.detected_answers, ...editedAnswers };
-      
-      // Используем обновленную статистику
-      const finalComparison = updatedComparison || result.comparison;
-      
-      await api.post('/omr/save-result', {
-        variantCode: result.qr_code.variantCode,
-        studentId: result.qr_code.studentId,
-        testId: result.qr_code.testId,
-        detectedAnswers: finalAnswers,
-        comparison: {
-          ...result.comparison,
-          correct: finalComparison.correct,
-          incorrect: finalComparison.incorrect,
-          unanswered: finalComparison.unanswered,
-          score: finalComparison.score
-        },
-        annotatedImage: result.annotated_image,
-        originalImagePath: result.uploaded_image
-      });
-      
+      await api.post('/omr/save-result', data);
       toast('Saqlandi', 'success');
       setTimeout(() => resetAll(), 1500);
-    } catch (error) {
+    } catch (err: any) {
+      if (err?.response?.status === 409 && err?.response?.data?.error === 'duplicate') {
+        setDuplicateModal({
+          show: true,
+          existingResult: err.response.data.existingResult,
+          pendingSaveData: data,
+        });
+      } else {
+        toast('Xatolik', 'error');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleForceOverwrite = async () => {
+    const data = duplicateModal.pendingSaveData;
+    if (!data) return;
+    setDuplicateModal({ show: false, existingResult: null, pendingSaveData: null });
+    setSaving(true);
+    try {
+      await api.post('/omr/save-result', { ...data, forceOverwrite: true });
+      toast('Natija yangilandi', 'success');
+      setTimeout(() => resetAll(), 1500);
+    } catch {
       toast('Xatolik', 'error');
     } finally {
       setSaving(false);
@@ -244,6 +306,11 @@ export default function OMRCheckerPage() {
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
         onCapture={handleCameraCapture}
+      />
+      <LiveScannerModal
+        isOpen={isLiveScannerOpen}
+        onClose={() => setIsLiveScannerOpen(false)}
+        onResult={handleLiveScanResult}
       />
       
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -331,12 +398,12 @@ export default function OMRCheckerPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setIsCameraOpen(true);
+                      setIsLiveScannerOpen(true);
                     }}
                     className="mt-2 px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:shadow-xl hover:scale-105 transition-all duration-200 font-semibold flex items-center gap-2 sm:gap-3 mx-auto text-sm sm:text-base"
                   >
-                    <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Kamera orqali suratga olish
+                    <Scan className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Skanerlash
                   </button>
                   
                   <input
@@ -478,6 +545,40 @@ export default function OMRCheckerPage() {
               </Card>
             )}
 
+            {/* Detection Rate */}
+            {result.detection_rate != null && (
+              <Card className="border shadow-sm overflow-hidden">
+                <div className="px-4 py-2.5 flex items-center gap-3">
+                  <span className="text-xs font-medium text-gray-500 whitespace-nowrap">Aniqlik</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        result.detection_rate >= 80 ? 'bg-green-500' :
+                        result.detection_rate >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(100, result.detection_rate)}%` }}
+                    />
+                  </div>
+                  <span className={`text-sm font-bold ${
+                    result.detection_rate >= 80 ? 'text-green-600' :
+                    result.detection_rate >= 60 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {Math.round(result.detection_rate)}%
+                  </span>
+                </div>
+              </Card>
+            )}
+
+            {/* Quality Warning */}
+            {result.quality_warning && (
+              <Card className="border border-orange-300 shadow-sm bg-orange-50">
+                <div className="px-4 py-3 flex items-center gap-2">
+                  <span className="text-orange-500 text-lg">⚠️</span>
+                  <span className="text-sm text-orange-700 font-medium">{result.quality_warning}</span>
+                </div>
+              </Card>
+            )}
+
             {/* Stats Grid */}
             {result.comparison && updatedComparison && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -510,6 +611,43 @@ export default function OMRCheckerPage() {
                     <p className="text-xs font-medium text-gray-600">Javobsiz</p>
                   </div>
                 </Card>
+              </div>
+            )}
+
+            {/* Subject Breakdown Cards */}
+            {result.comparison?.subjectBreakdown && result.comparison.subjectBreakdown.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {result.comparison.subjectBreakdown.map((subject, idx) => {
+                  const pct = subject.total > 0 ? Math.round((subject.correct / subject.total) * 100) : 0;
+                  const color = pct >= 70 ? 'green' : pct >= 40 ? 'yellow' : 'red';
+                  const colors: Record<string, { bg: string; bar: string; text: string; badge: string }> = {
+                    green: { bg: 'bg-green-50', bar: 'bg-green-500', text: 'text-green-700', badge: 'bg-green-100 text-green-700' },
+                    yellow: { bg: 'bg-yellow-50', bar: 'bg-yellow-500', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-700' },
+                    red: { bg: 'bg-red-50', bar: 'bg-red-500', text: 'text-red-700', badge: 'bg-red-100 text-red-700' },
+                  };
+                  const c = colors[color];
+                  return (
+                    <Card key={idx} className="border shadow-sm overflow-hidden">
+                      <div className={`${c.bg} p-3 sm:p-4`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="text-sm font-bold text-gray-900 truncate">{subject.name}</h3>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.badge}`}>{pct}%</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
+                          <span className="text-green-600 font-semibold">{subject.correct} to'g'ri</span>
+                          <span className="text-red-600 font-semibold">{subject.incorrect} xato</span>
+                          {subject.unanswered > 0 && (
+                            <span className="text-gray-400 font-semibold">{subject.unanswered} bo'sh</span>
+                          )}
+                          <span className="text-gray-500 ml-auto">{subject.total} ta</span>
+                        </div>
+                        <div className="h-1.5 bg-white/60 rounded-full overflow-hidden">
+                          <div className={`h-full ${c.bar} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             )}
 
@@ -631,20 +769,19 @@ export default function OMRCheckerPage() {
               </Card>
             )}
 
-            {/* Debug Info - показываем RAW данные */}
             {/* Navigation */}
             <div className="flex gap-3">
-              <Button 
-                onClick={resetAll} 
-                variant="outline" 
+              <Button
+                onClick={resetAll}
+                variant="outline"
                 className="h-11 sm:h-12 px-4 sm:px-6 text-sm sm:text-base"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Orqaga
               </Button>
-              <Button 
-                onClick={handleSave} 
-                disabled={saving} 
+              <Button
+                onClick={handleSave}
+                disabled={saving}
                 className="flex-1 h-11 sm:h-12 bg-green-600 hover:bg-green-700 text-sm sm:text-base"
               >
                 {saving ? (
@@ -664,6 +801,60 @@ export default function OMRCheckerPage() {
         </div>
       )}
     </div>
+
+    {/* Duplikat natija modal */}
+    {duplicateModal.show && duplicateModal.existingResult && (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden animate-fade-in">
+          <div className="bg-amber-50 border-b border-amber-200 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-amber-900">Natija allaqachon mavjud!</h3>
+              </div>
+            </div>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold text-gray-900">{duplicateModal.existingResult.studentName}</span> uchun oldingi natija:
+            </p>
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Ball:</span>
+                <span className="font-semibold">{duplicateModal.existingResult.totalPoints}/{duplicateModal.existingResult.maxPoints}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Foiz:</span>
+                <span className="font-semibold">{Math.round(duplicateModal.existingResult.percentage)}%</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Sana:</span>
+                <span className="font-semibold">{new Date(duplicateModal.existingResult.scannedAt).toLocaleDateString('uz')}</span>
+              </div>
+            </div>
+            <p className="text-sm text-amber-700 font-medium">Ustiga yozilsinmi?</p>
+          </div>
+          <div className="flex gap-2 px-5 pb-5">
+            <button
+              onClick={() => setDuplicateModal({ show: false, existingResult: null, pendingSaveData: null })}
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Bekor qilish
+            </button>
+            <button
+              onClick={handleForceOverwrite}
+              className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Ustiga yozish
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }

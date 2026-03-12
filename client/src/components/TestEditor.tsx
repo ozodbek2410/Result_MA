@@ -14,6 +14,9 @@ const getVariantLetter = (index: number): string => {
 interface Question {
   text: string;
   contextText?: string;
+  contextImage?: string;
+  contextImageWidth?: number;
+  contextImageHeight?: number;
   formula?: string;
   imageUrl?: string;
   variants: {
@@ -201,7 +204,7 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
               {expandedQuestion === qIndex && (
                 <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 bg-white">
                   {/* Context Text (reading passage) */}
-                  {(question.contextText || question.contextImage) ? (
+                  {(question.contextText != null || question.contextImage) ? (
                     <div className="relative bg-amber-50 border border-amber-200 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium text-amber-700">Matn (passage)</label>
@@ -216,17 +219,19 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                       {question.contextImage && (
                         <img src={question.contextImage} alt="Context" className="rounded mb-2" style={{ float: 'right', maxWidth: '40%', maxHeight: 250, margin: '0 0 4px 8px' }} />
                       )}
-                      {question.contextText && (
+                      {question.contextText != null && (
                         <>
                           <textarea
                             value={question.contextText}
                             onChange={(e) => updateQuestion(qIndex, 'contextText', e.target.value)}
-                            className="w-full min-h-[80px] text-sm bg-white border border-amber-200 rounded p-2 resize-y"
+                            className="w-full min-h-[80px] text-sm text-gray-900 bg-white border border-amber-200 rounded p-2 resize-y"
                             placeholder="Matn kiritng..."
                           />
-                          <div className="mt-2 text-xs text-amber-600">
-                            <MathText text={question.contextText} />
-                          </div>
+                          {question.contextText && (
+                            <div className="mt-2 text-xs text-amber-600">
+                              <MathText text={question.contextText} />
+                            </div>
+                          )}
                         </>
                       )}
                     </div>

@@ -13,7 +13,8 @@ import {
   Users,
   Eye,
   FileText,
-  BookOpen
+  BookOpen,
+  Download
 } from 'lucide-react';
 
 export default function ConfigureBlockTestPage() {
@@ -31,6 +32,7 @@ export default function ConfigureBlockTestPage() {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printMode, setPrintMode] = useState<'questions' | 'answers'>('questions');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -137,6 +139,28 @@ export default function ConfigureBlockTestPage() {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true);
+      const response = await api.get(`/block-tests/${id}/export-excel`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const disposition = response.headers['content-disposition'];
+      const fileName = disposition?.match(/filename="?(.+)"?/)?.[1] || 'blok_test.xlsx';
+      link.setAttribute('download', decodeURIComponent(fileName));
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      success('Excel fayl yuklandi');
+    } catch (err: unknown) {
+      error('Excel yuklab olishda xatolik');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Fanlar va jami savollar
   const totalQuestions = blockTest?.subjectTests?.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0) || 0;
 
@@ -222,6 +246,30 @@ export default function ConfigureBlockTestPage() {
             </div>
           </div>
           <Eye className="w-5 h-5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+        </div>
+      </button>
+
+      {/* Excel Export Card */}
+      <button
+        onClick={handleExportExcel}
+        disabled={isExporting}
+        className="w-full bg-white border border-slate-200 rounded-xl p-4 hover:border-emerald-300 hover:bg-emerald-50/50 transition-all group disabled:opacity-50"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+              {isExporting ? (
+                <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Download className="w-5 h-5 text-emerald-600" />
+              )}
+            </div>
+            <div className="text-left">
+              <div className="font-semibold text-slate-900 text-sm">Excel yuklab olish</div>
+              <div className="text-xs text-slate-500">Fanlar bo'yicha natijalar</div>
+            </div>
+          </div>
+          <Download className="w-5 h-5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
         </div>
       </button>
 

@@ -1,11 +1,13 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import ExcelJS from 'exceljs';
 import BlockTest from '../models/BlockTest';
 import Student from '../models/Student';
 import StudentGroup from '../models/StudentGroup';
 import StudentVariant from '../models/StudentVariant';
 import StudentTestConfig from '../models/StudentTestConfig';
 import GroupSubjectConfig from '../models/GroupSubjectConfig';
+import TestResult from '../models/TestResult';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import { PDFExportService } from '../services/pdfExportService';
@@ -1126,6 +1128,56 @@ router.post('/:id/export-pdf-async', authenticate, async (req: AuthRequest, res)
 });
 
 /**
+ * Booklet PDF export (kitobcha format)
+ * POST /block-tests/:id/export-booklet-pdf-async
+ */
+router.post('/:id/export-booklet-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  req.setTimeout(0);
+  res.setTimeout(0);
+  try {
+    const { id } = req.params;
+    const { students, settings } = req.body;
+
+    if (process.env.REDIS_ENABLED !== 'true') {
+      return res.status(503).json({ message: 'Queue service mavjud emas', error: 'redis_disabled' });
+    }
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ message: "O'quvchilar tanlanmagan" });
+    }
+
+    const blockTest = await BlockTest.findById(id).select('branchId classNumber').lean();
+    if (!blockTest) return res.status(404).json({ message: 'Block test topilmadi' });
+
+    if (req.user?.branchId && blockTest.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: "Ruxsat yo'q" });
+    }
+
+    const job = await pdfExportQueue.add('export', {
+      testId: id,
+      studentIds: students,
+      userId: req.user?.id || 'unknown',
+      isBlockTest: true,
+      booklet: true,
+      settings
+    }, {
+      priority: students.length > 50 ? 2 : 1,
+      jobId: `booklet-blocktest-${id}-${Date.now()}`
+    });
+
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'Kitobcha PDF yaratilmoqda...',
+      estimatedTime: Math.ceil(students.length * 2)
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ [API] Error queueing booklet export:', msg);
+    res.status(500).json({ message: 'Xatolik yuz berdi', error: msg });
+  }
+});
+
+/**
  * Check PDF export job status
  * GET /block-tests/pdf-export-status/:jobId
  */
@@ -1407,6 +1459,277 @@ router.get('/export-status/:jobId', authenticate, async (req: AuthRequest, res) 
       message: 'Xatolik',
       error: error.message 
     });
+  }
+});
+
+// ─── EXCEL EXPORT FOR BLOCK TEST ───────────────────────────────────────────────
+router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const blockTestId = req.params.id;
+
+    const blockTest = await BlockTest.findById(blockTestId)
+      .populate('subjectTests.subjectId', 'nameUzb')
+      .populate('groupId', 'name letter')
+      .lean();
+
+    if (!blockTest) {
+      return res.status(404).json({ message: 'Blok test topilmadi' });
+    }
+
+    const groupIdStr = blockTest.groupId
+      ? (typeof blockTest.groupId === 'object' ? (blockTest.groupId as any)._id : blockTest.groupId)
+      : undefined;
+
+    const relatedFilter: Record<string, unknown> = {
+      classNumber: blockTest.classNumber,
+      periodMonth: blockTest.periodMonth,
+      periodYear: blockTest.periodYear,
+      branchId: blockTest.branchId,
+    };
+    if (groupIdStr) relatedFilter.groupId = groupIdStr;
+
+    const relatedTests = await BlockTest.find(relatedFilter)
+      .populate('subjectTests.subjectId', 'nameUzb')
+      .lean();
+
+    const allSubjects: { subjectId: any; subjectIdStr: string; groupLetter?: string; questionsCount: number }[] = [];
+    for (const rt of relatedTests) {
+      for (const st of rt.subjectTests || []) {
+        if (st.subjectId) {
+          const sid = (st.subjectId as any)?._id?.toString() || (st.subjectId as any)?.toString();
+          allSubjects.push({ subjectId: st.subjectId, subjectIdStr: sid, groupLetter: st.groupLetter, questionsCount: st.questions?.length || 0 });
+        }
+      }
+    }
+
+    // O'quvchilarni StudentGroup orqali topish (Student modelda groupId yo'q)
+    let students: any[];
+    if (groupIdStr) {
+      const sgs = await StudentGroup.find({ groupId: groupIdStr })
+        .populate({ path: 'studentId', select: 'fullName _id classNumber' })
+        .lean();
+      const seenIds = new Set<string>();
+      students = sgs
+        .map(sg => sg.studentId)
+        .filter((s: any) => {
+          if (!s) return false;
+          const id = s._id?.toString();
+          if (!id || seenIds.has(id)) return false;
+          seenIds.add(id);
+          return true;
+        })
+        .sort((a: any, b: any) => (a.fullName || '').localeCompare(b.fullName || ''));
+    } else {
+      students = await Student.find({ classNumber: blockTest.classNumber }).sort({ fullName: 1 }).lean();
+    }
+    const studentIds = students.map((s: any) => s._id);
+    console.log('📊 EXCEL DEBUG: students count after proper filter =', students.length);
+
+    const allTestIds = relatedTests.map(t => t._id);
+    console.log('📊 EXCEL DEBUG: allTestIds =', allTestIds.map(id => id.toString()));
+    console.log('📊 EXCEL DEBUG: studentIds count =', studentIds.length);
+    console.log('📊 EXCEL DEBUG: groupIdStr =', groupIdStr?.toString());
+
+    // TestResult blockTestId yoki testId da saqlanishi mumkin
+    const results = await TestResult.find({
+      $or: [{ blockTestId: { $in: allTestIds } }, { testId: { $in: allTestIds } }],
+      studentId: { $in: studentIds }
+    }).lean();
+    const resultMap = new Map<string, any>();
+    for (const r of results) { resultMap.set(r.studentId.toString(), r); }
+    console.log('📊 EXCEL DEBUG: TestResults found =', results.length);
+
+    const variants = await StudentVariant.find({ testId: { $in: allTestIds }, testType: 'BlockTest', studentId: { $in: studentIds } }).lean();
+    const variantMap = new Map<string, any>();
+    for (const v of variants) { variantMap.set(v.studentId.toString(), v); }
+    console.log('📊 EXCEL DEBUG: StudentVariants found =', variants.length);
+
+    // Debug: log first variant's shuffledQuestions subjectId format
+    if (variants.length > 0) {
+      const firstV = variants[0];
+      console.log('📊 EXCEL DEBUG: first variant testId =', firstV.testId?.toString());
+      console.log('📊 EXCEL DEBUG: first variant studentId =', firstV.studentId?.toString());
+      console.log('📊 EXCEL DEBUG: first variant shuffledQuestions count =', firstV.shuffledQuestions?.length || 0);
+      if (firstV.shuffledQuestions && firstV.shuffledQuestions.length > 0) {
+        const q0 = firstV.shuffledQuestions[0];
+        console.log('📊 EXCEL DEBUG: q0.subjectId =', JSON.stringify(q0?.subjectId));
+        console.log('📊 EXCEL DEBUG: q0.subjectId type =', typeof q0?.subjectId);
+        if (q0?.subjectId && typeof q0.subjectId === 'object') {
+          console.log('📊 EXCEL DEBUG: q0.subjectId._id =', q0.subjectId._id?.toString());
+          console.log('📊 EXCEL DEBUG: q0.subjectId keys =', Object.keys(q0.subjectId));
+        }
+      }
+    }
+
+    interface SubjectCol { name: string; subjectIdStr: string; groupLetter?: string; questionsCount: number }
+    const subjectCols: SubjectCol[] = [];
+    const seenSubjects = new Set<string>();
+    for (const s of allSubjects) {
+      const subName = (s.subjectId as any)?.nameUzb || 'Fan';
+      const key = `${s.subjectIdStr}_${s.groupLetter || ''}`;
+      if (!seenSubjects.has(key)) {
+        seenSubjects.add(key);
+        subjectCols.push({ name: subName, subjectIdStr: s.subjectIdStr, groupLetter: s.groupLetter, questionsCount: s.questionsCount });
+      }
+    }
+    console.log('📊 EXCEL DEBUG: subjectCols =', subjectCols.map(sc => ({ name: sc.name, id: sc.subjectIdStr, letter: sc.groupLetter })));
+
+    // Helper: extract subjectId string from shuffledQuestion
+    const getSubId = (q: any): string => {
+      if (!q?.subjectId) return 'unknown';
+      if (typeof q.subjectId === 'string') return q.subjectId;
+      if (q.subjectId._id) return q.subjectId._id.toString();
+      return q.subjectId.toString();
+    };
+
+    type SubjectScores = Map<string, { correct: number; total: number }>;
+    const studentSubjectScores = new Map<string, SubjectScores>();
+    for (const student of students) {
+      const sid = student._id.toString();
+      const result = resultMap.get(sid);
+      const variant = variantMap.get(sid);
+      if (!result || !variant?.shuffledQuestions?.length) {
+        if (!result) console.log('📊 EXCEL DEBUG: no result for student', sid, student.fullName);
+        if (!variant) console.log('📊 EXCEL DEBUG: no variant for student', sid, student.fullName);
+        else if (!variant.shuffledQuestions?.length) console.log('📊 EXCEL DEBUG: empty shuffledQuestions for student', sid);
+        continue;
+      }
+      const scores: SubjectScores = new Map();
+      for (let i = 0; i < variant.shuffledQuestions.length; i++) {
+        const subId = getSubId(variant.shuffledQuestions[i]);
+        if (!scores.has(subId)) scores.set(subId, { correct: 0, total: 0 });
+        const entry = scores.get(subId)!;
+        entry.total++;
+        if (result.answers?.[i]?.isCorrect) entry.correct++;
+      }
+      studentSubjectScores.set(sid, scores);
+      // Log first student's scores for debugging
+      if (studentSubjectScores.size === 1) {
+        console.log('📊 EXCEL DEBUG: first student scores:', student.fullName);
+        scores.forEach((v, k) => console.log('  subId:', k, '→', v.correct, '/', v.total));
+        console.log('📊 EXCEL DEBUG: subjectCols ids:', subjectCols.map(sc => sc.subjectIdStr));
+      }
+    }
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Natijalar');
+
+    const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } };
+    const subHeaderFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6366F1' } };
+    const lightRowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+    const whiteRowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+    const greenFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+    const yellowFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
+    const redFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+    const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+    const subHeaderFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    const bodyFont: Partial<ExcelJS.Font> = { size: 10 };
+    const boldFont: Partial<ExcelJS.Font> = { bold: true, size: 10 };
+    const border: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'FFC7D2FE' } }, left: { style: 'thin', color: { argb: 'FFC7D2FE' } },
+      bottom: { style: 'thin', color: { argb: 'FFC7D2FE' } }, right: { style: 'thin', color: { argb: 'FFC7D2FE' } },
+    };
+
+    const columns: Partial<ExcelJS.Column>[] = [{ key: 'num', width: 5 }, { key: 'name', width: 32 }];
+    subjectCols.forEach((_, i) => { columns.push({ key: `subj_${i}`, width: 18 }); });
+    columns.push({ key: 'total', width: 14 }, { key: 'percent', width: 12 });
+    ws.columns = columns;
+
+    const periodName = `${blockTest.periodMonth}/${blockTest.periodYear}`;
+    const groupName = blockTest.groupId ? ` | ${(blockTest.groupId as any).name || (blockTest.groupId as any).letter || ''}` : '';
+    const titleRow = ws.addRow([`Blok test natijalar — ${blockTest.classNumber}-sinf${groupName} | ${periodName}`]);
+    ws.mergeCells(titleRow.number, 1, titleRow.number, columns.length);
+    titleRow.getCell(1).fill = headerFill; titleRow.getCell(1).font = headerFont;
+    titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' }; titleRow.height = 36;
+
+    const totalQ = allSubjects.reduce((s, x) => s + x.questionsCount, 0);
+    const infoRow = ws.addRow([`O'quvchilar: ${students.length} | Fanlar: ${subjectCols.length} | Jami savollar: ${totalQ}`]);
+    ws.mergeCells(infoRow.number, 1, infoRow.number, columns.length);
+    infoRow.getCell(1).fill = subHeaderFill; infoRow.getCell(1).font = subHeaderFont;
+    infoRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' }; infoRow.height = 24;
+
+    const headerValues: string[] = ['№', "F.I.O"];
+    subjectCols.forEach(sc => {
+      const label = sc.groupLetter ? `${sc.name} (${sc.groupLetter})` : sc.name;
+      headerValues.push(`${label}\n(${sc.questionsCount} ta)`);
+    });
+    headerValues.push('Jami ball', 'Foiz (%)');
+    const colHeaderRow = ws.addRow(headerValues);
+    colHeaderRow.eachCell((cell) => {
+      cell.fill = headerFill; cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      cell.border = border; cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    });
+    colHeaderRow.height = 40;
+
+    students.forEach((student, idx) => {
+      const sid = student._id.toString();
+      const result = resultMap.get(sid);
+      const perSubject = studentSubjectScores.get(sid);
+      const rowValues: (string | number)[] = [idx + 1, student.fullName || "Noma'lum"];
+      subjectCols.forEach(sc => {
+        if (perSubject) {
+          const score = perSubject.get(sc.subjectIdStr);
+          rowValues.push(score ? `${score.correct}/${score.total}` : '-');
+        } else { rowValues.push('-'); }
+      });
+      if (result) {
+        rowValues.push(`${result.totalPoints ?? 0}/${result.maxPoints ?? 0}`);
+        rowValues.push(`${Math.round(result.percentage ?? 0)}%`);
+      } else { rowValues.push('-', '-'); }
+
+      const row = ws.addRow(rowValues);
+      const isEven = idx % 2 === 0;
+      row.eachCell((cell) => { cell.fill = isEven ? lightRowFill : whiteRowFill; cell.font = bodyFont; cell.border = border; cell.alignment = { vertical: 'middle' }; });
+      row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' }; row.getCell(1).font = boldFont;
+      for (let i = 3; i <= 2 + subjectCols.length; i++) {
+        row.getCell(i).alignment = { vertical: 'middle', horizontal: 'center' };
+        if (perSubject) {
+          const sc = subjectCols[i - 3]; const score = perSubject.get(sc.subjectIdStr);
+          if (score && score.total > 0) {
+            const pct = (score.correct / score.total) * 100;
+            if (pct >= 70) { row.getCell(i).fill = greenFill; row.getCell(i).font = { size: 10, color: { argb: 'FF166534' } }; }
+            else if (pct < 40) { row.getCell(i).fill = redFill; row.getCell(i).font = { size: 10, color: { argb: 'FF991B1B' } }; }
+          }
+        }
+      }
+      const totalCol = 3 + subjectCols.length;
+      row.getCell(totalCol).alignment = { vertical: 'middle', horizontal: 'center' }; row.getCell(totalCol).font = boldFont;
+      const pctCol = totalCol + 1;
+      row.getCell(pctCol).alignment = { vertical: 'middle', horizontal: 'center' };
+      if (result) {
+        const pct = result.percentage ?? 0;
+        if (pct >= 70) { row.getCell(pctCol).fill = greenFill; row.getCell(pctCol).font = { bold: true, size: 10, color: { argb: 'FF166534' } }; }
+        else if (pct >= 40) { row.getCell(pctCol).fill = yellowFill; row.getCell(pctCol).font = { bold: true, size: 10, color: { argb: 'FF854D0E' } }; }
+        else { row.getCell(pctCol).fill = redFill; row.getCell(pctCol).font = { bold: true, size: 10, color: { argb: 'FF991B1B' } }; }
+      }
+      row.height = 24;
+    });
+
+    if (results.length > 0) {
+      const avgPct = results.reduce((s, r) => s + (r.percentage || 0), 0) / results.length;
+      ws.addRow([]);
+      const summaryHeader = ws.addRow(['', 'Statistika']);
+      summaryHeader.getCell(2).font = { bold: true, size: 11 };
+      const statsData: (string | number)[][] = [
+        ['', "O'rtacha foiz", `${Math.round(avgPct)}%`],
+        ['', 'Eng yuqori ball', Math.max(...results.map(r => r.totalPoints || 0))],
+        ['', 'Eng past ball', Math.min(...results.map(r => r.totalPoints || 0))],
+        ['', 'Natija bor', `${results.length} / ${students.length}`],
+      ];
+      statsData.forEach(row => {
+        const r = ws.addRow(row);
+        r.getCell(2).font = boldFont; r.getCell(3).font = bodyFont; r.getCell(2).border = border; r.getCell(3).border = border;
+      });
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const safeName = `Blok_test_${blockTest.classNumber}sinf_${blockTest.periodMonth}_${blockTest.periodYear}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+    res.send(Buffer.from(buffer));
+  } catch (error: any) {
+    console.error('❌ Error exporting block test Excel:', error);
+    res.status(500).json({ message: 'Excel export xatosi', error: error.message });
   }
 });
 
@@ -1955,3 +2278,5 @@ router.get('/variants/:variantCode/answer-sheet', authenticate, async (req: Auth
     res.status(500).json({ message: 'Server xatosi', error: error.message });
   }
 });
+
+

@@ -5,6 +5,7 @@ import { Loading } from './components/ui/Loading';
 
 // Lazy load pages and layouts
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const SsoCallbackPage = lazy(() => import('./pages/auth/SsoCallbackPage'));
 const TeacherLayout = lazy(() => import('./layouts/TeacherLayout'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
 const PublicTestResult = lazy(() => import('./pages/PublicTestResult'));
@@ -25,6 +26,7 @@ function App() {
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/sso" element={<SsoCallbackPage />} />
           <Route path="/p/:token" element={<PublicProfile />} />
           <Route path="/profile/:token" element={<PublicProfile />} />
           <Route path="/test-result/:resultId/:token" element={<PublicTestResult />} />

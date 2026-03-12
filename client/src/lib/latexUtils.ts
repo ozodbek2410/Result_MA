@@ -185,7 +185,10 @@ export function convertTiptapJsonToText(json: any): string {
     
     // Формула - возвращаем в LaTeX формате для MathText
     if (node.type === 'formula') {
-      const latex = node.attrs?.latex || '';
+      let latex = node.attrs?.latex || '';
+      // Strip any existing $ delimiters to prevent \($SO_3$\) → $$SO_3$$ in MathText
+      while (latex.startsWith('$$') && latex.endsWith('$$') && latex.length > 4) latex = latex.slice(2, -2).trim();
+      while (latex.startsWith('$') && latex.endsWith('$') && latex.length > 2) latex = latex.slice(1, -1).trim();
       return `\\(${latex}\\)`;
     }
     
@@ -235,6 +238,11 @@ export function convertChemistryToTiptapJson(text: string): any {
     const inner = m[0].slice(2, -2).trim();
     if (inner) regions.push({ start: m.index, end: m.index + m[0].length, latex: inner });
   }
+
+  // Pre-process: add braces to bare charge superscripts: E^+ → E^{+}, E^- → E^{-}
+  text = text.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, '$1^{$2}');
+  text = text.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, '$1^{$2}');
+  text = text.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
 
   // 2. Complex formulas: X_3(PO_4)_2
   const complexPattern = /[A-Z][A-Za-z0-9]*_\d+\([A-Z][A-Za-z0-9]*_\d+\)_\d+/g;

@@ -86,6 +86,7 @@ export abstract class BaseParser {
   protected imageDimensions: Map<string, { widthPx: number; heightPx: number }> = new Map();
   protected extractedFormulas: Map<string, string> = new Map(); // imageNum -> LaTeX
   protected astTableIndex = 1;
+  protected pendingAstTables: Map<string, string> = new Map(); // tableId -> HTML (from Pandoc AST)
   protected tableExtractor: TableExtractor;
   protected tableRenderer: TableRenderer;
   
@@ -117,8 +118,23 @@ export abstract class BaseParser {
       case 'Para':
       case 'Plain':
         return this.serializeInlines(block.c);
-      case 'Table':
-        return `___TABLE_${this.astTableIndex++}___`;
+      case 'Table': {
+        const tableIdx = this.astTableIndex++;
+        const tableId = `table${tableIdx}`;
+        // If table contains question numbering — extract as plain text (not image)
+        try {
+          const tableText = this.extractTextFromTableAst(block.c);
+          if (/(?:^|\n)?\*?\*?\d+\s*\*?\*?[.)\u2026]/m.test(tableText)) {
+            console.log(`📋 [TABLE] Table ${tableIdx} contains question — extracting as text`);
+            return '\n' + tableText + '\n';
+          }
+        } catch { /* ignore */ }
+        try {
+          const html = this.extractTableHtmlFromAst(block.c);
+          if (html) this.pendingAstTables.set(tableId, html);
+        } catch { /* ignore AST parse errors */ }
+        return `___TABLE_${tableIdx}___`;
+      }
       case 'BlockQuote':
         return block.c.map(b => this.serializeBlock(b)).join('\n');
       case 'Header':
@@ -149,9 +165,15 @@ export abstract class BaseParser {
         case 'Strikeout': return this.serializeInlines(il.c);
         case 'Math': {
           let latex = il.c[1];
-          // Strip \mathbf/\boldsymbol — bold info comes from Strong node
-          latex = latex.replace(/\\(?:mathbf|boldsymbol|bf)\{([^{}]*)\}/g, '$1');
-          return `\\(${latex}\\)`;
+          // Detect bold variant letter (correct answer marker) before stripping
+          let boldMarker = '';
+          const variantBold = latex.match(/\\(?:mathbf|boldsymbol|bf)\{[^}]*([A-D])\s*[.)]/);
+          if (variantBold) boldMarker = `___MATHBOLD_${variantBold[1]}___`;
+          // Strip \mathbf to keep LaTeX clean for rendering
+          for (let i = 0; i < 3; i++) {
+            latex = latex.replace(/\\(?:mathbf|boldsymbol|bf)\{([^{}]*)\}/g, '$1');
+          }
+          return `\\(${latex}\\)${boldMarker}`;
         }
         case 'Image': {
           const attrs = il.c[0];
@@ -208,6 +230,107 @@ export abstract class BaseParser {
         default: return '';
       }
     }).join('');
+  }
+
+  /**
+   * Extract HTML table from Pandoc Table AST content.
+   * Pandoc Table: [attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]
+   */
+  protected extractTableHtmlFromAst(tableContent: unknown[]): string {
+    const serializeCells = (rows: unknown[]): string => {
+      if (!Array.isArray(rows)) return '';
+      return rows.map(row => {
+        // Row: [attr, [Cell, ...]]
+        const rowArr = row as unknown[];
+        const cells = rowArr[1] as unknown[] || rowArr;
+        const actualCells = Array.isArray(cells) ? cells : [];
+        const tds = actualCells.map(cell => {
+          // Cell: [attr, alignment, rowSpan, colSpan, [Block, ...]]
+          const cellArr = cell as unknown[];
+          if (!Array.isArray(cellArr) || cellArr.length < 5) return '<td></td>';
+          const rowSpan = cellArr[2] as number || 1;
+          const colSpan = cellArr[3] as number || 1;
+          const blocks = cellArr[4] as PandocBlock[];
+          if (!Array.isArray(blocks)) return '<td></td>';
+          const text = blocks.map(b => this.serializeBlock(b)).filter(s => s).join(' ');
+          let attrs = '';
+          if (rowSpan > 1) attrs += ` rowspan="${rowSpan}"`;
+          if (colSpan > 1) attrs += ` colspan="${colSpan}"`;
+          return `<td${attrs}>${text}</td>`;
+        }).join('');
+        return `<tr>${tds}</tr>`;
+      }).join('\n');
+    };
+
+    try {
+      // tableContent = [attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]
+      const tableHead = tableContent[3] as unknown[];
+      const tableBodies = tableContent[4] as unknown[];
+
+      let html = '<table>\n';
+
+      // TableHead: [attr, [Row, ...]]
+      if (tableHead && Array.isArray(tableHead)) {
+        const headRows = (tableHead[1] || tableHead) as unknown[];
+        if (Array.isArray(headRows) && headRows.length > 0) {
+          const headHtml = serializeCells(headRows);
+          if (headHtml) html += `<thead>${headHtml}</thead>\n`;
+        }
+      }
+
+      // TableBody: [[attr, rowHeadCount, [Row...headRows], [Row...bodyRows]], ...]
+      if (tableBodies && Array.isArray(tableBodies)) {
+        html += '<tbody>\n';
+        for (const body of tableBodies) {
+          const bodyArr = body as unknown[];
+          // bodyRows are at index 3
+          const bodyRows = (Array.isArray(bodyArr) && bodyArr.length >= 4 ? bodyArr[3] : bodyArr) as unknown[];
+          if (Array.isArray(bodyRows)) {
+            html += serializeCells(bodyRows);
+          }
+        }
+        html += '</tbody>\n';
+      }
+
+      html += '</table>';
+      return html;
+    } catch {
+      return '';
+    }
+  }
+
+  /** Extract plain text from all cells of a Pandoc Table AST node */
+  private extractTextFromTableAst(tableContent: unknown[]): string {
+    const lines: string[] = [];
+    const processCell = (cell: unknown) => {
+      const cellArr = cell as unknown[];
+      if (!Array.isArray(cellArr) || cellArr.length < 5) return;
+      const blocks = cellArr[4] as PandocBlock[];
+      if (!Array.isArray(blocks)) return;
+      const text = blocks.map(b => this.serializeBlock(b)).filter(s => s.trim()).join(' ');
+      if (text.trim()) lines.push(text.trim());
+    };
+    const processRows = (rows: unknown[]) => {
+      for (const row of rows) {
+        const rowArr = row as unknown[];
+        const cells = (rowArr[1] || rowArr) as unknown[];
+        if (Array.isArray(cells)) cells.forEach(processCell);
+      }
+    };
+    const tableHead = tableContent[3] as unknown[];
+    if (tableHead && Array.isArray(tableHead)) {
+      const headRows = (tableHead[1] || tableHead) as unknown[];
+      if (Array.isArray(headRows)) processRows(headRows);
+    }
+    const tableBodies = tableContent[4] as unknown[];
+    if (tableBodies && Array.isArray(tableBodies)) {
+      for (const body of tableBodies) {
+        const bodyArr = body as unknown[];
+        const bodyRows = (Array.isArray(bodyArr) && bodyArr.length >= 4 ? bodyArr[3] : bodyArr) as unknown[];
+        if (Array.isArray(bodyRows)) processRows(bodyRows);
+      }
+    }
+    return lines.join('\n');
   }
 
   // ─── End AST Serializer ───────────────────────────────────────────────
@@ -674,7 +797,30 @@ export abstract class BaseParser {
         try {
           const doc: PandocDocument = JSON.parse(stdout);
           this.astTableIndex = 1;
+          this.pendingAstTables.clear();
           const serialized = this.serializeAstBlocks(doc.blocks);
+
+          // Render AST tables that XML extractor missed
+          if (this.pendingAstTables.size > 0) {
+            const missingTables: Array<{ id: string; html: string }> = [];
+            for (const [tableId, html] of this.pendingAstTables) {
+              if (!this.extractedTables.has(tableId)) {
+                missingTables.push({ id: tableId, html });
+              }
+            }
+            if (missingTables.length > 0) {
+              for (const mt of missingTables) {
+                console.log(`📋 [AST-TABLE] ${mt.id} HTML:\n${mt.html}`);
+              }
+              console.log(`🔄 [PARSER] Rendering ${missingTables.length} AST-detected tables missed by XML extractor...`);
+              const rendered = await this.tableRenderer.renderMultipleTables(missingTables);
+              for (const [tableId, imageUrl] of rendered) {
+                this.extractedTables.set(tableId, imageUrl);
+              }
+              console.log(`✅ [PARSER] AST tables rendered: ${rendered.size}/${missingTables.length}`);
+            }
+          }
+
           console.log('✅ [PARSER] Pandoc JSON AST serialized successfully');
           return serialized;
         } catch (parseErr) {
@@ -882,10 +1028,26 @@ export abstract class BaseParser {
    */
   protected parseQuestions(text: string, mathBlocks: string[]): ParsedQuestion[] {
     const questions: ParsedQuestion[] = [];
-    
+
+    // Pre-process: if first line has a document title + question number on the same line,
+    // insert a newline to separate them so the question pattern can match "1)" at line start
+    const firstNewline = text.indexOf('\n');
+    const firstLine = firstNewline > -1 ? text.substring(0, firstNewline) : text;
+    const inlineQMatch = firstLine.match(/^(.+?)\s+(\d+\s*[.)]\s)/);
+    if (inlineQMatch && inlineQMatch[2]) {
+      const possibleTitle = inlineQMatch[1].replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
+      if (this.isLikelyTitle(possibleTitle)) {
+        const splitPos = firstLine.indexOf(inlineQMatch[2], inlineQMatch[1].length);
+        if (splitPos > 0) {
+          text = text.substring(0, splitPos) + '\n' + text.substring(splitPos);
+          console.log(`📝 [PARSER] Separated title from first question at position ${splitPos}`);
+        }
+      }
+    }
+
     // Match question numbers more flexibly: 1) or 1. at start of line or after newline
     // Allow optional space between number and bold-period (e.g. "17 **.**") and zero-space after period (e.g. "27.$\")
-    const questionPattern = /(?:^|\n)(?:\*\*|__)?(\d+)\s*(?:\*\*|__)?[.)]\s*/g;
+    const questionPattern = /(?:^|\n)(?:\*\*|__)?(\d+)\s*(?:\*\*|__)?[.)\u2026]+\s*/g;
     const matches = Array.from(text.matchAll(questionPattern));
     
     console.log(`🔍 [PARSER] Found ${matches.length} question markers`);
@@ -906,6 +1068,7 @@ export abstract class BaseParser {
     let pendingContextImage = '';
     let pendingContextImageWidth = 0;
     let pendingContextImageHeight = 0;
+    let pendingQuestionPrefix = '';
     if (firstMarkerIdx > 0) {
       let preText = text.substring(0, firstMarkerIdx).replace(/\*\*/g, '').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').trim();
       // Extract image from context text
@@ -922,9 +1085,38 @@ export abstract class BaseParser {
         }
         preText = preText.replace(/___IMAGE_\d+___/g, '').trim();
       }
-      if (preText.length > 30) {
-        pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
-        console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+      // Check for range pattern like "1-2." indicating passage context for multiple questions
+      const rangeMatch = preText.match(/(\d+)\s*[-\u2013]\s*(\d+)\s*[.)]/);
+      if (rangeMatch && rangeMatch.index != null) {
+        // Everything from range marker onward is context (e.g., "1-2. Matn asosida... Xasis...")
+        const afterRange = preText.substring(rangeMatch.index).trim();
+        // Remove the range marker itself (e.g., "1-2.") to keep only the passage
+        const ctxBody = afterRange.replace(/^\d+\s*[-\u2013]\s*\d+\s*[.)]\s*/, '').trim();
+        if (ctxBody.length > 20) {
+          pendingContextText = this.finalCleanText(this.restoreMath(ctxBody, mathBlocks), mathBlocks);
+          console.log(`📖 [PARSER] Context text from range marker ${rangeMatch[0]} (${pendingContextText.length} chars)`);
+        }
+      } else {
+        // Check for embedded question header (e.g., "Title\n1. Question text...")
+        // Use lookbehind to avoid matching "2." inside range "1-2."
+        const embeddedQ = preText.match(/(?<!\d[-\u2013])(\d+)\s*[.)]\s+/);
+        if (embeddedQ && embeddedQ.index != null) {
+          const beforeQ = preText.substring(0, embeddedQ.index).trim();
+          const afterQ = preText.substring(embeddedQ.index).trim();
+          if (this.isLikelyTitle(beforeQ) || beforeQ.length <= 30) {
+            // afterQ = "1. Assimilatsiya..." — keep raw text to prepend to first question block
+            pendingQuestionPrefix = afterQ;
+            console.log(`📝 [PARSER] Extracted question header from title: "${pendingQuestionPrefix.substring(0, 80)}"`);
+          } else if (preText.length > 30) {
+            pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
+            console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+          }
+        } else if (preText.length > 30 && !this.isLikelyTitle(preText)) {
+          pendingContextText = this.finalCleanText(this.restoreMath(preText, mathBlocks), mathBlocks);
+          console.log(`📖 [PARSER] Pre-question context text found (${pendingContextText.length} chars)`);
+        } else if (preText.length > 0) {
+          console.log(`⏭️ [PARSER] Skipped pre-question text as title/header: "${preText.substring(0, 80)}"`);
+        }
       }
     }
 
@@ -933,7 +1125,13 @@ export abstract class BaseParser {
       const startIdx = match.index!;
       const endIdx = i < validMatches.length - 1 ? validMatches[i + 1].index! : text.length;
 
-      const block = text.substring(startIdx, endIdx);
+      // If first question has a pending header from preText, prepend it to the block
+      let block = text.substring(startIdx, endIdx);
+      if (i === 0 && pendingQuestionPrefix) {
+        block = pendingQuestionPrefix + '\n' + block;
+        pendingQuestionPrefix = '';
+        console.log(`📝 [PARSER] Prepended question header to first question block`);
+      }
 
       const question = this.extractQuestion(block, mathBlocks);
 
@@ -1009,6 +1207,43 @@ export abstract class BaseParser {
 
     // Clean and restore math
     return this.finalCleanText(this.restoreMath(postText, mathBlocks), mathBlocks);
+  }
+
+  /**
+   * Detect if text is a document title/header rather than a reading passage.
+   * Titles typically: short, contain test/subject identifiers, no question content.
+   */
+  private isLikelyTitle(text: string): boolean {
+    const clean = text.replace(/\n/g, ' ').trim();
+    // Too long for a title — likely real context
+    if (clean.length > 200) return false;
+    const lower = clean.toLowerCase();
+    const titlePatterns = [
+      /\btest[i]?\b/i,
+      /\bblok\b/i,
+      /\bimtihon\b/i,
+      /\bnazorat\b/i,
+      /\bjoriy\b/i,
+      /\byakuniy\b/i,
+      /\bfan\b.*\b(nomi|bo['\u2018\u2019\u02BB]yicha)\b/i,
+      /\bsinf\b/i,
+      /^\d+\s*-\s*\d+\b/, // e.g. "5-02", "7 -8"
+      /\bustozlar\b/i,
+      /\bo['\u2018\u2019\u02BB]qituvchi/i,
+    ];
+    const subjectPatterns = [
+      /biologiya/i, /matematika/i, /fizika/i, /kimyo/i,
+      /adabiyot/i, /ona\s*tili/i, /ingliz/i, /tarix/i,
+      /geografiya/i, /informatika/i, /tibbiyot/i,
+      /inyaz/i,
+    ];
+    const hasTitle = titlePatterns.some(p => p.test(clean));
+    const hasSubject = subjectPatterns.some(p => p.test(clean));
+    // Count newlines — titles are usually 1-2 lines
+    const lineCount = text.split('\n').filter(l => l.trim()).length;
+    if (lineCount <= 3 && (hasTitle || hasSubject)) return true;
+    if (hasTitle && hasSubject) return true;
+    return false;
   }
 
   /**
@@ -1199,9 +1434,8 @@ export abstract class BaseParser {
     const questionText = cleanLine.substring(0, variantStartIdx).trim();
     const variantsText = cleanLine.substring(variantStartIdx);
 
-    // Detect correct answer: match complete bold span "** A) text**"
-    // [^*]* stops at next ** to avoid crossing into adjacent variants
-    const boldVariantPattern = /\*\*\s*([A-D])\s*\)[^*]*\*\*/g;
+    // Detect correct answer: match OPENING bold "** A)" — not closing bold like "text** D)"
+    const boldVariantPattern = /(?<![a-zA-Z\u0400-\u04FF])\*\*\s*([A-D])\s*\)/g;
     const boldMatches = Array.from(variantsText.matchAll(boldVariantPattern));
     let correctAnswer = '';
     if (boldMatches.length > 0) {
@@ -1253,6 +1487,8 @@ export abstract class BaseParser {
   protected extractQuestion(block: string, mathBlocks: string[]): ParsedQuestion | null {
     // Rasm markerlarini OLDIN ajratib olish (variant matniga kirib ketmasligi uchun)
     let extractedImageUrl: string | undefined;
+    let extractedImageWidth: number | undefined;
+    let extractedImageHeight: number | undefined;
     const allLines = block.split('\n').map(l => l.trim()).filter(l => l);
     const nonImageLines: string[] = [];
     for (const line of allLines) {
@@ -1261,6 +1497,11 @@ export abstract class BaseParser {
         const imgMatch = line.match(/___IMAGE_(\d+)___/);
         if (imgMatch && !extractedImageUrl) {
           extractedImageUrl = this.findImageByNumber(imgMatch[1]);
+          const dims = this.imageDimensions.get(imgMatch[1]);
+          if (dims) {
+            extractedImageWidth = dims.widthPx;
+            extractedImageHeight = dims.heightPx;
+          }
         }
       } else {
         nonImageLines.push(line);
@@ -1271,17 +1512,18 @@ export abstract class BaseParser {
     // Example: "5) question text A) 1 B) 2\n**C) 3** D) 4"
     const fullBlock = nonImageLines.join(' ');
 
-    // Check if this block has inline variants (all variants on same line)
-    const variantPatternUpper = /(?:\*\*\s*)?[A-D]\s*\)(?:\s*\*\*)?/g;
-    const variantMatchesUpper = fullBlock.match(variantPatternUpper);
-    const variantCountUpper = variantMatchesUpper ? variantMatchesUpper.length : 0;
+    // Check if this block has inline variants — clean bold markers first so C**) becomes C )
+    const blockClean = fullBlock.replace(/\*\*/g, ' ').replace(/\s+/g, ' ');
+    const variantCountUpper = (blockClean.match(/[A-D]\s*\)/g) || []).length;
 
-    // If 4 variants found in full block, process as single line
-    if (variantCountUpper >= 4) {
-      console.log(`🔍 [PARSER] Detected 4 inline variants in block, processing as single line`);
+    // If 3+ variants found, process as inline
+    if (variantCountUpper >= 3) {
+      console.log(`🔍 [PARSER] Detected ${variantCountUpper} inline variants in block, processing as single line`);
       const result = this.extractInlineVariants(fullBlock, mathBlocks);
       if (result && extractedImageUrl && !result.imageUrl) {
         result.imageUrl = extractedImageUrl;
+        if (extractedImageWidth && !result.imageWidth) result.imageWidth = extractedImageWidth;
+        if (extractedImageHeight && !result.imageHeight) result.imageHeight = extractedImageHeight;
       }
       return result;
     }
@@ -1291,7 +1533,11 @@ export abstract class BaseParser {
     if (dotSepCount >= 2) {
       const dotResult = this.extractDotSepVariants(fullBlock, mathBlocks);
       if (dotResult) {
-        if (extractedImageUrl && !dotResult.imageUrl) dotResult.imageUrl = extractedImageUrl;
+        if (extractedImageUrl && !dotResult.imageUrl) {
+          dotResult.imageUrl = extractedImageUrl;
+          if (extractedImageWidth && !dotResult.imageWidth) dotResult.imageWidth = extractedImageWidth;
+          if (extractedImageHeight && !dotResult.imageHeight) dotResult.imageHeight = extractedImageHeight;
+        }
         return dotResult;
       }
     }
@@ -1301,7 +1547,11 @@ export abstract class BaseParser {
     if (spaceSepCount >= 2) {
       const spaceResult = this.extractSpaceSepVariants(fullBlock, mathBlocks);
       if (spaceResult) {
-        if (extractedImageUrl && !spaceResult.imageUrl) spaceResult.imageUrl = extractedImageUrl;
+        if (extractedImageUrl && !spaceResult.imageUrl) {
+          spaceResult.imageUrl = extractedImageUrl;
+          if (extractedImageWidth && !spaceResult.imageWidth) spaceResult.imageWidth = extractedImageWidth;
+          if (extractedImageHeight && !spaceResult.imageHeight) spaceResult.imageHeight = extractedImageHeight;
+        }
         return spaceResult;
       }
     }
@@ -1322,7 +1572,9 @@ export abstract class BaseParser {
     let correctAnswer = 'A';
     let points = 1;
     let imageUrl: string | undefined;
-    
+    let imageWidth: number | undefined;
+    let imageHeight: number | undefined;
+
     let inQuestion = true;
     
     for (const line of lines) {
@@ -1338,9 +1590,12 @@ export abstract class BaseParser {
       }
       
       const imageMatch = line.match(/___IMAGE_(\d+)___/);
-      if (imageMatch) {
+      const hasVariantPrefix = /(?:\*\*\s*)?[A-D]\s*\)/.test(line);
+      if (imageMatch && !hasVariantPrefix) {
         const imageNum = imageMatch[1];
         imageUrl = this.findImageByNumber(imageNum);
+        const dims = this.imageDimensions.get(imageNum);
+        if (dims) { imageWidth = dims.widthPx; imageHeight = dims.heightPx; }
         continue;
       }
       
@@ -1379,10 +1634,18 @@ export abstract class BaseParser {
           if (match) {
             const letter = match[1];
             let text = match[2].trim();
-            
+
+            const varImgMatch = text.match(/^___IMAGE_(\d+)___/);
+            if (varImgMatch) {
+              const imgUrl = this.findImageByNumber(varImgMatch[1]);
+              const dims = this.imageDimensions.get(varImgMatch[1]);
+              variants.push({ letter, text: '', ...(imgUrl ? { imageUrl: imgUrl } : {}), ...(dims ? { imageWidth: dims.widthPx, imageHeight: dims.heightPx } : {}) });
+              continue;
+            }
+
             text = this.restoreMath(text, mathBlocks);
             text = this.finalCleanText(text, mathBlocks);
-            
+
             console.log(`  ✅ Variant ${letter}: ${text || '(empty)'}`);
             variants.push({ letter, text: text || '' });
           }
@@ -1396,17 +1659,25 @@ export abstract class BaseParser {
         inQuestion = false;
         const letter = variantMatch[2].toUpperCase();
         let text = variantMatch[4].trim();
-        
+
+        const varImgMatch = text.match(/^___IMAGE_(\d+)___/);
+        if (varImgMatch) {
+          const imgUrl = this.findImageByNumber(varImgMatch[1]);
+          const dims = this.imageDimensions.get(varImgMatch[1]);
+          variants.push({ letter, text: '', ...(imgUrl ? { imageUrl: imgUrl } : {}), ...(dims ? { imageWidth: dims.widthPx, imageHeight: dims.heightPx } : {}) });
+          continue;
+        }
+
         const textIsBold = text.startsWith('**') || text.startsWith('__');
         const isBold = !!(variantMatch[1] || variantMatch[3] || textIsBold);
         if (isBold) {
           correctAnswer = letter;
           text = text.replace(/^\*\*|\*\*$/g, '').replace(/^__|__$/g, '');
         }
-        
+
         text = this.restoreMath(text, mathBlocks);
         text = this.finalCleanText(text, mathBlocks);
-        
+
         variants.push({ letter, text });
         continue;
       }
@@ -1423,12 +1694,17 @@ export abstract class BaseParser {
     questionText = this.restoreMath(questionText, mathBlocks);
     questionText = this.finalCleanText(questionText, mathBlocks);
     
+    const finalImageUrl = imageUrl || extractedImageUrl;
+    const finalImageWidth = imageWidth ?? extractedImageWidth;
+    const finalImageHeight = imageHeight ?? extractedImageHeight;
     return {
       text: questionText,
       variants,
       correctAnswer,
       points,
-      imageUrl: imageUrl || extractedImageUrl,
+      imageUrl: finalImageUrl,
+      ...(finalImageWidth ? { imageWidth: finalImageWidth } : {}),
+      ...(finalImageHeight ? { imageHeight: finalImageHeight } : {}),
     };
   }
 
@@ -1466,6 +1742,15 @@ export abstract class BaseParser {
    */
   protected finalCleanText(text: string, mathBlocks: string[]): string {
     let cleaned = text;
+
+    // Merge split chemical formula LaTeX: N \(_2O\) → \(N_2O\), Cl \(_2O\) _7 → \(Cl_2O_7\)
+    // Pass 1: merge leading element letters into math block: N \(_2 → \(N_2
+    cleaned = cleaned.replace(/([A-Za-z]{1,3})\s*\\\((_)/g, '\\($1$2');
+    // Pass 2: merge trailing subscripts/digits after \) back in: \) _7 → _7\)
+    cleaned = cleaned.replace(/\\\)\s*((?:_\s*\d+)+)\)?/g, (_, trail) => {
+      const clean = trail.replace(/\s+/g, '');
+      return clean + '\\)';
+    });
 
     cleaned = cleaned.replace(/\*\*/g, '');
     cleaned = cleaned.replace(/(?<!\*)\*(?!\*)/g, ''); // standalone * (correct answer markers)

@@ -75,9 +75,10 @@ export default function ChemistryText({ text, className = '' }: ChemistryTextPro
       cleanedText = cleanedText.replace(/([A-Za-z0-9])\^([^\^\s]+)\^/g, '$1^{$2}');
 
       // 🧪 CHEMISTRY: Add braces to bare charge superscripts
-      // CrO_4^2- → CrO_4^{2-}, S^4+ → S^{4+}, Cr^+2 → Cr^{+2}
+      // CrO_4^2- → CrO_4^{2-}, S^4+ → S^{4+}, Cr^+2 → Cr^{+2}, E^+ → E^{+}
       cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^(\d+[+-])/g, '$1^{$2}');
       cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^([+-]\d+)/g, '$1^{$2}');
+      cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
       
       // console.log('🧪 [CHEMISTRY] After Pandoc conversion:', cleanedText.substring(0, 200));
       
@@ -111,8 +112,8 @@ export default function ChemistryText({ text, className = '' }: ChemistryTextPro
         }
       }
       
-      // Step 2.5: Find element with charge (no subscript): Cr^{+2}, Fe^{3+}, O^{2-}
-      const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+))/g;
+      // Step 2.5: Find element with charge (no subscript): Cr^{+2}, Fe^{3+}, O^{2-}, E^{+}
+      const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+|[+-]))/g;
       while ((match = chargePattern.exec(cleanedText)) !== null) {
         const start = match.index;
         const end = match.index + match[0].length;

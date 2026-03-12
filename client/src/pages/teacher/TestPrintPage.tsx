@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
+import SubjectText from '@/components/SubjectText';
 import { Printer, ArrowLeft, FileText, Download, FileDown, X } from 'lucide-react';
 import AnswerSheet from '@/components/AnswerSheet';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
@@ -299,6 +300,70 @@ export default function TestPrintPage() {
     }
   };
   
+  // Booklet PDF export (kitobcha format)
+  const handleDownloadBookletPDF = async () => {
+    try {
+      setExporting(true);
+      setExportProgress(0);
+      success('Kitobcha PDF yaratilmoqda...');
+
+      const endpoint = isBlockTest
+        ? `/block-tests/${id}/export-booklet-pdf-async`
+        : `/tests/${id}/export-booklet-pdf-async`;
+
+      const { data } = await api.post(endpoint, {
+        students: selectedStudents.map(s => s._id),
+        settings: { fontSize, fontFamily, lineHeight, columnsCount, backgroundOpacity,
+          backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined }
+      });
+
+      const { jobId } = data;
+      setExportJobId(jobId);
+
+      const pollStatus = async () => {
+        try {
+          const statusEndpoint = isBlockTest
+            ? `/block-tests/pdf-export-status/${jobId}`
+            : `/tests/pdf-export-status/${jobId}`;
+          const { data: status } = await api.get(statusEndpoint);
+          setExportProgress(status.progress || 0);
+
+          if (status.status === 'completed') {
+            success('Kitobcha PDF tayyor!');
+            const link = document.createElement('a');
+            link.href = status.result.fileUrl;
+            link.download = status.result.fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          if (status.status === 'failed') {
+            showError(`Xatolik: ${status.error}`);
+            setExporting(false);
+            setExportJobId(null);
+            setExportProgress(0);
+            return;
+          }
+          setTimeout(pollStatus, 2000);
+        } catch {
+          showError('Status tekshirishda xatolik');
+          setExporting(false);
+          setExportJobId(null);
+        }
+      };
+      setTimeout(pollStatus, 1000);
+    } catch (error: any) {
+      console.error('Error starting booklet export:', error);
+      showError(error.response?.data?.message || 'Kitobcha PDF xatolik');
+      setExporting(false);
+      setExportJobId(null);
+    }
+  };
+
   // Fallback: Sync PDF version (old method)
   const handleDownloadPDFSync = async () => {
     let progressTimer: ReturnType<typeof setInterval> | null = null;
@@ -661,7 +726,8 @@ export default function TestPrintPage() {
     return (
       <div className="print:px-0 print:max-w-full print:mx-0" style={{ fontSize: `${fontSize}px` }}>
         {pages.map((studentsOnPage, pageIndex) => (
-          <div key={pageIndex} className="page-break print-page mb-8 print:mb-0" style={{ '--print-bg-image': backgroundImage ? `url(${backgroundImage})` : 'url(/logo.png)', '--print-bg-opacity': backgroundOpacity } as React.CSSProperties}>
+          <React.Fragment key={pageIndex}>
+          <div className="page-break print-page mb-8 print:mb-0" style={{ '--print-bg-image': backgroundImage ? `url(${backgroundImage})` : 'url(/logo.png)', '--print-bg-opacity': backgroundOpacity } as React.CSSProperties}>
             <div className={`grid gap-6 print:gap-0 ${testsPerPage === 2 ? 'grid-cols-2' : testsPerPage === 4 ? 'grid-cols-2' : ''}`}>
               {studentsOnPage.map((student) => {
                 const variant = variantsMap.get(student._id);
@@ -717,8 +783,8 @@ export default function TestPrintPage() {
                       </div>
                       <hr className="border-t-2 border-gray-800 mb-3" />
                     </div>
-                    {/* Questions — 2-column section */}
-                    <div style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
+                    {/* Questions section */}
+                    <div>
                       {isBlockTest && test.subjectTests?.length > 0 ? (() => {
                         // Shuffled savollarni subjectId bo'yicha guruhlash
                         const hasShuffled = variant?.shuffledQuestions?.length > 0;
@@ -742,29 +808,33 @@ export default function TestPrintPage() {
 
                         let globalIndex = 0;
 
-                        return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => (
+                        return subjectGroups.filter(sg => sg.questions.length > 0).map((sg, sgIndex) => {
+                          const subjectSlug = sg.name.toLowerCase();
+                          return (
                           <div key={sgIndex}>
+                            {/* Subject header — full width, outside columns */}
                             <div className="font-bold border-b border-gray-600 pb-1 mb-2 mt-3" style={{ fontSize: `${fontSize + 1}px` }}>
                               {sg.name}{sg.groupLetter ? ` (${sg.groupLetter} guruh)` : ''} — {sg.questions.length} ta savol
                             </div>
-                            <div className={spacingClasses.questions}>
+                            {/* Questions — 2-column per subject */}
+                            <div className={spacingClasses.questions} style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
                               {sg.questions.map((question: any, qi: number) => {
                                 const currentIndex = globalIndex++;
                                 const questionText = convertTiptapJsonToText(question.text);
                                 const optsLen = (question.variants || []).reduce((s: number, v: any) => s + (convertTiptapJsonToText(v.text) || '').length, 0);
                                 const isLongQ = questionText.length + optsLen > 600;
                                 return (
-                                  <div key={qi} className={`${isLongQ ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
+                                  <div key={qi} className={`page-break-inside-avoid ${spacingClasses.question}`}>
                                     {(question.contextText || question.contextImage) && (
                                       <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
                                         {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
-                                        {question.contextText && <MathText text={question.contextText} />}
+                                        {question.contextText && <SubjectText text={question.contextText} subject={subjectSlug} />}
                                         <div style={{ clear: 'both' }} />
                                       </div>
                                     )}
                                     <div className="mb-1">
                                       <span className="font-bold">{currentIndex + 1}. </span>
-                                      <span><MathText text={questionText} /></span>
+                                      <span><SubjectText text={questionText} subject={subjectSlug} /></span>
                                     </div>
                                     {question.imageUrl && (
                                       <div className="my-1 ml-6">
@@ -780,7 +850,7 @@ export default function TestPrintPage() {
                                             {qVariant.imageUrl ? (
                                               <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={qVariant.imageWidth ? { width: Math.round(qVariant.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.5); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
                                             ) : (
-                                              <MathText text={variantText} />
+                                              <SubjectText text={variantText} subject={subjectSlug} />
                                             )}
                                           </span>
                                         );
@@ -791,25 +861,28 @@ export default function TestPrintPage() {
                               })}
                             </div>
                           </div>
-                        ));
-                      })() : (
-                        <div className={spacingClasses.questions}>
+                          );
+                        });
+                      })() : (() => {
+                        const testSubjectSlug = (test.subjectId?.nameUzb || '').toLowerCase();
+                        return (
+                        <div className={spacingClasses.questions} style={{ columnCount: columnsCount === 2 ? 2 : undefined, columnGap: columnsCount === 2 ? '1rem' : undefined }}>
                           {questionsToRender?.map((question: any, index: number) => {
                             const questionText = convertTiptapJsonToText(question.text);
                             const optsLen2 = (question.variants || []).reduce((s: number, v: any) => s + (convertTiptapJsonToText(v.text) || '').length, 0);
                             const isLongQ2 = questionText.length + optsLen2 > 600;
                             return (
-                              <div key={index} className={`${isLongQ2 ? '' : 'page-break-inside-avoid'} ${spacingClasses.question}`}>
+                              <div key={index} className={`page-break-inside-avoid ${spacingClasses.question}`}>
                                 {(question.contextText || question.contextImage) && (
                                   <div className="mb-1 italic text-gray-700" style={{ overflow: 'hidden' }}>
                                     {question.contextImage && <img src={question.contextImage} alt="" style={{ float: 'right', width: question.contextImageWidth ? question.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 200, margin: '0 0 4px 8px', borderRadius: 4 }} />}
-                                    {question.contextText && <MathText text={question.contextText} />}
+                                    {question.contextText && <SubjectText text={question.contextText} subject={testSubjectSlug} />}
                                     <div style={{ clear: 'both' }} />
                                   </div>
                                 )}
                                 <div className="mb-1">
                                   <span className="font-bold">{index + 1}. </span>
-                                  <span><MathText text={questionText} /></span>
+                                  <span><SubjectText text={questionText} subject={testSubjectSlug} /></span>
                                 </div>
                                 {question.imageUrl && (
                                   <div className="my-1 ml-6">
@@ -825,7 +898,7 @@ export default function TestPrintPage() {
                                         {qVariant.imageUrl ? (
                                           <img src={qVariant.imageUrl} alt={qVariant.letter} className="inline-block align-middle" style={qVariant.imageWidth ? { width: Math.round(qVariant.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.5); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
                                         ) : (
-                                          <MathText text={variantText} />
+                                          <SubjectText text={variantText} subject={testSubjectSlug} />
                                         )}
                                       </span>
                                     );
@@ -835,13 +908,44 @@ export default function TestPrintPage() {
                             );
                           })}
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   </div>
                 );
               })}
             </div>
           </div>
+          {/* Answer sheets — one per student after their questions */}
+          {studentsOnPage.map((student) => {
+            const variant = variantsMap.get(student._id);
+            const variantCode = variant?.variantCode || '';
+            const questionsCount = variant?.shuffledQuestions?.length > 0
+              ? variant.shuffledQuestions.length
+              : (isBlockTest ? test.subjectTests?.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0) : test.questions?.length) || 0;
+            return (
+              <div key={`sheet-${student._id}`} className="page-break mb-8 print:mb-0" style={{ display: 'flex', justifyContent: 'center', padding: '20mm 0' }}>
+                <AnswerSheet
+                  student={{ fullName: student.fullName, variantCode, studentCode: student.studentCode }}
+                  test={{
+                    name: test.name || 'Test',
+                    subjectName: isBlockTest
+                      ? (test.subjectTests?.map((st: { subjectId?: { nameUzb?: string } }) => st.subjectId?.nameUzb).filter(Boolean).join(', ') || 'Blok test')
+                      : (test.subjectId?.nameUzb || 'Test'),
+                    classNumber: test.classNumber || 10,
+                    groupLetter: test.groupId?.nameUzb?.charAt(0) || 'A',
+                    groupName: test.groupId?.nameUzb,
+                    periodMonth: isBlockTest ? test.periodMonth : undefined,
+                    periodYear: isBlockTest ? test.periodYear : undefined
+                  }}
+                  questions={questionsCount}
+                  qrData={variantCode}
+                  sheetsPerPage={1}
+                />
+              </div>
+            );
+          })}
+          </React.Fragment>
         ))}
       </div>
     );
@@ -1072,6 +1176,18 @@ export default function TestPrintPage() {
                   <FileText className="w-4 h-4 mr-1" />
                   {exporting ? `${exportProgress}%` : (type === 'sheets' ? 'Titul Word' : 'Word')}
                 </Button>
+                {type === 'questions' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDownloadBookletPDF}
+                    disabled={exporting}
+                    className="border-green-300 text-green-600 hover:bg-green-50"
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha PDF'}
+                  </Button>
+                )}
               </div>
 
               {/* Settings Button */}
@@ -1278,11 +1394,6 @@ export default function TestPrintPage() {
           }
           
           .no-print { display: none !important; }
-          .page-break-inside-avoid { 
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          
           aside, nav, header, .sidebar { display: none !important; }
           
           /* Принудительная печать фоновых изображений */
@@ -1319,11 +1430,38 @@ export default function TestPrintPage() {
           }
         }
         
+        /* Global (screen + print) — column/page break prevention */
+        .page-break-inside-avoid {
+          page-break-inside: avoid;
+          break-inside: avoid;
+          -webkit-column-break-inside: avoid;
+        }
+
         body:has(.print-view-mode) aside,
         body:has(.print-view-mode) nav,
         body:has(.print-view-mode) header,
         body:has(.print-view-mode) .sidebar { display: none !important; }
         body:has(.print-view-mode) main { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+        body:has(.print-view-mode) main > div { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+
+        /* Force inline rendering for KaTeX formulas inside question text */
+        .print-page .katex-inline .katex-display,
+        .print-page .katex-inline .katex-display > .katex {
+          display: inline !important;
+          text-align: initial !important;
+          margin: 0 !important;
+        }
+        /* Prevent katex-block from centering when inside question flow */
+        .print-page .mb-1 .katex-block .katex-display,
+        .print-page .mr-3 .katex-block .katex-display {
+          display: inline !important;
+          text-align: initial !important;
+          margin: 0 !important;
+        }
+        .print-page .mb-1 .katex-block .katex-display > .katex,
+        .print-page .mr-3 .katex-block .katex-display > .katex {
+          display: inline !important;
+        }
       `}</style>
     </div>
   );

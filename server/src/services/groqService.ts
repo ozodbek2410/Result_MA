@@ -346,18 +346,27 @@ A) А.С.Пушкин  B) Л.Н.Толстой  C) Ф.М.Достоевский"
         return result;
         
       } catch (error: any) {
-        const isRateLimit = error.message.includes('429') || 
+        const isRateLimit = error.message.includes('429') ||
                            error.message.includes('rate limit') ||
                            error.message.includes('Rate limit');
-        
+        const isPayloadTooLarge = error.message.includes('413') ||
+                                  error.message.includes('too large') ||
+                                  error.message.includes('Request too large');
+
         const errorMsg = error.message.substring(0, 100);
         this.addLog('error', `❌ Key #${status.index} attempt ${attempt}/${maxRetries} failed: ${errorMsg}`, status.index);
-        
+
+        // 413 = content too large, no point retrying with any key
+        if (isPayloadTooLarge) {
+          this.addLog('warning', `⚠️ Request too large for model, skipping AI parsing`, status.index);
+          throw new Error('Request too large for AI model');
+        }
+
         if (attempt === maxRetries) {
           this.markKeyError(key, isRateLimit);
           return null;
         }
-        
+
         if (isRateLimit) {
           this.addLog('warning', `⚠️ Rate limit detected, skipping remaining retries for Key #${status.index}`, status.index);
           this.markKeyError(key, true);
@@ -576,7 +585,7 @@ A) А.С.Пушкин  B) Л.Н.Толстой  C) Ф.М.Достоевский"
       return {
         text: questionText,
         variants,
-        correctAnswer: variants.length > 0 ? 'A' : '', // Пустой если нет вариантов
+        correctAnswer: '', // To'g'ri javob qo'lda belgilanadi
         points: 1,
       };
     });

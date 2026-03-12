@@ -3,12 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import {
   Plus, X, Upload, CheckCircle, AlertCircle, Loader2,
-  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight,
+  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight, FileUp,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import MathText from '@/components/MathText';
+import { convertChemistryToTiptapJson, convertPhysicsToTiptapJson, convertLatexToTiptapJson } from '@/lib/latexUtils';
 
 export interface BlockTestFormData {
   classNumber: number;
@@ -155,15 +156,31 @@ export function BlockTestImportForm({
         }
 
         if (allSubjectTests.length > 0) {
-          const loaded: SubjectTab[] = allSubjectTests.map((st) => ({
+          const loaded: SubjectTab[] = allSubjectTests.map((st) => {
+            const sid = typeof st.subjectId === 'object' ? st.subjectId?._id || '' : st.subjectId || '';
+            const subName = typeof st.subjectId === 'object' ? (st.subjectId as { nameUzb?: string })?.nameUzb || '' : '';
+            const pk = subName ? getParserKeyFromSubject(subName) : 'math';
+            const needsConvert = (t: string) => typeof t === 'string' && !t.startsWith('{') && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
+            const convertText = (t: string) => {
+              if (!t || !needsConvert(t)) return t;
+              if (pk === 'physics') return convertPhysicsToTiptapJson(t);
+              // Chemistry converter handles ^/_ patterns for all subjects
+              if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
+              return convertLatexToTiptapJson(t);
+            };
+            return {
             id: Math.random().toString(36).slice(2),
-            subjectId: typeof st.subjectId === 'object' ? st.subjectId?._id || '' : st.subjectId || '',
+            subjectId: sid,
             groupLetter: st.groupLetter || '',
             file: null,
             questions: (st.questions || []).map((q: ParsedQuestion) => ({
-              text: q.text || '',
+              text: convertText(q.text || ''),
+              contextText: q.contextText ? convertText(q.contextText) : q.contextText,
+              contextImage: q.contextImage,
+              contextImageWidth: q.contextImageWidth,
+              contextImageHeight: q.contextImageHeight,
               formula: q.formula,
-              variants: (q.variants || []).map(v => ({ ...v })),
+              variants: (q.variants || []).map(v => ({ ...v, text: convertText(v.text || '') })),
               correctAnswer: q.correctAnswer || '',
               points: q.points || 1,
               pinned: q.pinned || false,
@@ -175,7 +192,8 @@ export function BlockTestImportForm({
             })),
             error: '',
             status: 'done' as const,
-          }));
+          };
+          });
           setTabs(loaded);
           setActiveId(loaded[0].id);
         }
@@ -236,7 +254,21 @@ export function BlockTestImportForm({
           headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000,
         });
         if (data.questions?.length > 0) {
-          upd(tab.id, { questions: data.questions, status: 'done' });
+          // Convert raw text to TipTap JSON with formula nodes
+          const hasFormula = (t: string) => typeof t === 'string' && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
+          const convert = (t: string) => {
+            if (!hasFormula(t)) return t;
+            if (pk === 'physics') return convertPhysicsToTiptapJson(t);
+            // Chemistry converter handles ^/_ patterns for all subjects
+            if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
+            return convertLatexToTiptapJson(t);
+          };
+          const converted = (data.questions as ParsedQuestion[]).map((q: ParsedQuestion) => ({
+            ...q,
+            text: convert(q.text),
+            variants: q.variants.map(v => ({ ...v, text: convert(v.text) })),
+          }));
+          upd(tab.id, { questions: converted, status: 'done' });
           setActiveId(tab.id);
           // Alert: to'g'ri javob belgilanmagan savollar
           const noAns = (data.questions as ParsedQuestion[])
@@ -255,6 +287,72 @@ export function BlockTestImportForm({
       }
     }));
     setUploading(false);
+  };
+
+  // --- PDF import for multiple subjects ---
+  const handlePdfImport = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('format', 'word');
+      const { data } = await api.post('/tests/import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000,
+      });
+      if (!data.questions?.length) {
+        showError('PDF dan savollar topilmadi');
+        setUploading(false);
+        return;
+      }
+
+      const convert = (t: string) => {
+        if (typeof t !== 'string' || (!t.includes('^') && !t.includes('_') && !t.includes('\\(') && !t.includes('\\['))) return t;
+        if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
+        return convertLatexToTiptapJson(t);
+      };
+
+      if (data.groups && data.groups.length > 1) {
+        // Auto-create tabs for each group
+        const newTabs: SubjectTab[] = data.groups.map((g: { questions: ParsedQuestion[] }, i: number) => ({
+          id: Math.random().toString(36).slice(2),
+          subjectId: '',
+          groupLetter: '',
+          file: null,
+          questions: g.questions.map((q: ParsedQuestion) => ({
+            ...q,
+            text: convert(q.text),
+            variants: q.variants.map(v => ({ ...v, text: convert(v.text) })),
+          })),
+          error: '',
+          status: 'done' as const,
+        }));
+        setTabs(newTabs);
+        setActiveId(newTabs[0].id);
+        success(`PDF dan ${data.groups.length} ta fan aniqlandi (${data.questions.length} ta savol). Har bir tabga fanni tanlang.`);
+      } else {
+        // Single group — put all questions in active tab
+        const converted = (data.questions as ParsedQuestion[]).map((q: ParsedQuestion) => ({
+          ...q,
+          text: convert(q.text),
+          variants: q.variants.map(v => ({ ...v, text: convert(v.text) })),
+        }));
+        if (active) {
+          upd(active.id, { questions: converted, status: 'done' });
+        }
+        success(`PDF dan ${data.questions.length} ta savol yuklandi`);
+      }
+
+      // Warn about missing correct answers
+      const noAns = (data.questions as ParsedQuestion[]).filter((q: ParsedQuestion) => !q.correctAnswer).length;
+      if (noAns > 0) {
+        showWarning(`${noAns} ta savolda to'g'ri javob belgilanmagan`);
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'PDF import xatolik';
+      showError(msg);
+    } finally {
+      setUploading(false);
+    }
   };
 
   // --- Save ---
@@ -481,6 +579,11 @@ export function BlockTestImportForm({
           className="flex items-center gap-1 px-3 py-2.5 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-all flex-shrink-0 disabled:opacity-40">
           <Plus className="w-4 h-4" />Fan
         </button>
+        <label className="flex items-center gap-1 px-3 py-2.5 rounded-lg border-2 border-dashed border-purple-300 text-sm text-purple-500 hover:border-purple-400 hover:text-purple-600 transition-all flex-shrink-0 cursor-pointer disabled:opacity-40">
+          <FileUp className="w-4 h-4" />PDF import
+          <input type="file" accept=".pdf" className="hidden" disabled={busy}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfImport(f); e.target.value = ''; }} />
+        </label>
       </div>
 
       {/* Aktiv fan kontenti */}
@@ -491,7 +594,9 @@ export function BlockTestImportForm({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fan *</label>
               <select value={active.subjectId}
-                onChange={e => upd(active.id, { subjectId: e.target.value, status: 'idle', questions: [], error: '' })}
+                onChange={e => active.status === 'done'
+                  ? upd(active.id, { subjectId: e.target.value })
+                  : upd(active.id, { subjectId: e.target.value, status: 'idle', questions: [], error: '' })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled={busy}>
                 <option value="">Fanni tanlang</option>
                 {subjects.map(s => <option key={s._id} value={s._id}>{s.nameUzb}</option>)}
@@ -507,8 +612,8 @@ export function BlockTestImportForm({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">.docx fayl {active.status !== 'done' && '*'}</label>
-              <input type="file" accept=".docx"
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fayl (.docx/.pdf) {active.status !== 'done' && '*'}</label>
+              <input type="file" accept=".docx,.pdf"
                 onChange={e => upd(active.id, { file: e.target.files?.[0] || null, status: 'idle', questions: [], error: '' })}
                 disabled={busy}
                 className="w-full text-sm text-gray-500 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
@@ -586,14 +691,24 @@ export function BlockTestImportForm({
                       <div className="flex-1 space-y-3">
                         {(q.contextText || q.contextImage) && (
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
-                            <div className="text-xs font-medium text-amber-600 mb-1">Matn (kontekst)</div>
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="text-xs font-medium text-amber-600">Matn (kontekst)</div>
+                              <button type="button" onClick={() => qUpd(active.id, idx, { contextText: undefined, contextImage: undefined })}
+                                className="p-0.5 hover:bg-amber-100 rounded text-amber-500 hover:text-red-500" title="Kontekstni o'chirish">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                             {q.contextImage && (
                               <img src={q.contextImage} alt="Context" className="rounded" style={{ float: 'right', width: q.contextImageWidth ? q.contextImageWidth * 0.64 : undefined, maxWidth: '40%', maxHeight: 250, margin: '0 0 4px 8px' }} />
                             )}
-                            {q.contextText && (
-                              <div className="text-sm text-gray-700 italic">
-                                <MathText text={q.contextText} />
-                              </div>
+                            {q.contextText != null && (
+                              <textarea
+                                value={q.contextText}
+                                onChange={(e) => { qUpd(active.id, idx, { contextText: e.target.value }); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }}
+                                className="w-full min-h-[80px] text-sm text-gray-900 bg-white border border-amber-200 rounded p-2 resize-y overflow-hidden"
+                                placeholder="Kontekst matni..."
+                              />
                             )}
                             <div style={{ clear: 'both' }} />
                           </div>
@@ -611,7 +726,7 @@ export function BlockTestImportForm({
                           <div className="relative inline-block">
                             <img src={q.imageUrl || q.image} alt="Question"
                               className="rounded-lg border-2 border-gray-200"
-                              style={q.imageWidth ? { width: Math.round(q.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : { maxWidth: 300, height: 'auto' }}
+                              style={{ width: q.imageWidth ?? undefined, maxWidth: '100%', height: 'auto' }}
                             />
                             <button type="button" onClick={() => qUpd(active.id, idx, { image: undefined, imageUrl: undefined })}
                               className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
@@ -658,14 +773,7 @@ export function BlockTestImportForm({
                             {v.imageUrl && (
                               <img src={v.imageUrl} alt={`Variant ${v.letter}`}
                                 className="mt-1 rounded border border-gray-200"
-                                style={v.imageWidth ? { width: Math.round(v.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : { maxWidth: 200, height: 'auto' }}
-                                onLoad={e => {
-                                  const img = e.currentTarget;
-                                  if (!img.style.width) {
-                                    img.style.width = Math.round(img.naturalWidth * 0.5) + 'px';
-                                    img.style.height = 'auto';
-                                  }
-                                }} />
+                                style={{ width: v.imageWidth ?? undefined, maxWidth: '100%', height: 'auto' }} />
                             )}
                           </div>
                           <button onClick={() => removeVariant(active.id, idx, vi)}
