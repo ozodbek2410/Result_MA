@@ -962,7 +962,7 @@ export class PDFGeneratorService {
         const pdfResult = await page.pdf({
           format: 'A4',
           printBackground: true,
-          margin: { top: '10mm', right: '8mm', bottom: '10mm', left: '8mm' }
+          margin: { top: '0', right: '0', bottom: '0', left: '0' }
         });
 
         // Playwright may return Uint8Array instead of Buffer
@@ -1125,10 +1125,11 @@ export class PDFGeneratorService {
   body { margin: 0; padding: 0; background: white; }
 
   .sheet {
-    width: 100%; position: relative;
-    background: white; padding: 4mm 2mm 2mm 2mm;
-    font-family: Arial, Helvetica, sans-serif; color: #000;
+    width: 210mm; position: relative;
+    background: white; padding: 10mm;
+    font-family: Arial, sans-serif; color: black;
     box-sizing: border-box; page-break-after: always;
+    margin: 0 auto;
   }
   .sheet:last-child { page-break-after: auto; }
 
@@ -1139,54 +1140,52 @@ export class PDFGeneratorService {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 
-  /* Academy header */
+  /* Academy header — matches AnswerSheet.tsx */
   .academy-header {
     display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 2.5px solid #1a1a6e; padding-bottom: 2mm; margin-bottom: 3mm;
-    font-family: 'Times New Roman', Georgia, serif;
+    border-bottom: 2px solid #333; padding-bottom: 2mm; margin-bottom: 2mm;
+    padding: 0 5mm;
+    font-family: 'Times New Roman', serif;
   }
-  .academy-logo { width: 13mm; height: 13mm; object-fit: contain; }
-  .academy-center { text-align: center; flex: 1; padding: 0 3mm; }
-  .academy-name { font-weight: bold; color: #1a1a6e; font-size: 15pt; letter-spacing: 1px; }
-  .academy-sub { font-weight: bold; color: #555; font-size: 9pt; margin-top: 0.5mm; }
+  .academy-logo { width: 12mm; height: 12mm; object-fit: contain; }
+  .academy-center { text-align: center; flex: 1; padding: 0 2mm; }
+  .academy-name { font-weight: bold; color: #1a1a6e; font-size: 14pt; letter-spacing: 0.5px; }
+  .academy-sub { font-weight: bold; color: #444; font-size: 9pt; }
   .academy-right { text-align: right; }
-  .academy-slogan { color: #444; font-size: 7.5pt; line-height: 1.3; }
-  .academy-phone { font-weight: bold; color: #1a1a6e; font-size: 9pt; margin-top: 1mm; }
+  .academy-slogan { color: #333; font-size: 8pt; line-height: 1.3; }
+  .academy-phone { font-weight: bold; color: #1a1a6e; font-size: 9pt; }
 
-  /* Info section */
+  /* Info section — matches AnswerSheet.tsx */
   .info-section {
     display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: 3mm; padding: 2mm 0;
+    margin-bottom: 3mm; padding: 0 5mm;
   }
   .info-left { flex: 1; }
   .sheet-title {
-    font-size: 16pt; font-weight: bold; color: #1a1a6e;
-    margin-bottom: 2mm; letter-spacing: 0.5px;
-    border-bottom: 1px solid #ddd; padding-bottom: 1.5mm;
+    font-size: 16pt; font-weight: bold;
+    margin-bottom: 2mm;
   }
   .info-table { font-size: 10pt; border-collapse: collapse; }
-  .info-table td { padding: 0.8mm 0; vertical-align: top; }
-  .info-label { font-weight: 600; color: #333; padding-right: 3mm; white-space: nowrap; }
+  .info-table td { padding: 1mm 0; vertical-align: top; }
+  .info-label { font-weight: 600; padding-right: 3mm; white-space: nowrap; }
   .info-value { color: #000; }
 
-  /* QR Code */
+  /* QR Code — matches AnswerSheet.tsx */
   .qr-box {
-    width: 30mm; height: 30mm; border: 1.5px solid #333;
+    width: 30mm; height: 30mm; border: 2px solid black;
     display: flex; align-items: center; justify-content: center;
-    margin-left: 3mm; flex-shrink: 0;
   }
   .qr-img { width: 27mm; height: 27mm; }
 
-  /* Instructions */
+  /* Instructions — matches AnswerSheet.tsx */
   .instructions {
-    background: #f5f5f5; border: 1px solid #ccc; border-radius: 1mm;
-    padding: 2mm 3mm; margin-bottom: 4mm; font-size: 8pt; color: #333;
-    line-height: 1.4;
+    background: #f0f0f0; border: 1px solid #ccc;
+    padding: 2mm; margin-bottom: 3mm; font-size: 8pt;
   }
 
-  /* Answer grid */
+  /* Answer grid — matches AnswerSheet.tsx */
   .answer-grid {
-    display: flex; gap: ${layout.columnGap}mm; padding: 0 2mm;
+    display: flex; gap: ${layout.columnGap}mm; padding: 0 5mm;
   }
   .grid-col { flex: 1; }
   .q-row {
@@ -1194,8 +1193,7 @@ export class PDFGeneratorService {
   }
   .q-num {
     width: ${layout.numberWidth}mm; font-weight: bold;
-    font-size: ${layout.fontSize}pt; text-align: right; padding-right: 1.5mm;
-    color: #333;
+    font-size: ${layout.fontSize}pt; text-align: left;
   }
   .q-bubbles { display: flex; gap: ${layout.bubbleGap}mm; }
   .bubble {

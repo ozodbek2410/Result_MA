@@ -1240,8 +1240,10 @@ class HybridOMR:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         h_img, w_img = gray.shape[:2]
 
-        # Filter to bubble area only (skip header ~28%, skip footer ~3%)
-        y_min = int(h_img * 0.28)
+        # Filter to bubble area only (skip header ~18%, skip footer ~3%)
+        # Grid starts at ~58mm from top on 288mm warped image = ~20%
+        # Use 18% to safely include first row of bubbles
+        y_min = int(h_img * 0.18)
         y_max = int(h_img * 0.97)
         self.log(f"  Image: {w_img}x{h_img}, bubble area Y: {y_min}-{y_max}")
 
@@ -1474,12 +1476,12 @@ class HybridOMR:
         timing_mark_area_mm = 4.0  # 3mm mark + 1mm gap
         rows_per_col = (total + n_cols - 1) // n_cols
 
-        # Page: A4 210x297mm
+        # Page: A4 210x297mm — must match AnswerSheet.tsx layout
         page_w_mm = 210.0
         page_h_mm = 297.0
-        page_left_pad_mm = 12.0
-        page_right_pad_mm = 12.0
-        grid_pad_mm = 2.0     # Grid internal padding (answer-grid: padding: 0 2mm)
+        page_left_pad_mm = 10.0   # AnswerSheet.tsx container padding: 10mm
+        page_right_pad_mm = 10.0
+        grid_pad_mm = 5.0     # answer-grid padding: 0 5mm
         header_row_mm = 4.0   # Column header row (A B C D)
 
         # Physical grid dimensions (from page layout, independent of image)
@@ -1528,7 +1530,9 @@ class HybridOMR:
             )
 
         if grid_top_mm is None:
-            grid_top_mm = 95.0
+            # Fallback: header ~48mm (academy+info+instructions) + padding 10mm = ~58mm from page
+            # From warped top: 58 - 4.5 = 53.5mm
+            grid_top_mm = 53.5
             self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm")
 
         self.log(f"  Layout: {n_cols} cols, {rows_per_col} rows, bubble={bubble_mm}mm, gap={gap_mm}mm")
@@ -2627,7 +2631,7 @@ class HybridOMR:
                 if letter not in grid[q_num]:
                     continue
                 b = grid[q_num][letter]
-                r = max(4, int(bubble_w * 0.35))
+                r = max(4, int(bubble_w * 0.45))
                 y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
                 x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
                 if x2 - x1 < 2 or y2 - y1 < 2:
@@ -2683,20 +2687,41 @@ class HybridOMR:
         second_filled = sum(1 for q in second_qs if q in detected_answers)
 
         if first_empty >= n_c and second_filled >= n_c - 1:
-            q1_y = grid[1]['A']['y'] if 1 in grid else 0
-            q2_y = grid[2]['A']['y'] if 2 in grid else 0
-            row_h_px = q2_y - q1_y if q2_y > q1_y else 0
-            if row_h_px > 5:
-                self.log(f"  HEADER SHIFT: {first_empty}/{n_c} first-Qs empty, shifting +{row_h_px}px")
-                for q_num in grid:
-                    for letter in grid[q_num]:
-                        b = grid[q_num][letter]
-                        b['y'] += row_h_px
-                        bx, by, bw, bh = b['bbox']
-                        b['bbox'] = (bx, by + row_h_px, bw, bh)
-                new_det, new_inv = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
-                self.log(f"  After Y-shift: {len(new_det)} answers")
-                return new_det, new_inv, True
+            # Extra check: also verify Q3+ are filled (avoid false positive when student skipped Q1)
+            third_qs = [str(col * rpc + 3) for col in range(n_c) if col * rpc + 3 <= total_q]
+            third_filled = sum(1 for q in third_qs if q in detected_answers)
+            # Only shift if detection rate is very low (< 50%), confirming systematic offset
+            total_detected = len(detected_answers)
+            det_rate = total_detected / total_q * 100 if total_q > 0 else 100
+
+            if third_filled >= n_c - 1 and det_rate < 50:
+                q1_y = grid[1]['A']['y'] if 1 in grid else 0
+                q2_y = grid[2]['A']['y'] if 2 in grid else 0
+                row_h_px = q2_y - q1_y if q2_y > q1_y else 0
+                if row_h_px > 5:
+                    self.log(f"  HEADER SHIFT: {first_empty}/{n_c} first-Qs empty, det_rate={det_rate:.0f}%, shifting +{row_h_px}px")
+                    for q_num in grid:
+                        for letter in grid[q_num]:
+                            b = grid[q_num][letter]
+                            b['y'] += row_h_px
+                            bx, by, bw, bh = b['bbox']
+                            b['bbox'] = (bx, by + row_h_px, bw, bh)
+                    new_det, new_inv = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
+                    self.log(f"  After Y-shift: {len(new_det)} answers (was {total_detected})")
+                    # Only accept shift if it actually improved detection
+                    if len(new_det) > total_detected:
+                        return new_det, new_inv, True
+                    else:
+                        self.log(f"  Y-shift did not improve, reverting")
+                        # Revert shift
+                        for q_num in grid:
+                            for letter in grid[q_num]:
+                                b = grid[q_num][letter]
+                                b['y'] -= row_h_px
+                                bx, by, bw, bh = b['bbox']
+                                b['bbox'] = (bx, by - row_h_px, bw, bh)
+            else:
+                self.log(f"  Header shift skipped: third_filled={third_filled}, det_rate={det_rate:.0f}%")
 
         return detected_answers, invalid_answers, False
 
