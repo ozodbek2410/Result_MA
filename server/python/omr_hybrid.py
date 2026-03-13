@@ -1479,8 +1479,8 @@ class HybridOMR:
         # Page: A4 210x297mm — must match AnswerSheet.tsx layout
         page_w_mm = 210.0
         page_h_mm = 297.0
-        page_left_pad_mm = 12.0   # AnswerSheet.tsx container padding: 12mm
-        page_right_pad_mm = 12.0
+        page_left_pad_mm = 15.0   # AnswerSheet.tsx container padding: 15mm
+        page_right_pad_mm = 15.0
         grid_pad_mm = 5.0     # answer-grid padding: 0 5mm
         header_row_mm = 4.0   # Column header row (A B C D)
 

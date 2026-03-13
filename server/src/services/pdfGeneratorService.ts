@@ -1134,7 +1134,7 @@ export class PDFGeneratorService {
 
   .sheet {
     width: 210mm; position: relative;
-    background: white; padding: 12mm;
+    background: white; padding: 15mm;
     font-family: Arial, sans-serif; color: black;
     box-sizing: border-box; page-break-after: always;
     margin: 0 auto;

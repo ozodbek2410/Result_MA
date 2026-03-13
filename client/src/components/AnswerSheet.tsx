@@ -29,7 +29,7 @@ interface AnswerSheetProps {
 const CORNER_MARK_SIZE = 8;   // mm — registration marks
 const CORNER_MARK_MARGIN = 2; // mm — from page edge
 const TIMING_MARK_SIZE = 3;   // mm — row calibration marks
-const CONTAINER_PADDING = 12; // mm — page padding (mark 8mm + margin 2mm + 2mm gap)
+const CONTAINER_PADDING = 15; // mm — page padding (mark ends at 10mm + 5mm visible gap)
 const GRID_PADDING = 5;       // mm — grid internal padding
 
 function getGridLayout(totalQuestions: number) {
