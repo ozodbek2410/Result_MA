@@ -170,9 +170,10 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
                   }
                 }
               } else {
-                const test = await Test.findById(variantInfo.testId).select('name');
+                const test = await Test.findById(variantInfo.testId).select('name questions');
                 if (test) {
                   testName = test.name;
+                  sheetTotalQuestions = test.questions?.length || 0;
                 }
               }
             } catch (err) {
@@ -183,6 +184,7 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
                               `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
                               'Noma\'lum';
 
+            const varQCount = Object.keys(correctAnswers).length;
             qrData = {
               variantCode: variantCode,
               testId: variantInfo.testId,
@@ -190,8 +192,8 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
               studentName: studentName,
               testName: testName,
               correctAnswers: correctAnswers,
-              totalQuestions: Object.keys(correctAnswers).length,
-              sheetTotalQuestions: sheetTotalQuestions || Object.keys(correctAnswers).length
+              totalQuestions: varQCount,
+              sheetTotalQuestions: sheetTotalQuestions > varQCount ? sheetTotalQuestions : varQCount
             };
 
             console.log('✅ Variant ma\'lumotlari olindi:', {
@@ -398,9 +400,10 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
                   }
                 }
               } else {
-                const test = await Test.findById(variantInfo.testId).select('name');
+                const test = await Test.findById(variantInfo.testId).select('name questions');
                 if (test) {
                   testName = test.name;
+                  sheetTotalQuestions = test.questions?.length || 0;
                 }
               }
             } catch (err) {
@@ -411,6 +414,7 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
                               `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
                               'Noma\'lum';
 
+            const varQCount = Object.keys(correctAnswers).length;
             qrData = {
               variantCode: variantCode,
               testId: variantInfo.testId,
@@ -418,8 +422,8 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
               studentName: studentName,
               testName: testName,
               correctAnswers: correctAnswers,
-              totalQuestions: Object.keys(correctAnswers).length,
-              sheetTotalQuestions: sheetTotalQuestions || Object.keys(correctAnswers).length
+              totalQuestions: varQCount,
+              sheetTotalQuestions: sheetTotalQuestions > varQCount ? sheetTotalQuestions : varQCount
             };
 
             console.log('✅ Variant ma\'lumotlari olindi:', {
@@ -709,12 +713,14 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
                       sheetTotalQuestions = blockTest.subjectTests.reduce(
                         (sum: number, st: any) => sum + (st.questions?.length || 0), 0
                       );
+                      console.log(`📐 BlockTest sheetTotalQuestions: ${sheetTotalQuestions} (${blockTest.subjectTests.length} subjects: ${blockTest.subjectTests.map((st: any) => st.questions?.length || 0).join('+')})`);
                     }
                   }
                 } else {
-                  const test = await Test.findById(variantInfo.testId).select('name');
+                  const test = await Test.findById(variantInfo.testId).select('name questions');
                   if (test) {
                     testName = test.name;
+                    sheetTotalQuestions = test.questions?.length || 0;
                   }
                 }
               } catch (err) {
@@ -725,6 +731,10 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
                                 `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
                                 'Noma\'lum';
 
+              // IMPORTANT: sheetTotalQuestions = total questions on the PHYSICAL sheet (all subjects)
+              // totalQuestions = questions in THIS variant (for scoring)
+              // Python needs sheetTotalQuestions for grid layout detection
+              const variantQuestionCount = Object.keys(correctAnswers).length;
               qrData = {
                 variantCode: variantCode,
                 testId: variantInfo.testId,
@@ -733,9 +743,10 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
                 testName: testName,
                 correctAnswers: correctAnswers,
                 questionOrder: variantInfo.questionOrder,
-                totalQuestions: Object.keys(correctAnswers).length,
-                sheetTotalQuestions: sheetTotalQuestions || Object.keys(correctAnswers).length
+                totalQuestions: variantQuestionCount,
+                sheetTotalQuestions: sheetTotalQuestions > variantQuestionCount ? sheetTotalQuestions : variantQuestionCount
               };
+              console.log(`📐 Grid layout: sheetTotal=${qrData.sheetTotalQuestions}, variantQuestions=${variantQuestionCount}`);
               
               console.log('✅ To\'liq ma\'lumotlar olindi:', {
                 variantCode,
