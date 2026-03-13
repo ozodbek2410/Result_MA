@@ -1530,7 +1530,7 @@ class HybridOMR:
             )
 
         # Sanity check: grid must fit within warped image
-        warped_h_mm = page_h_mm - 2 * corner_center_mm
+        warped_h_mm = page_h_mm - 2 * corner_offset_mm
         row_step_mm = bubble_mm + 2 * gap_mm
         grid_height_mm = header_row_mm + rows_per_col * row_step_mm
         max_grid_top = warped_h_mm - grid_height_mm - 5  # 5mm safety margin
