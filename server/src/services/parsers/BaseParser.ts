@@ -1418,7 +1418,10 @@ export abstract class BaseParser {
     // CRITICAL FIX: Remove question number from the beginning (more aggressive)
     // Matches: "1)" or "**1**)" or "1." at the start
     let cleanLine = line.replace(/^(?:\*\*\s*)?\d+(?:\*\*\s*)?[.)]\s*/, '').trim();
-    
+
+    // Protect (A), ( A ) etc. inside question text — these are reference markers, not variants
+    cleanLine = cleanLine.replace(/\(\s*([A-D])\s*\)/g, '[$1]');
+
     // Find where variants start (first A), B), C), or D))
     const firstVariantMatch = cleanLine.match(/[A-D]\s*\)/);
     if (!firstVariantMatch) return null;
@@ -1452,14 +1455,15 @@ export abstract class BaseParser {
 
     const seenLetters = new Set<string>();
     for (const part of parts) {
-      const match = part.match(/^([A-D])\s*\)\s*(.*)$/);
+      // Use [\s\S]* instead of .* to match across newlines (OLE formula images on next line)
+      const match = part.match(/^([A-D])\s*\)\s*([\s\S]*)$/);
       if (match) {
         const letter = match[1].toUpperCase();
         // Stop at duplicate only after collecting a full set (4 variants)
         // This allows typos like "D) x D) y" but stops merged blocks' next question
         if (seenLetters.has(letter) && variants.length >= 4) break;
         seenLetters.add(letter);
-        let text = match[2].trim();
+        let text = match[2].replace(/\s+/g, ' ').trim();
 
         text = this.restoreMath(text, mathBlocks);
         text = this.finalCleanText(text, mathBlocks);
@@ -1469,7 +1473,8 @@ export abstract class BaseParser {
       }
     }
     
-    if (!questionText || variants.length < 4) return null;
+    // Minimum 2 variants (true/false), not 4
+    if (!questionText || variants.length < 2) return null;
     
     const finalQuestionText = this.finalCleanText(
       this.restoreMath(questionText, mathBlocks),
@@ -1493,14 +1498,22 @@ export abstract class BaseParser {
     const nonImageLines: string[] = [];
     for (const line of allLines) {
       if (/^___IMAGE_\d+___$/.test(line)) {
-        // Standalone rasm marker — ajratib olish
         const imgMatch = line.match(/___IMAGE_(\d+)___/);
-        if (imgMatch && !extractedImageUrl) {
-          extractedImageUrl = this.findImageByNumber(imgMatch[1]);
-          const dims = this.imageDimensions.get(imgMatch[1]);
-          if (dims) {
-            extractedImageWidth = dims.widthPx;
-            extractedImageHeight = dims.heightPx;
+        if (imgMatch) {
+          // OLE formula images → keep in text (will be replaced with LaTeX later)
+          if (this.extractedFormulas.has(imgMatch[1])) {
+            nonImageLines.push(line);
+          } else if (!extractedImageUrl) {
+            // Standalone image marker — extract as context image
+            extractedImageUrl = this.findImageByNumber(imgMatch[1]);
+            const dims = this.imageDimensions.get(imgMatch[1]);
+            if (dims) {
+              extractedImageWidth = dims.widthPx;
+              extractedImageHeight = dims.heightPx;
+            }
+          } else {
+            // Keep additional image markers in text for variant attachment
+            nonImageLines.push(line);
           }
         }
       } else {
@@ -1514,7 +1527,9 @@ export abstract class BaseParser {
 
     // Check if this block has inline variants — clean bold markers first so C**) becomes C )
     const blockClean = fullBlock.replace(/\*\*/g, ' ').replace(/\s+/g, ' ');
-    const variantCountUpper = (blockClean.match(/[A-D]\s*\)/g) || []).length;
+    // Protect (A), ( A ), (B) etc. in question text before counting variant markers
+    const blockForCount = blockClean.replace(/\(\s*[A-D]\s*\)/g, '___PAREN_LETTER___');
+    const variantCountUpper = (blockForCount.match(/[A-D]\s*\)/g) || []).length;
 
     // If 3+ variants found, process as inline
     if (variantCountUpper >= 3) {
@@ -1627,13 +1642,13 @@ export abstract class BaseParser {
         let cleanLine = line.replace(/\*\*/g, ' ').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').replace(/\s+/g, ' ');
 
         // Split by variant letters (uppercase only)
-        const parts = cleanLine.split(/(?=[A-D]\s*\))/);
+        const parts = cleanLine.split(/(?=(?<!\()[A-D]\s*\))/);
 
         for (const part of parts) {
-          const match = part.match(/^([A-D])\s*\)\s*(.*)$/);
+          const match = part.match(/^([A-D])\s*\)\s*([\s\S]*)$/);
           if (match) {
             const letter = match[1];
-            let text = match[2].trim();
+            let text = match[2].replace(/\s+/g, ' ').trim();
 
             const varImgMatch = text.match(/^___IMAGE_(\d+)___/);
             if (varImgMatch) {

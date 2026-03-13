@@ -619,6 +619,29 @@ export function BlockTestImportForm({
                 className="w-full text-sm text-gray-500 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
             </div>
           </div>
+          {/* Umumiy ball — barcha savollarga bir xil ball */}
+          {active.status === 'done' && active.questions.length > 0 && (
+            <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
+              <label className="text-sm font-medium text-blue-700">Har bir savolga ball:</label>
+              <input type="number" step="0.1" min="0.1"
+                defaultValue={active.questions[0]?.points ?? 1}
+                key={active.id}
+                onBlur={e => {
+                  const val = parseFloat(e.target.value) || 1;
+                  e.target.value = String(val);
+                  setTabs(prev => prev.map(t => {
+                    if (t.id !== active.id) return t;
+                    return { ...t, questions: t.questions.map(q => ({ ...q, points: val })) };
+                  }));
+                }}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                disabled={busy}
+                className="w-24 px-3 py-1.5 border border-blue-300 rounded-lg text-sm font-medium text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              <span className="text-sm text-blue-600">
+                Jami: {((active.questions[0]?.points ?? 1) * active.questions.length).toFixed(1)} ball ({active.questions.length} savol)
+              </span>
+            </div>
+          )}
 
           {/* Tugmalar + xatolik */}
           {active.error && (
@@ -788,13 +811,6 @@ export function BlockTestImportForm({
                       </button>
                     </div>
 
-                    {/* Points */}
-                    <div className="flex items-center gap-3 ml-8 pt-4 border-t">
-                      <label className="text-sm text-gray-600 font-medium">Ball:</label>
-                      <input type="number" value={q.points} min="1"
-                        onChange={e => qUpd(active.id, idx, { points: parseInt(e.target.value) || 1 })}
-                        className="w-20 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base" />
-                    </div>
                   </div>
                 ))}
               </div>

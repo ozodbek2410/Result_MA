@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useMemo, memo } from 'react';
 import katex from 'katex';
 import { hasMathML, convertMathMLToLatex } from '@/lib/mathmlUtils';
 import { renderOmmlInText } from '@/lib/ommlUtils';
@@ -9,294 +9,236 @@ interface ChemistryTextProps {
   className?: string;
 }
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /**
- * 🧪 CHEMISTRY TEXT RENDERER
- * 
- * Kimyo matnlarini to'g'ri render qiladi:
- * - Kimyoviy formulalar (H₂O, NaCl, H₂SO₄)
- * - Pandoc format: ~2~ → _2, ^23^ → ^{23}
- * - Subscript/Superscript
+ * Render chemistry text with KaTeX formulas.
+ * Handles: chemical formulas (H_2O), charges (Fe^{3+}), isotopes (^{14}N),
+ * electron configs (3d^8), Pandoc subscript/superscript (~2~, ^14^).
  */
-export default function ChemistryText({ text, className = '' }: ChemistryTextProps) {
-  const containerRef = useRef<HTMLSpanElement>(null);
+function renderChemistryToHtml(text: string): string {
+  let cleaned = text;
 
-  useEffect(() => {
-    if (!containerRef.current || !text) return;
+  // OMML → MathML → LaTeX
+  if (cleaned.includes('<omml>')) cleaned = renderOmmlInText(cleaned);
+  if (hasMathML(cleaned)) cleaned = convertMathMLToLatex(cleaned);
 
-    try {
-      containerRef.current.innerHTML = '';
+  // Clean HTML
+  cleaned = cleaned.replace(/<p>/gi, '').replace(/<\/p>/gi, '\n').replace(/<br\s*\/?>/gi, '\n');
+  cleaned = cleaned.replace(/\\\\+\(/g, '\\(').replace(/\\\\+\)/g, '\\)');
+  cleaned = cleaned.replace(/\\\\+\[/g, '\\[').replace(/\\\\+\]/g, '\\]');
 
-      // Debug logs (commented out for performance)
-      // console.log('🧪 [CHEMISTRY] ===== START RENDERING =====');
-      // console.log('🧪 [CHEMISTRY] Original text:', text.substring(0, 200));
+  // Remove empty formulas
+  cleaned = cleaned.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
+  cleaned = cleaned.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
 
-      let cleanedText = text;
-      
-      // Step 1: Convert OMML to MathML
-      if (cleanedText.includes('<omml>')) {
-        // console.log('🔄 [OMML] Converting OMML to MathML...');
-        cleanedText = renderOmmlInText(cleanedText);
+  // Extract data-latex from HTML tags (function replacement to avoid $$ escaping)
+  cleaned = cleaned.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_: string, latex: string) => {
+    let decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    while (decoded.startsWith('$$') && decoded.endsWith('$$') && decoded.length > 4) decoded = decoded.slice(2, -2).trim();
+    while (decoded.startsWith('$') && decoded.endsWith('$') && decoded.length > 2) decoded = decoded.slice(1, -1).trim();
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
+      return '$$' + decoded + '$$';
+    }
+    return '$' + decoded + '$';
+  });
+  cleaned = cleaned.replace(/<[^>]+>/g, '');
+  cleaned = cleaned.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
+  cleaned = cleaned.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  cleaned = cleaned.trim();
+
+  // Chemistry-specific: Pandoc subscript/superscript
+  // ~2~ → _2, ^23^ → ^{23}
+  cleaned = cleaned.replace(/([A-Za-z0-9()])\s*~([^~\s]+)~/g, '$1_$2');
+  cleaned = cleaned.replace(/(^|\s|[.)*])~([^~\s]+)~/gm, (_, pre, content) => {
+    return content.length > 1 ? `${pre}_{${content}}` : `${pre}_${content}`;
+  });
+  cleaned = cleaned.replace(/([A-Za-z0-9])\^([^^\s]+)\^/g, (_, pre, content) => {
+    return content.length > 1 ? `${pre}^{${content}}` : `${pre}^${content}`;
+  });
+
+  // Charge notation: CrO_4^2- → CrO_4^{2-}
+  cleaned = cleaned.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, '$1^{$2}');
+  cleaned = cleaned.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, '$1^{$2}');
+  cleaned = cleaned.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
+
+  // Find existing formula regions to prevent double-wrapping
+  const formulaRegions: Array<{ start: number; end: number }> = [];
+  {
+    const delimRe = /\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$(?!\$)[^$\n]*?\$/g;
+    let dm;
+    while ((dm = delimRe.exec(cleaned)) !== null) {
+      formulaRegions.push({ start: dm.index, end: dm.index + dm[0].length });
+    }
+  }
+  const isInsideFormula = (s: number, e: number) =>
+    formulaRegions.some(f => s >= f.start && e <= f.end);
+
+  // Auto-wrap chemistry formulas in $...$
+  {
+    const wrapped: Array<{ start: number; end: number; formula: string }> = [];
+    let m;
+
+    // Complex: X_3(PO_4)_2
+    const complexPattern = /([A-Z][A-Za-z0-9]*_\d+\([A-Z][A-Za-z0-9]*_\d+\)_\d+)/g;
+    while ((m = complexPattern.exec(cleaned)) !== null) {
+      if (!isInsideFormula(m.index, m.index + m[0].length)) {
+        wrapped.push({ start: m.index, end: m.index + m[0].length, formula: m[0] });
       }
-      
-      // Step 2: Convert MathML to LaTeX
-      if (hasMathML(cleanedText)) {
-        // console.log('🔄 [MathML] Converting MathML to LaTeX...');
-        cleanedText = convertMathMLToLatex(cleanedText);
-      }
-      
-      // Step 3: Clean HTML
-      cleanedText = cleanedText.replace(/<p>/gi, '');
-      cleanedText = cleanedText.replace(/<\/p>/gi, '\n');
-      cleanedText = cleanedText.replace(/<br\s*\/?>/gi, '\n');
-      
-      // Fix double backslashes
-      cleanedText = cleanedText.replace(/\\\\+\(/g, '\\(');
-      cleanedText = cleanedText.replace(/\\\\+\)/g, '\\)');
-      cleanedText = cleanedText.replace(/\\\\+\[/g, '\\[');
-      cleanedText = cleanedText.replace(/\\\\+\]/g, '\\]');
-      
-      // console.log('🧪 [CHEMISTRY] After HTML cleanup:', cleanedText.substring(0, 200));
-      
-      // Remove empty formulas
-      cleanedText = cleanedText.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
-      cleanedText = cleanedText.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
+    }
 
-      // Extract formulas from HTML tags
-      cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$1$$');
-      cleanedText = cleanedText.replace(/<[^>]+>/g, '');
-      cleanedText = cleanedText.trim();
-      
-      // 🧪 CHEMISTRY: Convert Pandoc subscript/superscript AFTER HTML cleanup
-      // ~2~ → _2 (subscript)
-      // ^23^ → ^{23} (superscript)
-      // (P)~2~ → (P)_2
-      // X~3~(PO~4~)~2~ → X_3(PO_4)_2
-      cleanedText = cleanedText.replace(/([A-Za-z0-9\(\)])~([^~\s]+)~/g, '$1_$2');
-      cleanedText = cleanedText.replace(/([A-Za-z0-9])\^([^\^\s]+)\^/g, '$1^{$2}');
+    // Simple subscript: CH_4, H_2SO_4, v_0
+    const simplePattern = /((?:[A-Z][A-Za-z0-9]*_(?:\{[^}]+\}|\d+))+(?:\^(?:\{[^}]+\}|\d+))?)/g;
+    while ((m = simplePattern.exec(cleaned)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
+      }
+    }
 
-      // 🧪 CHEMISTRY: Add braces to bare charge superscripts
-      // CrO_4^2- → CrO_4^{2-}, S^4+ → S^{4+}, Cr^+2 → Cr^{+2}, E^+ → E^{+}
-      cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^(\d+[+-])/g, '$1^{$2}');
-      cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^([+-]\d+)/g, '$1^{$2}');
-      cleanedText = cleanedText.replace(/([A-Za-z0-9\)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
-      
-      // console.log('🧪 [CHEMISTRY] After Pandoc conversion:', cleanedText.substring(0, 200));
-      
-      // 🧪 AUTO-WRAP FORMULAS: Wrap chemistry formulas in $...$ for KaTeX
-      // Use manual parsing to avoid regex replacement issues with $
-      
-      let processedText = cleanedText;
-      const wrapped: Array<{start: number; end: number; formula: string}> = [];
-      
-      // Step 1: Find complex formulas: X_3(PO_4)_2
-      const complexPattern = /([A-Z][A-Za-z0-9]*_\d+\([A-Z][A-Za-z0-9]*_\d+\)_\d+)/g;
-      let match;
-      while ((match = complexPattern.exec(cleanedText)) !== null) {
-        wrapped.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          formula: match[0]
-        });
+    // Element with charge: Cr^{+2}, Fe^{3+}, O^{2-}
+    const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+|[+-]))/g;
+    while ((m = chargePattern.exec(cleaned)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
       }
-      
-      // Step 2: Find simple formulas with optional charge: CH_4, CrO_4^{2-}, H_2SO_4
-      const simplePattern = /((?:[A-Z][A-Za-z0-9]*_\d+)+(?:\^(?:\{[^}]+\}|\d+))?)/g;
-      while ((match = simplePattern.exec(cleanedText)) !== null) {
-        const start = match.index;
-        const end = match.index + match[0].length;
-        
-        // Check if already wrapped
-        const isWrapped = wrapped.some(w => start >= w.start && end <= w.end);
-        if (!isWrapped) {
-          wrapped.push({ start, end, formula: match[0] });
-        }
-      }
-      
-      // Step 2.5: Find element with charge (no subscript): Cr^{+2}, Fe^{3+}, O^{2-}, E^{+}
-      const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+|[+-]))/g;
-      while ((match = chargePattern.exec(cleanedText)) !== null) {
-        const start = match.index;
-        const end = match.index + match[0].length;
-        const isWrapped = wrapped.some(w => start >= w.start && end <= w.end);
-        if (!isWrapped) {
-          wrapped.push({ start, end, formula: match[0] });
-        }
-      }
+    }
 
-      // Step 3: Find superscripts: 10^{23}
-      const superPattern = /(\d+)\^(\d+|{[^}]+})/g;
-      while ((match = superPattern.exec(cleanedText)) !== null) {
-        const start = match.index;
-        const end = match.index + match[0].length;
-        const isWrapped = wrapped.some(w => start >= w.start && end <= w.end);
-        if (!isWrapped) {
-          wrapped.push({ start, end, formula: match[0] });
-        }
+    // Number superscript: 10^{23}
+    const supPattern = /(\d+)\^(\d+|\{[^}]+\})/g;
+    while ((m = supPattern.exec(cleaned)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
       }
+    }
 
-      // Step 3.5: Isotope mass number: ^{14}N, ^{14}O, _{19}K^{39}
-      const isotopePattern = /(?:_(?:\{[^}]+\}|\d+))?\^(?:\{[^}]+\}|\d+)[A-Z][a-z]?/g;
-      while ((match = isotopePattern.exec(cleanedText)) !== null) {
-        const start = match.index;
-        const end = match.index + match[0].length;
-        const isWrapped = wrapped.some(w => start >= w.start && end <= w.end);
-        if (!isWrapped) {
-          wrapped.push({ start, end, formula: match[0] });
-        }
+    // Isotope: ^{14}N, _{19}K^{39}
+    const isotopePattern = /(?:_(?:\{[^}]+\}|\d+))?\^(?:\{[^}]+\}|\d+)[A-Z][a-z]?/g;
+    while ((m = isotopePattern.exec(cleaned)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
       }
+    }
 
-      // Step 4: Find LaTeX commands: \cdot
-      const latexPattern = /(\\cdot)/g;
-      while ((match = latexPattern.exec(cleanedText)) !== null) {
-        wrapped.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          formula: match[0]
-        });
+    // LaTeX commands in plain text: \cdot
+    const latexCmdPattern = /(\\cdot)/g;
+    while ((m = latexCmdPattern.exec(cleaned)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
       }
-      
-      // Sort by position
+    }
+
+    if (wrapped.length > 0) {
       wrapped.sort((a, b) => a.start - b.start);
-      
-      // Build result with $ wrapping
-      if (wrapped.length > 0) {
-        let result = '';
-        let lastEnd = 0;
-        
-        wrapped.forEach(w => {
-          // Add text before formula
-          if (w.start > lastEnd) {
-            result += cleanedText.substring(lastEnd, w.start);
-          }
-          // Add wrapped formula
-          result += '$' + w.formula + '$';
-          lastEnd = w.end;
-        });
-        
-        // Add remaining text
-        if (lastEnd < cleanedText.length) {
-          result += cleanedText.substring(lastEnd);
-        }
-        
-        processedText = result;
-      }
-      
-      cleanedText = processedText;
-      // console.log('🧪 [CHEMISTRY] After auto-wrap:', cleanedText.substring(0, 200));
-
-      // Normalize format
-      let normalizedText = cleanedText;
-      normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$1$$');
-      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$1$$');
-      
-      console.log('🧪 [CHEMISTRY] After normalization:', normalizedText.substring(0, 200));
-      console.log('🧪 [CHEMISTRY] Has $ signs:', normalizedText.includes('$'));
-      
-      // Render with KaTeX
-      const container = containerRef.current;
-      
-      // Split by formulas
-      const parts: string[] = [];
-      let currentPos = 0;
-      let inFormula = false;
-      let formulaStart = -1;
-      let isBlockFormula = false;
-      
-      for (let i = 0; i < normalizedText.length; i++) {
-        if (normalizedText[i] === '$') {
-          if (!inFormula) {
-            if (i > currentPos) {
-              parts.push(normalizedText.substring(currentPos, i));
-            }
-            
-            if (i + 1 < normalizedText.length && normalizedText[i + 1] === '$') {
-              isBlockFormula = true;
-              formulaStart = i + 2;
-              i++;
-            } else {
-              isBlockFormula = false;
-              formulaStart = i + 1;
-            }
-            
-            inFormula = true;
-          } else {
-            if (isBlockFormula) {
-              if (i + 1 < normalizedText.length && normalizedText[i + 1] === '$') {
-                const formula = normalizedText.substring(formulaStart, i);
-                parts.push('$$' + formula + '$$');
-                i++;
-                currentPos = i + 1;
-                inFormula = false;
-              }
-            } else {
-              const formula = normalizedText.substring(formulaStart, i);
-              parts.push('$' + formula + '$');
-              currentPos = i + 1;
-              inFormula = false;
-            }
-          }
-        }
-      }
-      
-      if (currentPos < normalizedText.length) {
-        parts.push(normalizedText.substring(currentPos));
-      }
-      
-      console.log('🧪 [CHEMISTRY] Split into', parts.length, 'parts');
-
-      parts.forEach((part) => {
-        if (!part) return;
-
-        if (part.startsWith('$$') && part.endsWith('$$')) {
-          const math = part.slice(2, -2).trim();
-          const span = document.createElement('span');
-          span.className = 'katex-block';
-          try {
-            katex.render(math, span, {
-              displayMode: true,
-              throwOnError: false,
-              errorColor: '#cc0000',
-              strict: false
-            });
-          } catch (e) {
-            console.error('❌ [CHEMISTRY] Error rendering block formula:', e);
-            span.textContent = part;
-            span.className = 'text-red-500';
-          }
-          container.appendChild(span);
-        } else if (part.startsWith('$') && part.endsWith('$')) {
-          const math = part.slice(1, -1).trim();
-          const span = document.createElement('span');
-          span.className = 'katex-inline';
-          try {
-            katex.render(math, span, {
-              displayMode: false,
-              throwOnError: false,
-              errorColor: '#cc0000',
-              strict: false
-            });
-          } catch (e) {
-            console.error('❌ [CHEMISTRY] Error rendering inline formula:', e);
-            span.textContent = part;
-            span.className = 'text-red-500';
-          }
-          container.appendChild(span);
-        } else {
-          const textNode = document.createTextNode(part);
-          container.appendChild(textNode);
-        }
+      let result = '';
+      let lastEnd = 0;
+      wrapped.forEach(w => {
+        if (w.start > lastEnd) result += cleaned.substring(lastEnd, w.start);
+        result += '$' + w.formula + '$';
+        lastEnd = w.end;
       });
+      if (lastEnd < cleaned.length) result += cleaned.substring(lastEnd);
+      cleaned = result;
+    }
+  }
 
-      console.log('✅ [CHEMISTRY] ===== RENDERING COMPLETE =====');
-    } catch (error) {
-      console.error('❌ [CHEMISTRY] Fatal error:', error);
-      if (containerRef.current) {
-        containerRef.current.textContent = text;
+  // Normalize \(...\) → $...$ and \[...\] → $$...$$ (function replacement)
+  let normalized = cleaned;
+  normalized = normalized.replace(/\\\(([\s\S]*?)\\\)/g, (_match: string, formula: string) => {
+    let clean = formula.trim();
+    while (clean.startsWith('$$') && clean.endsWith('$$') && clean.length > 4) clean = clean.slice(2, -2).trim();
+    while (clean.startsWith('$') && clean.endsWith('$') && clean.length > 2) clean = clean.slice(1, -1).trim();
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(clean)) {
+      return '$$' + clean + '$$';
+    }
+    return '$' + clean + '$';
+  });
+  normalized = normalized.replace(/\\\[([\s\S]*?)\\\]/g, (_match: string, formula: string) => {
+    return '$$' + formula.trim() + '$$';
+  });
+
+  // Split by $ delimiters and render KaTeX
+  const parts: string[] = [];
+  let currentPos = 0;
+  let inFormula = false;
+  let formulaStart = -1;
+  let isBlockFormula = false;
+
+  for (let i = 0; i < normalized.length; i++) {
+    if (normalized[i] === '$') {
+      if (!inFormula) {
+        if (i > currentPos) parts.push(normalized.substring(currentPos, i));
+        if (i + 1 < normalized.length && normalized[i + 1] === '$') {
+          isBlockFormula = true;
+          formulaStart = i + 2;
+          i++;
+        } else {
+          isBlockFormula = false;
+          formulaStart = i + 1;
+        }
+        inFormula = true;
+      } else {
+        if (isBlockFormula) {
+          if (i + 1 < normalized.length && normalized[i + 1] === '$') {
+            parts.push('$$' + normalized.substring(formulaStart, i) + '$$');
+            i++;
+            currentPos = i + 1;
+            inFormula = false;
+          }
+        } else {
+          parts.push('$' + normalized.substring(formulaStart, i) + '$');
+          currentPos = i + 1;
+          inFormula = false;
+        }
       }
+    }
+  }
+  if (currentPos < normalized.length) parts.push(normalized.substring(currentPos));
+
+  // Build HTML
+  let html = '';
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith('$$') && part.endsWith('$$')) {
+      const math = part.slice(2, -2).trim();
+      try {
+        html += `<span class="katex-block">${katex.renderToString(math, { displayMode: true, throwOnError: false, errorColor: '#cc0000', strict: false })}</span>`;
+      } catch {
+        html += `<span class="text-red-500">${escapeHtml(part)}</span>`;
+      }
+    } else if (part.startsWith('$') && part.endsWith('$')) {
+      const math = part.slice(1, -1).trim();
+      const needsDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(math);
+      try {
+        html += `<span class="${needsDisplay ? 'katex-block' : 'katex-inline'}">${katex.renderToString(math, { displayMode: needsDisplay, throwOnError: false, errorColor: '#cc0000', strict: false })}</span>`;
+      } catch {
+        html += `<span class="text-red-500">${escapeHtml(part)}</span>`;
+      }
+    } else {
+      html += escapeHtml(part);
+    }
+  }
+  return html;
+}
+
+function ChemistryText({ text, className = '' }: ChemistryTextProps) {
+  if (!text) return null;
+
+  const html = useMemo(() => {
+    try {
+      return renderChemistryToHtml(text);
+    } catch {
+      return escapeHtml(text);
     }
   }, [text]);
 
-  if (!text) return null;
-
-  return <span ref={containerRef} className={className}></span>;
+  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+export default memo(ChemistryText);

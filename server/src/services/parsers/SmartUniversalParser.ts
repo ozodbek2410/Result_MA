@@ -181,6 +181,15 @@ export class SmartUniversalParser extends BaseParser {
   protected preCleanText(text: string): { cleanText: string; mathBlocks: string[] } {
     let cleaned = text;
 
+    // 0. Fix Pandoc wrapping question numbers in math: \(28.\ \) → 28.
+    // Pandoc sometimes treats "28." as a numbered list and wraps in \(...\)
+    cleaned = cleaned.replace(/\\\((\d{1,3})\.\s*\\?\s*\\\)/g, '$1.');
+
+    // 0. Protect parenthesized letters (A), (B), (C), (D) in question text
+    // These are reference markers, not variant letters
+    // e.g., "qaysi kasallikni oldini olishda (A) va davolashda (B) ishlatiladi?"
+    cleaned = cleaned.replace(/\(([A-D])\)/g, '___PAREN_$1___');
+
     // 0. Strip HTML tags from pandoc output (<p>, <br>, <div>)
     cleaned = cleaned.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '');
 
@@ -200,10 +209,11 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
 
     // 0.1. Normalize Cyrillic variant markers to Latin
-    // С) → C), В) → B), А) → A) (Cyrillic look-alikes)
-    cleaned = cleaned.replace(/\u0410(\s*\))/g, 'A$1');
-    cleaned = cleaned.replace(/\u0412(\s*\))/g, 'B$1');
-    cleaned = cleaned.replace(/\u0421(\s*\))/g, 'C$1');
+    // А) → A), В) → B), С) → C), Д) → D) (Cyrillic look-alikes)
+    cleaned = cleaned.replace(/\u0410(\s*\))/g, 'A$1'); // А → A
+    cleaned = cleaned.replace(/\u0412(\s*\))/g, 'B$1'); // В → B
+    cleaned = cleaned.replace(/\u0421(\s*\))/g, 'C$1'); // С → C
+    cleaned = cleaned.replace(/\u0414(\s*\))/g, 'D$1'); // Д → D
 
     // 0.2. Preserve escaped asterisks FIRST (pandoc \* = real asterisk like 13468*)
     cleaned = cleaned.replace(/\\\*/g, '___ASTERISK___');
@@ -334,6 +344,9 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/^(.*?\?\s*)\*\*A\s+(.+?)\*\*\s+B\s+(.+?)\s+C\s+(.+?)\s+D\s+(.+)$/gm,
       '$1**A) $2** B) $3 C) $4 D) $5');
 
+    // Restore protected parenthesized letters: ___PAREN_A___ → (A)
+    cleaned = cleaned.replace(/___PAREN_([A-D])___/g, '($1)');
+
     return { cleanText: cleaned, mathBlocks };
   }
 
@@ -364,10 +377,18 @@ export class SmartUniversalParser extends BaseParser {
 
     // CHEMISTRY-SPECIFIC: Only when chemistry detected
     if (this.detectedType === 'chemistry') {
-      // Fix Cyrillic lookalikes used as element symbols: О^{2-} → O^{2-}, С_2 → C_2
-      cleaned = cleaned.replace(/\u041E(?=[_^{\d])/g, 'O'); // Cyrillic О → Latin O
-      cleaned = cleaned.replace(/\u0421(?=[_^{\d])/g, 'C'); // Cyrillic С → Latin C
-      cleaned = cleaned.replace(/\u041D(?=[_^{\d])/g, 'H'); // Cyrillic Н → Latin H
+      // Fix Cyrillic lookalikes used as element symbols
+      // Context-aware: only when followed by subscript/superscript/digit
+      cleaned = cleaned.replace(/\u041E(?=[_^{\d])/g, 'O'); // О → O
+      cleaned = cleaned.replace(/\u0421(?=[_^{\d])/g, 'C'); // С → C
+      cleaned = cleaned.replace(/\u041D(?=[_^{\d])/g, 'H'); // Н → H
+      cleaned = cleaned.replace(/\u0420(?=[_^{\d])/g, 'P'); // Р → P
+      cleaned = cleaned.replace(/\u041A(?=[_^{\d])/g, 'K'); // К → K
+      cleaned = cleaned.replace(/\u0422(?=[_^{\d])/g, 'T'); // Т → T
+      cleaned = cleaned.replace(/\u041C(?=[_^{\d])/g, 'M'); // М → M
+      cleaned = cleaned.replace(/\u0415(?=[_^{\d])/g, 'E'); // Е → E
+      cleaned = cleaned.replace(/\u0425(?=[_^{\d])/g, 'X'); // Х → X
+      cleaned = cleaned.replace(/\u0412(?=[_^{\d])/g, 'B'); // В → B
 
       // Duplicate formula removal: H2OH2O → H2O
       cleaned = cleaned.replace(/([A-Z][a-z]?\d+)\1+/g, '$1');

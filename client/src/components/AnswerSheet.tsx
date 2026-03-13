@@ -23,19 +23,27 @@ interface AnswerSheetProps {
   sheetsPerPage?: number;
 }
 
-// Savol soniga qarab adaptiv layout
+// ============================================================
+// LAYOUT CONSTANTS — Python omr_hybrid.py must match these!
+// ============================================================
+const CORNER_MARK_SIZE = 8;   // mm — registration marks
+const CORNER_MARK_MARGIN = 2; // mm — from page edge
+const TIMING_MARK_SIZE = 3;   // mm — row calibration marks
+const CONTAINER_PADDING = 12; // mm — page padding (mark 8mm + margin 2mm + 2mm gap)
+const GRID_PADDING = 5;       // mm — grid internal padding
+
 function getGridLayout(totalQuestions: number) {
   if (totalQuestions <= 44) {
     return {
       columns: 2,
-      bubbleSize: 7.5,    // mm
-      bubbleGap: 2.5,     // mm - doiralar orasidagi masofa
-      rowMargin: 1.2,     // mm - qatorlar orasidagi masofa
-      columnGap: 8,       // mm - ustunlar orasidagi masofa
-      numberWidth: 8,     // mm - raqam joyi
-      fontSize: 9,        // pt - raqam shrifti
-      bubbleFontSize: 8,  // pt - doira ichidagi harf
-      borderWidth: 2,     // px
+      bubbleSize: 7.5,
+      bubbleGap: 2.5,
+      rowMargin: 1.2,
+      columnGap: 8,
+      numberWidth: 8,
+      fontSize: 9,
+      bubbleFontSize: 8,
+      borderWidth: 2,
     };
   }
   if (totalQuestions <= 60) {
@@ -77,7 +85,6 @@ function getGridLayout(totalQuestions: number) {
       borderWidth: 1.5,
     };
   }
-  // 100+ savol — 5 ustun
   return {
     columns: 5,
     bubbleSize: 5.5,
@@ -97,27 +104,22 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
   useEffect(() => {
     if (qrRef.current && qrData) {
       const normalizedData = qrData.trim().toUpperCase();
-
       QRCode.toCanvas(qrRef.current, normalizedData, {
         width: 100,
         margin: 1,
         errorCorrectionLevel: 'H',
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
+        color: { dark: '#000000', light: '#FFFFFF' }
       }).catch((err) => {
         console.error('QR code generation error:', err);
       });
     }
   }, [qrData]);
 
-
   const totalQuestions = questions || 45;
   const layout = getGridLayout(totalQuestions);
-
   const questionsPerColumn = Math.ceil(totalQuestions / layout.columns);
-  const timingMarkSize = 3; // mm
+
+  // Timing marks: first row, last row, every 5th row
   const timingMarkRows = new Set<number>([0, questionsPerColumn - 1]);
   for (let i = 5; i < questionsPerColumn; i += 5) timingMarkRows.add(i);
 
@@ -135,21 +137,23 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
     return `${months[month - 1]} ${year}`;
   };
 
-  const renderColumnHeader = () => (
+  // Column header: timing mark + A B C D labels
+  const renderColumnHeader = (colIndex: number) => (
     <div style={{
       display: 'flex',
       alignItems: 'center',
       marginBottom: `${layout.rowMargin + 0.5}mm`,
     }}>
+      {/* Timing mark area — ALL columns get header mark */}
       <div style={{
-        width: `${timingMarkSize + 1}mm`,
+        width: `${TIMING_MARK_SIZE + 1}mm`,
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
       }}>
         <div style={{
-          width: `${timingMarkSize}mm`,
-          height: `${timingMarkSize}mm`,
+          width: `${TIMING_MARK_SIZE}mm`,
+          height: `${TIMING_MARK_SIZE}mm`,
           background: '#000',
           WebkitPrintColorAdjust: 'exact' as const,
           printColorAdjust: 'exact' as const,
@@ -173,33 +177,49 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
           </div>
         ))}
       </div>
+      {/* Right-side timing mark for this column */}
+      <div style={{
+        width: `${TIMING_MARK_SIZE}mm`,
+        height: `${TIMING_MARK_SIZE}mm`,
+        background: colIndex === layout.columns - 1 ? '#000' : 'transparent',
+        marginLeft: '1mm',
+        flexShrink: 0,
+        WebkitPrintColorAdjust: 'exact' as const,
+        printColorAdjust: 'exact' as const,
+      }} />
     </div>
   );
 
+  // Question row: timing mark + number + A B C D bubbles + right timing mark
   const renderQuestionRow = (questionNumber: number, colIndex: number, localRowIndex: number) => {
-    const showMark = colIndex === 0 && timingMarkRows.has(localRowIndex);
+    // ALL columns get timing marks (not just col 0)
+    const showLeftMark = timingMarkRows.has(localRowIndex);
+    const showRightMark = colIndex === layout.columns - 1 && timingMarkRows.has(localRowIndex);
+
     return (
       <div style={{
         display: 'flex',
         alignItems: 'center',
         margin: `${layout.rowMargin}mm 0`,
       }}>
+        {/* Left timing mark */}
         <div style={{
-          width: `${timingMarkSize + 1}mm`,
+          width: `${TIMING_MARK_SIZE + 1}mm`,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
         }}>
-          {showMark && (
+          {showLeftMark && (
             <div style={{
-              width: `${timingMarkSize}mm`,
-              height: `${timingMarkSize}mm`,
+              width: `${TIMING_MARK_SIZE}mm`,
+              height: `${TIMING_MARK_SIZE}mm`,
               background: '#000',
               WebkitPrintColorAdjust: 'exact' as const,
               printColorAdjust: 'exact' as const,
             }} />
           )}
         </div>
+        {/* Question number */}
         <div style={{
           width: `${layout.numberWidth}mm`,
           fontWeight: 'bold',
@@ -208,6 +228,7 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
         }}>
           {questionNumber}.
         </div>
+        {/* Bubbles */}
         <div style={{
           display: 'flex',
           gap: `${layout.bubbleGap}mm`,
@@ -226,6 +247,16 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
             </div>
           ))}
         </div>
+        {/* Right timing mark (last column only) */}
+        <div style={{
+          width: `${TIMING_MARK_SIZE}mm`,
+          height: showRightMark ? `${TIMING_MARK_SIZE}mm` : '0',
+          background: showRightMark ? '#000' : 'transparent',
+          marginLeft: '1mm',
+          flexShrink: 0,
+          WebkitPrintColorAdjust: 'exact' as const,
+          printColorAdjust: 'exact' as const,
+        }} />
       </div>
     );
   };
@@ -234,7 +265,7 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
     width: '210mm',
     position: 'relative',
     background: 'white',
-    padding: '10mm',
+    padding: `${CONTAINER_PADDING}mm`,
     fontFamily: 'Arial, sans-serif',
     color: 'black',
     boxSizing: 'border-box',
@@ -247,47 +278,47 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
 
   return (
     <div className="answer-sheet-container" style={containerStyle}>
-        {/* Academy Header */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '2px solid #333',
-          paddingBottom: '2mm',
-          marginBottom: '2mm',
-          padding: '0 5mm',
-          fontFamily: 'Times New Roman, serif'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2mm' }}>
-            <img src="/logo.png" alt="Logo" style={{ width: '12mm', height: '12mm', objectFit: 'contain' }} />
-          </div>
-          <div style={{ textAlign: 'center', flex: 1, padding: '0 2mm' }}>
-            <div style={{ fontWeight: 'bold', color: '#1a1a6e', fontSize: '14pt', letterSpacing: '0.5px' }}>MATH ACADEMY</div>
-            <div style={{ fontWeight: 'bold', color: '#444', fontSize: '9pt' }}>Xususiy maktabi</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#333', fontSize: '8pt', lineHeight: '1.3' }}>Sharqona ta&#39;lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
-            <div style={{ fontWeight: 'bold', color: '#1a1a6e', fontSize: '9pt' }}>&#9742; +91-333-66-22</div>
-          </div>
+      {/* Corner Marks — 8mm for reliable detection */}
+      {(['top', 'bottom'] as const).map(v =>
+        (['left', 'right'] as const).map(h => (
+          <div key={`${v}-${h}`} style={{
+            position: 'absolute',
+            [v]: `${CORNER_MARK_MARGIN}mm`,
+            [h]: `${CORNER_MARK_MARGIN}mm`,
+            width: `${CORNER_MARK_SIZE}mm`,
+            height: `${CORNER_MARK_SIZE}mm`,
+            background: 'black',
+            WebkitPrintColorAdjust: 'exact' as const,
+            printColorAdjust: 'exact' as const,
+          }} />
+        ))
+      )}
+
+      {/* Academy Header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '2px solid #333',
+        paddingBottom: '2mm',
+        marginBottom: '2mm',
+        padding: '0 5mm',
+        fontFamily: 'Times New Roman, serif'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2mm' }}>
+          <img src="/logo.png" alt="Logo" style={{ width: '12mm', height: '12mm', objectFit: 'contain' }} />
         </div>
+        <div style={{ textAlign: 'center', flex: 1, padding: '0 2mm' }}>
+          <div style={{ fontWeight: 'bold', color: '#1a1a6e', fontSize: '14pt', letterSpacing: '0.5px' }}>MATH ACADEMY</div>
+          <div style={{ fontWeight: 'bold', color: '#444', fontSize: '9pt' }}>Xususiy maktabi</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: '#333', fontSize: '8pt', lineHeight: '1.3' }}>Sharqona ta&#39;lim-tarbiya<br/>va haqiqiy ilm maskani.</div>
+          <div style={{ fontWeight: 'bold', color: '#1a1a6e', fontSize: '9pt' }}>&#9742; +91-333-66-22</div>
+        </div>
+      </div>
 
-        {/* Corner Marks (5mm) */}
-        {(['top', 'bottom'] as const).map(v =>
-          (['left', 'right'] as const).map(h => (
-            <div key={`${v}-${h}`} style={{
-              position: 'absolute',
-              [v]: '2mm',
-              [h]: '2mm',
-              width: '5mm',
-              height: '5mm',
-              background: 'black',
-              WebkitPrintColorAdjust: 'exact' as const,
-              printColorAdjust: 'exact' as const,
-            }} />
-          ))
-        )}
-
-      {/* Header */}
+      {/* Info Section */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -296,11 +327,7 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
         padding: '0 5mm'
       }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{
-            fontSize: '16pt',
-            fontWeight: 'bold',
-            marginBottom: '2mm'
-          }}>
+          <h1 style={{ fontSize: '16pt', fontWeight: 'bold', marginBottom: '2mm' }}>
             JAVOB VARAQASI
           </h1>
           <div style={{ fontSize: '10pt' }}>
@@ -342,7 +369,7 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
         )}
       </div>
 
-      {/* Ko'rsatmalar */}
+      {/* Instructions */}
       <div style={{
         background: '#f0f0f0',
         padding: '2mm',
@@ -350,27 +377,20 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
         border: '1px solid #ccc',
         fontSize: '8pt'
       }}>
-        <h3 style={{
-          fontSize: '9pt',
-          fontWeight: 'bold',
-          marginBottom: '1.5mm'
-        }}>
+        <h3 style={{ fontSize: '9pt', fontWeight: 'bold', marginBottom: '1.5mm' }}>
           Ko'rsatmalar:
         </h3>
-        <ul style={{
-          margin: '0',
-          paddingLeft: '5mm'
-        }}>
+        <ul style={{ margin: '0', paddingLeft: '5mm' }}>
           <li style={{ margin: '0.5mm 0' }}>Qora yoki ko'k ruchka ishlatiladi. Doirachani to'liq to'ldiring.</li>
           <li style={{ margin: '0.5mm 0' }}>Bir savolga faqat bitta javob belgilang. O'chirish yoki tuzatish mumkin emas.</li>
         </ul>
       </div>
 
-      {/* Answer Grid */}
+      {/* Answer Grid — timing marks on ALL columns */}
       <div style={{
         display: 'flex',
         gap: `${layout.columnGap}mm`,
-        padding: '0 5mm'
+        padding: `0 ${GRID_PADDING}mm`
       }}>
         {Array.from({ length: layout.columns }, (_, colIndex) => {
           const startQuestion = colIndex * questionsPerColumn + 1;
@@ -378,7 +398,7 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
 
           return (
             <div key={`column-${colIndex}`} style={{ flex: 1 }}>
-              {renderColumnHeader()}
+              {renderColumnHeader(colIndex)}
               {Array.from({ length: columnQuestionsCount }, (_, i) => {
                 const questionNumber = startQuestion + i;
                 return (

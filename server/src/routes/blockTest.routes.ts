@@ -1661,7 +1661,16 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     });
     colHeaderRow.height = 40;
 
-    students.forEach((student, idx) => {
+    // Sort students by percentage descending (highest score first)
+    const sortedStudents = [...students].sort((a: any, b: any) => {
+      const ra = resultMap.get(a._id.toString());
+      const rb = resultMap.get(b._id.toString());
+      const pa = ra?.percentage ?? -1;
+      const pb = rb?.percentage ?? -1;
+      return pb - pa;
+    });
+
+    sortedStudents.forEach((student, idx) => {
       const sid = student._id.toString();
       const result = resultMap.get(sid);
       const perSubject = studentSubjectScores.get(sid);
@@ -1669,13 +1678,13 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       subjectCols.forEach(sc => {
         if (perSubject) {
           const score = perSubject.get(sc.subjectIdStr);
-          rowValues.push(score ? `${score.correct}/${score.total}` : '-');
-        } else { rowValues.push('-'); }
+          rowValues.push(score ? score.correct : 0);
+        } else { rowValues.push(0); }
       });
       if (result) {
         rowValues.push(`${result.totalPoints ?? 0}/${result.maxPoints ?? 0}`);
         rowValues.push(`${Math.round(result.percentage ?? 0)}%`);
-      } else { rowValues.push('-', '-'); }
+      } else { rowValues.push('0', '0%'); }
 
       const row = ws.addRow(rowValues);
       const isEven = idx % 2 === 0;

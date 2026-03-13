@@ -36,10 +36,10 @@ class HybridOMR:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         img_h, img_w = gray.shape[:2]
 
-        # Resolution-adaptive sizing: corner mark = 5mm square
+        # Resolution-adaptive sizing: corner mark = 8mm square (updated from 5mm)
         mm_px = img_w / 210.0
-        expected_mark_px = 5.0 * mm_px
-        min_mark = max(8, int(expected_mark_px * 0.4))
+        expected_mark_px = 8.0 * mm_px
+        min_mark = max(8, int(expected_mark_px * 0.35))
         max_mark = int(expected_mark_px * 2.5)
         min_area = min_mark * min_mark
         max_area = max_mark * max_mark
@@ -337,10 +337,10 @@ class HybridOMR:
         heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
         maxHeight = max(int(heightA), int(heightB))
 
-        # Force A4 aspect ratio: corner marks span 201mm x 288mm
-        # (5mm marks at 2mm from edge, centers at 4.5mm from edge)
-        SPAN_W_MM = 201.0
-        SPAN_H_MM = 288.0
+        # Force A4 aspect ratio: corner marks span 198mm x 285mm
+        # (8mm marks at 2mm from edge, centers at 6mm from edge)
+        SPAN_W_MM = 198.0
+        SPAN_H_MM = 285.0
         target_aspect = SPAN_W_MM / SPAN_H_MM
         current_aspect = maxWidth / maxHeight if maxHeight > 0 else 1.0
 
@@ -383,7 +383,7 @@ class HybridOMR:
     def _detect_bubbles(self, gray):
         """Detect all circle-like contours in preprocessed grayscale image"""
         h_img, w_img = gray.shape[:2]
-        px_mm = w_img / 201.0
+        px_mm = w_img / 198.0
         expected = 5.5 * px_mm
         min_s = max(10, int(expected * 0.65))
         max_s = int(expected * 2.0)
@@ -854,9 +854,9 @@ class HybridOMR:
         rows_per_col = (total + n_cols - 1) // n_cols
 
         # After perspective transform: image spans corner-mark-to-corner-mark
-        # Corner marks: 5mm squares at 2mm from edge, center at 4.5mm
-        # So image width = 210 - 2*4.5 = 201mm, height = 297 - 2*4.5 = 288mm
-        SPAN_W_MM = 201.0
+        # Corner marks: 8mm squares at 2mm from edge, center at 6mm
+        # So image width = 210 - 2*6 = 198mm, height = 297 - 2*6 = 285mm
+        SPAN_W_MM = 198.0
         px_mm = w_img / SPAN_W_MM
 
         # Header takes ~28% of page (logo, QR, student info, instructions)
@@ -1479,8 +1479,8 @@ class HybridOMR:
         # Page: A4 210x297mm — must match AnswerSheet.tsx layout
         page_w_mm = 210.0
         page_h_mm = 297.0
-        page_left_pad_mm = 10.0   # AnswerSheet.tsx container padding: 10mm
-        page_right_pad_mm = 10.0
+        page_left_pad_mm = 12.0   # AnswerSheet.tsx container padding: 12mm
+        page_right_pad_mm = 12.0
         grid_pad_mm = 5.0     # answer-grid padding: 0 5mm
         header_row_mm = 4.0   # Column header row (A B C D)
 
@@ -1495,10 +1495,10 @@ class HybridOMR:
         # Row height in mm
         row_height_mm = bubble_mm + 2 * row_margin_mm
 
-        # Corner marks: 5mm squares at 2mm from edge, center at 4.5mm
-        corner_offset_mm = 4.5
-        warped_w_mm = page_w_mm - 2 * corner_offset_mm  # 201mm
-        warped_h_mm = page_h_mm - 2 * corner_offset_mm  # 288mm
+        # Corner marks: 8mm squares at 2mm from edge, center at 6mm
+        corner_offset_mm = 6.0
+        warped_w_mm = page_w_mm - 2 * corner_offset_mm  # 198mm
+        warped_h_mm = page_h_mm - 2 * corner_offset_mm  # 285mm
         px_per_mm_x = w_img / warped_w_mm
         px_per_mm_y = h_img / warped_h_mm
         self.log(f"  px/mm: x={px_per_mm_x:.2f}, y={px_per_mm_y:.2f}")
@@ -1531,8 +1531,8 @@ class HybridOMR:
 
         if grid_top_mm is None:
             # Fallback: header ~48mm (academy+info+instructions) + padding 10mm = ~58mm from page
-            # From warped top: 58 - 4.5 = 53.5mm
-            grid_top_mm = 53.5
+            # From warped top: 58 - 6.0 = 52.0mm
+            grid_top_mm = 52.0
             self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm")
 
         self.log(f"  Layout: {n_cols} cols, {rows_per_col} rows, bubble={bubble_mm}mm, gap={gap_mm}mm")
@@ -1594,7 +1594,7 @@ class HybridOMR:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         h_img, w_img = gray.shape[:2]
 
-        px_mm = w_img / 201.0
+        px_mm = w_img / 198.0
         bubble_px = int(bubble_size_px)
         gap_px = int(2.5 * px_mm)
         spacing_px = bubble_px + gap_px

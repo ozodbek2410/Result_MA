@@ -11,26 +11,29 @@ interface SubjectTextProps {
 }
 
 /**
- * SubjectText - Универсальный компонент для отображения текста с формулами
- * Автоматически выбирает правильный рендерер в зависимости от предмета
+ * Route text to the correct subject-specific renderer.
+ * Case-insensitive matching with CRM name support.
  */
 export default function SubjectText({ text, subject = 'math', className = '' }: SubjectTextProps) {
-  if (subject === 'chemistry' || subject === 'kimyo') {
+  const s = subject.toLowerCase();
+
+  if (s === 'chemistry' || s === 'kimyo' || s.includes('kimyo')) {
     return <ChemistryText text={text} className={className} />;
   }
-  
-  if (subject === 'biology' || subject === 'biologiya') {
-    return <BiologyText text={text} className={className} />;
-  }
-  
-  if (subject === 'physics' || subject === 'fizika') {
+
+  if (s === 'physics' || s === 'fizika' || s.includes('fizika')) {
     return <PhysicsText text={text} className={className} />;
   }
-  
-  if (subject === 'literature' || subject === 'adabiyot' || subject === 'ona tili') {
+
+  if (s === 'biology' || s === 'biologiya' || s.includes('biologiya') || s.includes('biolog')) {
+    return <BiologyText text={text} className={className} />;
+  }
+
+  if (s === 'literature' || s === 'adabiyot' || s.includes('adabiyot') ||
+      s === 'ona tili' || s.includes('ona tili') || s.includes('onatili')) {
     return <LiteratureText text={text} className={className} />;
   }
-  
-  // По умолчанию используем MathText (для математики)
+
+  // Default: MathText (matematika, tarix, ingliz tili, va boshqalar)
   return <MathText text={text} className={className} />;
 }

@@ -1049,18 +1049,26 @@ export class PDFGeneratorService {
         for (const letter of ['A','B','C','D']) {
           colHtml += `<div class="bubble-label">${letter}</div>`;
         }
-        colHtml += `</div></div>`;
+        colHtml += `</div>`;
+        // Right timing mark on last column header
+        colHtml += col === layout.columns - 1 ? `<div class="timing-mark" style="margin-left:1mm;flex-shrink:0"></div>` : '';
+        colHtml += `</div>`;
         for (let i = 0; i < count; i++) {
           const qNum = start + i;
-          const showMark = col === 0 && timingMarkRows.has(i);
+          // ALL columns get timing marks (not just col 0)
+          const showLeftMark = timingMarkRows.has(i);
+          const showRightMark = col === layout.columns - 1 && timingMarkRows.has(i);
           colHtml += `<div class="q-row">`;
-          colHtml += `<div class="timing-mark-area">${showMark ? '<div class="timing-mark"></div>' : ''}</div>`;
+          colHtml += `<div class="timing-mark-area">${showLeftMark ? '<div class="timing-mark"></div>' : ''}</div>`;
           colHtml += `<div class="q-num">${qNum}.</div>`;
           colHtml += `<div class="q-bubbles">`;
           for (const _letter of ['A','B','C','D']) {
             colHtml += `<div class="bubble"></div>`;
           }
-          colHtml += `</div></div>`;
+          colHtml += `</div>`;
+          // Right timing mark on last column
+          colHtml += showRightMark ? `<div class="timing-mark" style="margin-left:1mm;flex-shrink:0"></div>` : '';
+          colHtml += `</div>`;
         }
         colHtml += `</div>`;
         gridHtml += colHtml;
@@ -1126,16 +1134,16 @@ export class PDFGeneratorService {
 
   .sheet {
     width: 210mm; position: relative;
-    background: white; padding: 10mm;
+    background: white; padding: 12mm;
     font-family: Arial, sans-serif; color: black;
     box-sizing: border-box; page-break-after: always;
     margin: 0 auto;
   }
   .sheet:last-child { page-break-after: auto; }
 
-  /* Corner marks */
+  /* Corner marks — 8mm for reliable detection */
   .corner-mark {
-    position: absolute; width: 5mm; height: 5mm;
+    position: absolute; width: 8mm; height: 8mm;
     background: #000; box-sizing: border-box;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }

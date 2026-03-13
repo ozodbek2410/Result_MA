@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useMemo, memo } from 'react';
 import katex from 'katex';
 import { hasMathML, convertMathMLToLatex } from '@/lib/mathmlUtils';
 import { renderOmmlInText } from '@/lib/ommlUtils';
@@ -9,209 +9,208 @@ interface PhysicsTextProps {
   className?: string;
 }
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /**
- * PhysicsText - Fizika matnlarini ko'rsatish uchun
- * 
- * Qo'llab-quvvatlaydi:
- * - LaTeX formulalar (\(...\), \[...\])
- * - Inline LaTeX (v_0, E^2, F = ma)
- * - Fizik birliklar (m/s, kg, N, J)
- * - Maxsus belgilar (\times, \div, \approx, \to)
+ * Render physics text with KaTeX formulas.
+ * Uses MathText-compatible approach (useMemo + dangerouslySetInnerHTML).
  */
-export default function PhysicsText({ text, className = '' }: PhysicsTextProps) {
-  const containerRef = useRef<HTMLSpanElement>(null);
+function renderPhysicsToHtml(text: string): string {
+  let cleaned = text;
 
-  console.log('⚡ [PHYSICSTEXT] Component rendered with text:', text?.substring(0, 100));
+  // OMML → MathML → LaTeX
+  if (cleaned.includes('<omml>')) cleaned = renderOmmlInText(cleaned);
+  if (hasMathML(cleaned)) cleaned = convertMathMLToLatex(cleaned);
 
-  useEffect(() => {
-    if (!containerRef.current || !text) return;
+  // Clean HTML
+  cleaned = cleaned.replace(/<p>/gi, '').replace(/<\/p>/gi, '\n').replace(/<br\s*\/?>/gi, '\n');
+  cleaned = cleaned.replace(/\\\\+\(/g, '\\(').replace(/\\\\+\)/g, '\\)');
+  cleaned = cleaned.replace(/\\\\+\[/g, '\\[').replace(/\\\\+\]/g, '\\]');
 
-    try {
-      containerRef.current.innerHTML = '';
+  // Remove empty formulas
+  cleaned = cleaned.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
+  cleaned = cleaned.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
 
-      console.log('🔍 [PHYSICSTEXT] ===== START RENDERING =====');
-      console.log('🔍 [PHYSICSTEXT] Original text:', text.substring(0, 200));
+  // Extract data-latex from HTML tags (function replacement to avoid $$ escaping bug)
+  cleaned = cleaned.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_: string, latex: string) => {
+    let decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    while (decoded.startsWith('$$') && decoded.endsWith('$$') && decoded.length > 4) decoded = decoded.slice(2, -2).trim();
+    while (decoded.startsWith('$') && decoded.endsWith('$') && decoded.length > 2) decoded = decoded.slice(1, -1).trim();
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
+      return '$$' + decoded + '$$';
+    }
+    return '$' + decoded + '$';
+  });
+  cleaned = cleaned.replace(/<[^>]+>/g, '');
+  cleaned = cleaned.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
+  cleaned = cleaned.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  cleaned = cleaned.trim();
 
-      let cleanedText = text;
-      
-      // Step 1: Convert OMML to MathML
-      if (cleanedText.includes('<omml>')) {
-        console.log('🔄 [OMML] Converting OMML to MathML...');
-        cleanedText = renderOmmlInText(cleanedText);
+  // Find existing formula regions to prevent double-wrapping
+  const formulaRegions: Array<{ start: number; end: number }> = [];
+  {
+    const delimRe = /\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$(?!\$)[^$\n]*?\$/g;
+    let dm;
+    while ((dm = delimRe.exec(cleaned)) !== null) {
+      formulaRegions.push({ start: dm.index, end: dm.index + dm[0].length });
+    }
+  }
+  const isInsideFormula = (s: number, e: number) =>
+    formulaRegions.some(f => s >= f.start && e <= f.end);
+
+  // Auto-wrap bare superscript/subscript (physics-specific + general)
+  // Charge notation: E^+, Cr^{+2}, Fe^{3+}
+  cleaned = cleaned.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, (match, p1, p2, offset) => {
+    if (isInsideFormula(offset, offset + match.length)) return match;
+    return p1 + '^{' + p2 + '}';
+  });
+  cleaned = cleaned.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, (match, p1, p2, offset) => {
+    if (isInsideFormula(offset, offset + match.length)) return match;
+    return p1 + '^{' + p2 + '}';
+  });
+  cleaned = cleaned.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, (match, p1, p2, offset) => {
+    if (isInsideFormula(offset, offset + match.length)) return match;
+    return p1 + '^{' + p2 + '}';
+  });
+
+  // Auto-wrap: subscript formulas, charge, superscripts
+  {
+    const wrapped: Array<{ start: number; end: number; formula: string }> = [];
+    let m;
+    // Subscript formulas: H_2O, CO_2, v_0
+    const subPattern = /((?:[A-Za-z][A-Za-z0-9]*_(?:\{[^}]+\}|\d+))+(?:\^(?:\{[^}]+\}|\d+))?)/g;
+    while ((m = subPattern.exec(cleaned)) !== null) {
+      if (!isInsideFormula(m.index, m.index + m[0].length)) {
+        wrapped.push({ start: m.index, end: m.index + m[0].length, formula: m[0] });
       }
-      
-      // Step 2: Convert MathML to LaTeX
-      if (hasMathML(cleanedText)) {
-        console.log('🔄 [MathML] Converting MathML to LaTeX...');
-        cleanedText = convertMathMLToLatex(cleanedText);
+    }
+    // Element with charge: Fe^{3+}, O^{2-}
+    const chargePattern = /([A-Z][a-z]?\^(?:\{[^}]+\}|\d+[+-]|[+-]\d+|[+-]))/g;
+    while ((m = chargePattern.exec(cleaned)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
       }
-      
-      // Step 3: Clean HTML
-      cleanedText = cleanedText.replace(/<p>/gi, '');
-      cleanedText = cleanedText.replace(/<\/p>/gi, '\n');
-      cleanedText = cleanedText.replace(/<br\s*\/?>/gi, '\n');
-      
-      // Fix double backslashes
-      cleanedText = cleanedText.replace(/\\\\+\(/g, '\\(');
-      cleanedText = cleanedText.replace(/\\\\+\)/g, '\\)');
-      cleanedText = cleanedText.replace(/\\\\+\[/g, '\\[');
-      cleanedText = cleanedText.replace(/\\\\+\]/g, '\\]');
-      
-      console.log('🔍 [PHYSICSTEXT] After HTML cleanup:', cleanedText.substring(0, 200));
-      
-      // Remove empty formulas
-      cleanedText = cleanedText.replace(/<span[^>]*data-type="formula"[^>]*data-latex=""[^>]*><\/span>/g, '');
-      cleanedText = cleanedText.replace(/<span[^>]*data-latex=""[^>]*data-type="formula"[^>]*><\/span>/g, '');
-
-      // Extract formulas from HTML tags
-      cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, '$$$$1$$$$');
-      cleanedText = cleanedText.replace(/<[^>]+>/g, '');
-      cleanedText = cleanedText.trim();
-
-      // Normalize format: convert \(...\) to $...$
-      let normalizedText = cleanedText;
-      normalizedText = normalizedText.replace(/\\\((.*?)\\\)/g, '$$$$1$$$$');
-      normalizedText = normalizedText.replace(/\\\[(.*?)\\\]/g, '$$$$1$$$$');
-
-      console.log('🔍 [PHYSICSTEXT] After normalization:', normalizedText.substring(0, 200));
-      console.log('🔍 [PHYSICSTEXT] Has $ signs:', normalizedText.includes('$'));
-      console.log('🔍 [PHYSICSTEXT] Count of $ signs:', (normalizedText.match(/\$/g) || []).length);
-
-      // Render with KaTeX
-      const container = containerRef.current;
-      
-      // Split by formulas: $$...$$ (block) or $...$ (inline)
-      const parts: string[] = [];
-      let currentPos = 0;
-      let inFormula = false;
-      let formulaStart = -1;
-      let isBlockFormula = false;
-      
-      for (let i = 0; i < normalizedText.length; i++) {
-        if (normalizedText[i] === '$') {
-          if (!inFormula) {
-            // Start of formula
-            if (i > currentPos) {
-              parts.push(normalizedText.substring(currentPos, i));
-            }
-            
-            // Check if block formula ($$)
-            if (i + 1 < normalizedText.length && normalizedText[i + 1] === '$') {
-              isBlockFormula = true;
-              formulaStart = i + 2;
-              i++;
-            } else {
-              isBlockFormula = false;
-              formulaStart = i + 1;
-            }
-            
-            inFormula = true;
-          } else {
-            // End of formula
-            if (isBlockFormula) {
-              if (i + 1 < normalizedText.length && normalizedText[i + 1] === '$') {
-                const formula = normalizedText.substring(formulaStart, i);
-                parts.push('$$' + formula + '$$');
-                i++;
-                currentPos = i + 1;
-                inFormula = false;
-              }
-            } else {
-              const formula = normalizedText.substring(formulaStart, i);
-              parts.push('$' + formula + '$');
-              currentPos = i + 1;
-              inFormula = false;
-            }
-          }
-        }
+    }
+    // Number superscript: 10^{23}, 2^8
+    const supPattern = /(\d+)\^(\d+|\{[^}]+\})/g;
+    while ((m = supPattern.exec(cleaned)) !== null) {
+      const s = m.index, e = m.index + m[0].length;
+      if (!isInsideFormula(s, e) && !wrapped.some(w => s >= w.start && e <= w.end)) {
+        wrapped.push({ start: s, end: e, formula: m[0] });
       }
-      
-      // Add remaining text
-      if (currentPos < normalizedText.length) {
-        parts.push(normalizedText.substring(currentPos));
-      }
-      
-      console.log('🔍 [PHYSICSTEXT] Split into', parts.length, 'parts:');
-      parts.forEach((part, idx) => {
-        if (part) {
-          const isFormula = part.startsWith('$');
-          const preview = part.substring(0, 50) + (part.length > 50 ? '...' : '');
-          console.log(`   Part ${idx}: ${preview} ${isFormula ? '(FORMULA)' : '(TEXT)'}`);
-        }
+    }
+    if (wrapped.length > 0) {
+      wrapped.sort((a, b) => a.start - b.start);
+      let result = '';
+      let lastEnd = 0;
+      wrapped.forEach(w => {
+        if (w.start > lastEnd) result += cleaned.substring(lastEnd, w.start);
+        result += '$' + w.formula + '$';
+        lastEnd = w.end;
       });
-      
-      parts.forEach((part) => {
-        if (!part) return;
+      if (lastEnd < cleaned.length) result += cleaned.substring(lastEnd);
+      cleaned = result;
+    }
+  }
 
-        if (part.startsWith('$$') && part.endsWith('$$')) {
-          // Block formula
-          let math = part.slice(2, -2).trim();
-          
-          // Auto-wrap subscripts and superscripts
-          math = math.replace(/([a-zA-Z0-9])_(?!{)([a-zA-Z0-9])/g, '$1_{$2}');
-          math = math.replace(/([a-zA-Z0-9])\^(?!{)([a-zA-Z0-9])/g, '$1^{$2}');
-          
-          console.log('🔄 [PHYSICSTEXT] Rendering block formula:', math);
-          
-          const span = document.createElement('span');
-          span.className = 'katex-block';
-          try {
-            katex.render(math, span, {
-              displayMode: true,
-              throwOnError: false,
-              errorColor: '#cc0000',
-              strict: false
-            });
-            console.log('✅ [PHYSICSTEXT] Block formula rendered successfully');
-          } catch (e) {
-            console.error('❌ [PHYSICSTEXT] Error rendering block formula:', e);
-            span.textContent = part;
-            span.className = 'text-red-500';
-          }
-          container.appendChild(span);
-        } else if (part.startsWith('$') && part.endsWith('$')) {
-          // Inline formula
-          let math = part.slice(1, -1).trim();
-          
-          // Auto-wrap subscripts and superscripts
-          math = math.replace(/([a-zA-Z0-9])_(?!{)([a-zA-Z0-9])/g, '$1_{$2}');
-          math = math.replace(/([a-zA-Z0-9])\^(?!{)([a-zA-Z0-9])/g, '$1^{$2}');
-          
-          console.log('🔄 [PHYSICSTEXT] Rendering inline formula:', math);
-          
-          const span = document.createElement('span');
-          span.className = 'katex-inline';
-          try {
-            katex.render(math, span, {
-              displayMode: false,
-              throwOnError: false,
-              errorColor: '#cc0000',
-              strict: false
-            });
-            console.log('✅ [PHYSICSTEXT] Inline formula rendered successfully');
-          } catch (e) {
-            console.error('❌ [PHYSICSTEXT] Error rendering inline formula:', e);
-            span.textContent = part;
-            span.className = 'text-red-500';
-          }
-          container.appendChild(span);
+  // Normalize \(...\) → $...$ and \[...\] → $$...$$
+  let normalized = cleaned;
+  normalized = normalized.replace(/\\\(([\s\S]*?)\\\)/g, (_match: string, formula: string) => {
+    let clean = formula.trim();
+    while (clean.startsWith('$$') && clean.endsWith('$$') && clean.length > 4) clean = clean.slice(2, -2).trim();
+    while (clean.startsWith('$') && clean.endsWith('$') && clean.length > 2) clean = clean.slice(1, -1).trim();
+    if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(clean)) {
+      return '$$' + clean + '$$';
+    }
+    return '$' + clean + '$';
+  });
+  normalized = normalized.replace(/\\\[([\s\S]*?)\\\]/g, (_match: string, formula: string) => {
+    return '$$' + formula.trim() + '$$';
+  });
+
+  // Split by $ delimiters and render KaTeX
+  const parts: string[] = [];
+  let currentPos = 0;
+  let inFormula = false;
+  let formulaStart = -1;
+  let isBlockFormula = false;
+
+  for (let i = 0; i < normalized.length; i++) {
+    if (normalized[i] === '$') {
+      if (!inFormula) {
+        if (i > currentPos) parts.push(normalized.substring(currentPos, i));
+        if (i + 1 < normalized.length && normalized[i + 1] === '$') {
+          isBlockFormula = true;
+          formulaStart = i + 2;
+          i++;
         } else {
-          // Plain text
-          const textNode = document.createTextNode(part);
-          container.appendChild(textNode);
+          isBlockFormula = false;
+          formulaStart = i + 1;
         }
-      });
-      
-      console.log('✅ [PHYSICSTEXT] ===== RENDERING COMPLETE =====');
-    } catch (error) {
-      console.error('❌ [PHYSICSTEXT] Fatal error:', error);
-      if (containerRef.current) {
-        containerRef.current.textContent = text;
+        inFormula = true;
+      } else {
+        if (isBlockFormula) {
+          if (i + 1 < normalized.length && normalized[i + 1] === '$') {
+            parts.push('$$' + normalized.substring(formulaStart, i) + '$$');
+            i++;
+            currentPos = i + 1;
+            inFormula = false;
+          }
+        } else {
+          parts.push('$' + normalized.substring(formulaStart, i) + '$');
+          currentPos = i + 1;
+          inFormula = false;
+        }
       }
+    }
+  }
+  if (currentPos < normalized.length) parts.push(normalized.substring(currentPos));
+
+  // Build HTML
+  let html = '';
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith('$$') && part.endsWith('$$')) {
+      let math = part.slice(2, -2).trim();
+      math = math.replace(/([a-zA-Z0-9])_(?!\{)([a-zA-Z0-9])/g, '$1_{$2}');
+      math = math.replace(/([a-zA-Z0-9])\^(?!\{)([a-zA-Z0-9])/g, '$1^{$2}');
+      try {
+        html += `<span class="katex-block">${katex.renderToString(math, { displayMode: true, throwOnError: false, errorColor: '#cc0000', strict: false })}</span>`;
+      } catch {
+        html += `<span class="text-red-500">${escapeHtml(part)}</span>`;
+      }
+    } else if (part.startsWith('$') && part.endsWith('$')) {
+      let math = part.slice(1, -1).trim();
+      math = math.replace(/([a-zA-Z0-9])_(?!\{)([a-zA-Z0-9])/g, '$1_{$2}');
+      math = math.replace(/([a-zA-Z0-9])\^(?!\{)([a-zA-Z0-9])/g, '$1^{$2}');
+      const needsDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(math);
+      try {
+        html += `<span class="${needsDisplay ? 'katex-block' : 'katex-inline'}">${katex.renderToString(math, { displayMode: needsDisplay, throwOnError: false, errorColor: '#cc0000', strict: false })}</span>`;
+      } catch {
+        html += `<span class="text-red-500">${escapeHtml(part)}</span>`;
+      }
+    } else {
+      html += escapeHtml(part);
+    }
+  }
+  return html;
+}
+
+function PhysicsText({ text, className = '' }: PhysicsTextProps) {
+  if (!text) return null;
+
+  const html = useMemo(() => {
+    try {
+      return renderPhysicsToHtml(text);
+    } catch {
+      return escapeHtml(text);
     }
   }, [text]);
 
-  if (!text) return null;
-
-  return <span ref={containerRef} className={className}></span>;
+  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+export default memo(PhysicsText);
