@@ -53,6 +53,21 @@ const upload = multer({
 });
 
 /**
+ * Parse QR data — supports both old (plain string) and new (JSON) formats
+ * Old: "9EC69645"
+ * New: {"c":"9EC69645","q":90}
+ */
+function parseQrData(raw: string): { variantCode: string; totalQuestions: number | null } {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.c) {
+      return { variantCode: parsed.c, totalQuestions: parsed.q || null };
+    }
+  } catch { /* not JSON, use as plain string */ }
+  return { variantCode: raw, totalQuestions: null };
+}
+
+/**
  * POST /api/omr/upload
  * Загрузка изображения ответного листа
  */
@@ -103,9 +118,10 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
     // 1. QR-kodni aniqlash
     let qrData = null;
     let qrFound = false;
-    let variantCode = null;
-    let variantInfo = null;
-    
+    let variantCode: string | null = null;
+    let variantInfo: any = null;
+    let qrTotalQuestions: number | null = null;
+
     try {
       const qrScriptPath = path.join(SERVER_ROOT, 'python', 'qr_scanner.py');
       const pythonCmd = process.env.PYTHON_PATH || 
@@ -124,8 +140,10 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
       const qrResult = JSON.parse(qrOutput.trim());
       if (qrResult.found) {
         qrFound = true;
-        variantCode = qrResult.data.trim();
-        console.log('✅ QR-kod topildi:', variantCode);
+        const qrParsed = parseQrData(qrResult.data.trim());
+        variantCode = qrParsed.variantCode;
+        if (qrParsed.totalQuestions) qrTotalQuestions = qrParsed.totalQuestions;
+        console.log('✅ QR-kod topildi:', variantCode, qrTotalQuestions ? `(q=${qrTotalQuestions})` : '');
         
         // Variant ma'lumotlarini olish
         try {
@@ -225,6 +243,10 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
     if (qrFound && qrData && qrData.totalQuestions) {
       // Sheet total = all subjects in BlockTest (for grid layout)
       qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
+    } else if (qrTotalQuestions) {
+      // QR JSON formatdan totalQuestions (variant bazadan topilmagan bo'lsa ham)
+      qrDataJson = JSON.stringify({ totalQuestions: qrTotalQuestions }).replace(/"/g, '\\"');
+      console.log('📊 QR JSON dan totalQuestions ishlatilmoqda:', qrTotalQuestions);
     }
     
     if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
@@ -333,9 +355,10 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
     // 1. QR-kodni aniqlash
     let qrData = null;
     let qrFound = false;
-    let variantCode = null;
-    let variantInfo = null;
-    
+    let variantCode: string | null = null;
+    let variantInfo: any = null;
+    let qrTotalQuestions: number | null = null;
+
     try {
       const qrScriptPath = path.join(SERVER_ROOT, 'python', 'qr_scanner.py');
       const pythonCmd = process.env.PYTHON_PATH || 
@@ -354,8 +377,10 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
       const qrResult = JSON.parse(qrOutput.trim());
       if (qrResult.found) {
         qrFound = true;
-        variantCode = qrResult.data.trim();
-        console.log('✅ QR-kod topildi:', variantCode);
+        const qrParsed = parseQrData(qrResult.data.trim());
+        variantCode = qrParsed.variantCode;
+        if (qrParsed.totalQuestions) qrTotalQuestions = qrParsed.totalQuestions;
+        console.log('✅ QR-kod topildi:', variantCode, qrTotalQuestions ? `(q=${qrTotalQuestions})` : '');
         
         // Variant ma'lumotlarini olish
         try {
@@ -563,9 +588,10 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     // 1. QR-kodni aniqlash
     let qrData = null;
     let qrFound = false;
-    let variantCode = null;
-    let variantInfo = null;
-    
+    let variantCode: string | null = null;
+    let variantInfo: any = null;
+    let qrTotalQuestions: number | null = null;
+
     try {
       // QR-scanner skriptini ishlatish
       const qrScriptPath = path.join(SERVER_ROOT, 'python', 'qr_scanner.py');
@@ -592,8 +618,10 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
       const qrResult = JSON.parse(qrOutput.trim());
       if (qrResult.found) {
         qrFound = true;
-        variantCode = qrResult.data.trim();
-        console.log('✅ QR-kod topildi:', variantCode);
+        const qrParsed = parseQrData(qrResult.data.trim());
+        variantCode = qrParsed.variantCode;
+        if (qrParsed.totalQuestions) qrTotalQuestions = qrParsed.totalQuestions;
+        console.log('✅ QR-kod topildi:', variantCode, qrTotalQuestions ? `(q=${qrTotalQuestions})` : '');
         
         // Variant kodidan to'liq ma'lumotlarni olish
         try {
@@ -816,6 +844,10 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
     if (qrFound && qrData && qrData.totalQuestions) {
       // Sheet total = all subjects in BlockTest (for grid layout)
       qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
+    } else if (qrTotalQuestions) {
+      // QR JSON formatdan totalQuestions (variant bazadan topilmagan bo'lsa ham)
+      qrDataJson = JSON.stringify({ totalQuestions: qrTotalQuestions }).replace(/"/g, '\\"');
+      console.log('📊 QR JSON dan totalQuestions ishlatilmoqda:', qrTotalQuestions);
     }
 
     if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {

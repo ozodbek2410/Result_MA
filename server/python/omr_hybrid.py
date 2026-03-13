@@ -181,7 +181,17 @@ class HybridOMR:
 
         self.log(f"  Parallelism: w_ratio={w_ratio:.3f}, h_ratio={h_ratio:.3f}")
 
-        if w_ratio < 0.90 or h_ratio < 0.90:
+        # Size consistency check: detect outlier corners (much smaller than others)
+        sizes = {q: result[q]['w'] * result[q]['h'] for q in ['TL', 'TR', 'BL', 'BR']}
+        median_size = float(np.median(list(sizes.values())))
+        size_outlier = None
+        for q, s in sizes.items():
+            if s < median_size * 0.35:  # corner less than 35% of median = outlier
+                size_outlier = q
+                self.log(f"  Size outlier: {q} ({s:.0f} vs median {median_size:.0f})")
+                break
+
+        if size_outlier or w_ratio < 0.90 or h_ratio < 0.90:
             # Bad parallelism — find worst corner by distance to image edge
             # Good corners are close to their image corners
             import math
@@ -196,8 +206,8 @@ class HybridOMR:
                 dist = math.sqrt((c['x'] - ix)**2 + (c['y'] - iy)**2) / diag
                 corner_dists[q_name] = dist
 
-            # The worst corner (farthest from image corner) should be estimated
-            worst_q = max(corner_dists, key=corner_dists.get)
+            # The worst corner: size outlier takes priority, else farthest from image corner
+            worst_q = size_outlier or max(corner_dists, key=corner_dists.get)
             self.log(f"  Corner distances: {', '.join(f'{k}={v:.3f}' for k,v in corner_dists.items())}")
             self.log(f"  Worst corner: {worst_q} (dist={corner_dists[worst_q]:.3f}), estimating from other 3")
 
@@ -426,6 +436,13 @@ class HybridOMR:
                 circ = 4 * np.pi * area / (peri * peri)
                 if circ < 0.4:
                     continue
+                # Filter out solid timing marks by fill ratio
+                # Timing marks are solid (fill>0.80), bubbles are hollow rings
+                # Even filled-in bubbles rarely exceed 0.75 fill ratio
+                roi = thresh[y:y+h, x:x+w]
+                fill_ratio = cv2.countNonZero(roi) / float(w * h) if w * h > 0 else 0
+                if fill_ratio > 0.80:
+                    continue  # solid mark, not a bubble
                 key = (round(cx / dedup_d) * dedup_d, round(cy / dedup_d) * dedup_d)
                 if key not in all_b:
                     all_b[key] = {'x': cx, 'y': cy, 'w': w, 'h': h}
@@ -1479,8 +1496,8 @@ class HybridOMR:
         # Page: A4 210x297mm — must match AnswerSheet.tsx layout
         page_w_mm = 210.0
         page_h_mm = 297.0
-        page_left_pad_mm = 15.0   # AnswerSheet.tsx container padding: 15mm
-        page_right_pad_mm = 15.0
+        page_left_pad_mm = 10.0   # AnswerSheet.tsx CONTAINER_PADDING: 10mm
+        page_right_pad_mm = 10.0  # same as left
         grid_pad_mm = 5.0     # answer-grid padding: 0 5mm
         header_row_mm = 4.0   # Column header row (A B C D)
 
@@ -1505,13 +1522,25 @@ class HybridOMR:
 
         grid_left_mm = grid_left_page_mm - corner_offset_mm
 
-        # Bubble positions within a column (from column left edge)
-        # [timing_area][number_area][A gap B gap C gap D]
-        bubble_offset_mm = timing_mark_area_mm + num_w_mm
-        bubble_centers_mm = []
-        for bi in range(4):
-            cx_mm = bubble_offset_mm + bi * (bubble_mm + gap_mm) + bubble_mm / 2
-            bubble_centers_mm.append(cx_mm)
+        # Bubble positions calibrated from actual scanned images
+        # React flex layout compresses number_width, so we calibrate from detected bubbles
+        bubble_centers_mm = None
+        if bubbles and len(bubbles) >= 16:
+            bubble_centers_mm = self._calibrate_bubble_x_from_detections(
+                bubbles, w_img, h_img, n_cols, col_width_mm, col_gap_mm,
+                grid_left_mm, px_per_mm_x, bubble_mm, gap_mm
+            )
+
+        if bubble_centers_mm is None:
+            # Fallback: estimate from layout (timing_area + num_width + bubbles)
+            right_timing_area_mm = 4.0
+            available_mm = col_width_mm - timing_mark_area_mm - num_w_mm - right_timing_area_mm
+            actual_gap = max(0, (available_mm - 4 * bubble_mm) / 3.0)
+            bubble_offset_mm = timing_mark_area_mm + num_w_mm
+            bubble_centers_mm = []
+            for bi in range(4):
+                cx_mm = bubble_offset_mm + bi * (bubble_mm + actual_gap) + bubble_mm / 2
+                bubble_centers_mm.append(cx_mm)
 
         # Find grid_top: try bubble-based first, then cross-correlation fallback
         grid_top_mm = None
@@ -1577,19 +1606,96 @@ class HybridOMR:
             qlast = grid[total][letters[-1]]
             self.log(f"  Q1-A: ({q1a['x']},{q1a['y']}), Q{total}-D: ({qlast['x']},{qlast['y']})")
 
-        # X calibration: detect actual circles and compare with grid
-        x_shift, x_corr = self._calibrate_grid_x(image, grid, bubble_size_px, rows_per_col, n_cols)
-        self._layout_x_corr = x_corr
-        if x_shift != 0:
-            self.log(f"  X-calibration shift: {x_shift}px ({x_shift/px_per_mm_x:.1f}mm)")
-            for q_num in grid:
-                for letter in grid[q_num]:
-                    b = grid[q_num][letter]
-                    b['x'] += x_shift
-                    bx, by, bw, bh = b['bbox']
-                    b['bbox'] = (bx + x_shift, by, bw, bh)
+        # X calibration disabled — layout grid positions are precise enough
+        # The cross-correlation based calibration was producing wrong shifts
+        self._layout_x_corr = 1.0
 
         return grid
+
+    def _calibrate_bubble_x_from_detections(self, bubbles, w_img, h_img, n_cols,
+                                              col_width_mm, col_gap_mm, grid_left_mm,
+                                              px_per_mm_x, bubble_mm, gap_mm):
+        """Calibrate bubble X positions from detected bubble clusters.
+        Returns ABSOLUTE mm positions for A,B,C,D within each column."""
+        # Filter: only real bubbles (not timing marks — too small)
+        median_w = float(np.median([b['w'] for b in bubbles]))
+        big_bubbles = [b for b in bubbles if b['w'] >= median_w * 0.7]
+        if len(big_bubbles) < 16:
+            return None
+
+        spacing_px = (bubble_mm + gap_mm) * px_per_mm_x
+
+        # Cluster ALL bubble X positions globally
+        all_x = sorted([b['x'] for b in big_bubbles])
+        clusters = []
+        current = [all_x[0]]
+        for x in all_x[1:]:
+            if x - current[-1] < spacing_px * 0.5:
+                current.append(x)
+            else:
+                if len(current) >= 3:
+                    clusters.append(float(np.median(current)))
+                current = [x]
+        if len(current) >= 3:
+            clusters.append(float(np.median(current)))
+
+        # We expect n_cols * 4 ABCD clusters (+ timing marks, numbers ignored by size filter)
+        # Group clusters by column: find n_cols groups of ~4 evenly-spaced clusters
+        if len(clusters) < n_cols * 4:
+            self.log(f"  Calibration: only {len(clusters)} X clusters, need {n_cols * 4}")
+            return None
+
+        # Find column groupings: clusters within each column are close, between columns have big gap
+        # Sort by position, find the n_cols-1 biggest gaps
+        diffs = [clusters[i+1] - clusters[i] for i in range(len(clusters)-1)]
+        if len(diffs) < n_cols - 1:
+            return None
+
+        # Find column-separating gaps (largest diffs)
+        sorted_gap_indices = sorted(range(len(diffs)), key=lambda i: diffs[i], reverse=True)
+        col_splits = sorted(sorted_gap_indices[:n_cols-1])
+
+        col_groups = []
+        start = 0
+        for si in col_splits:
+            col_groups.append(clusters[start:si+1])
+            start = si + 1
+        col_groups.append(clusters[start:])
+
+        # Each column group should have exactly 4 clusters (A,B,C,D)
+        # Compute offsets relative to column left
+        all_offsets = []  # (letter_index, offset_mm)
+        for ci, group in enumerate(col_groups):
+            if len(group) < 4:
+                continue
+            # Take last 4 (skip any remaining timing mark clusters)
+            abcd = group[-4:] if len(group) > 4 else group[:4]
+            col_left_px = abcd[0] - (abcd[1] - abcd[0]) * 0.5  # estimate col left
+            for j, cx_px in enumerate(abcd):
+                # Offset from estimated column left
+                col_left_mm_est = grid_left_mm + ci * (col_width_mm + col_gap_mm)
+                offset_mm = cx_px / px_per_mm_x - col_left_mm_est
+                all_offsets.append((j, offset_mm))
+
+        if len(all_offsets) < 4:
+            return None
+
+        result = []
+        for bi in range(4):
+            positions = [mm for j, mm in all_offsets if j == bi]
+            if positions:
+                result.append(float(np.median(positions)))
+            else:
+                return None
+
+        # Sanity: spacing should be roughly consistent
+        spacings = [result[i+1] - result[i] for i in range(3)]
+        if max(spacings) > min(spacings) * 2:
+            self.log(f"  Calibration rejected: uneven spacing {spacings}")
+            return None
+
+        self.log(f"  Calibrated bubble X: {[f'{x:.1f}' for x in result]}mm (from {len(all_offsets)//4} cols)")
+        return result
 
     def _calibrate_grid_x(self, image, grid, bubble_size_px, rows_per_col, n_cols):
         """Auto-calibrate grid X using 1D cross-correlation with circle pattern.
@@ -2798,7 +2904,10 @@ class HybridOMR:
         total_q = self.TOTAL_QUESTIONS or (max(grid.keys()) if grid else 0)
         det_rate = (len(detected_answers) / total_q * 100) if total_q > 0 else 0
         layout_x_corr = getattr(self, "_layout_x_corr", 1.0) if grid_method == "layout" else 1.0
-        needs_fallback = (grid_method == "layout" and det_rate < 85) or (grid_method == "layout" and layout_x_corr < 0.85)
+        # Only fallback if detection rate is very poor AND we don't have TOTAL_QUESTIONS
+        # When TOTAL_QUESTIONS is set and layout grid matches, trust the layout
+        layout_trusted = (grid_method == "layout" and self.TOTAL_QUESTIONS and len(grid) >= self.TOTAL_QUESTIONS * 0.9)
+        needs_fallback = (grid_method == "layout" and det_rate < 10 and not layout_trusted)
         if needs_fallback and len(bubbles) >= 16:
             self.log(f"\n--- Layout fallback (x_corr={layout_x_corr:.3f}), switching to detection grid ---")
             grid2 = self._build_grid(bubbles, w_proc, h_proc)

@@ -1017,7 +1017,8 @@ export class PDFGeneratorService {
     for (const student of students) {
       if (student.variantCode) {
         try {
-          const qrDataUrl = await QRCode.toDataURL(student.variantCode.trim().toUpperCase(), {
+          const qrPayload = JSON.stringify({ c: student.variantCode.trim().toUpperCase(), q: totalQuestions });
+          const qrDataUrl = await QRCode.toDataURL(qrPayload, {
             width: 200,
             margin: 1,
             errorCorrectionLevel: 'H',

@@ -939,7 +939,7 @@ export default function TestPrintPage() {
                     periodYear: isBlockTest ? test.periodYear : undefined
                   }}
                   questions={questionsCount}
-                  qrData={variantCode}
+                  qrData={JSON.stringify({ c: variantCode, q: questionsCount })}
                   sheetsPerPage={1}
                 />
               </div>
@@ -1122,7 +1122,7 @@ export default function TestPrintPage() {
                       periodYear: isBlockTest ? test.periodYear : undefined
                     }}
                     questions={questionsToRender?.length || 0}
-                    qrData={variantCode}
+                    qrData={JSON.stringify({ c: variantCode, q: questionsToRender?.length || 0 })}
                     sheetsPerPage={sheetsPerPage}
                   />
                 </div>

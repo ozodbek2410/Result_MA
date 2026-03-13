@@ -103,8 +103,7 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
 
   useEffect(() => {
     if (qrRef.current && qrData) {
-      const normalizedData = qrData.trim().toUpperCase();
-      QRCode.toCanvas(qrRef.current, normalizedData, {
+      QRCode.toCanvas(qrRef.current, qrData.trim(), {
         width: 100,
         margin: 1,
         errorCorrectionLevel: 'H',
