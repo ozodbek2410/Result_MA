@@ -1529,11 +1529,15 @@ class HybridOMR:
                 col_width_mm, col_gap_mm
             )
 
-        if grid_top_mm is None:
-            # Fallback: header ~48mm (academy+info+instructions) + padding 10mm = ~58mm from page
-            # From warped top: 58 - 6.0 = 52.0mm
+        # Sanity check: grid must fit within warped image
+        warped_h_mm = page_h_mm - 2 * corner_center_mm
+        row_step_mm = bubble_mm + 2 * gap_mm
+        grid_height_mm = header_row_mm + rows_per_col * row_step_mm
+        max_grid_top = warped_h_mm - grid_height_mm - 5  # 5mm safety margin
+
+        if grid_top_mm is None or grid_top_mm > max_grid_top or grid_top_mm < 20:
             grid_top_mm = 52.0
-            self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm")
+            self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm (max allowed: {max_grid_top:.0f}mm)")
 
         self.log(f"  Layout: {n_cols} cols, {rows_per_col} rows, bubble={bubble_mm}mm, gap={gap_mm}mm")
         self.log(f"  Grid area: ({grid_left_mm:.0f},{grid_top_mm:.0f})mm, col_w={col_width_mm:.0f}mm")
