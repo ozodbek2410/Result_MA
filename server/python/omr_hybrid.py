@@ -1479,8 +1479,8 @@ class HybridOMR:
         # Page: A4 210x297mm — must match AnswerSheet.tsx layout
         page_w_mm = 210.0
         page_h_mm = 297.0
-        page_left_pad_mm = 10.0   # AnswerSheet.tsx container padding: 10mm
-        page_right_pad_mm = 10.0
+        page_left_pad_mm = 15.0   # AnswerSheet.tsx container padding: 15mm
+        page_right_pad_mm = 15.0
         grid_pad_mm = 5.0     # answer-grid padding: 0 5mm
         header_row_mm = 4.0   # Column header row (A B C D)
 
@@ -1531,12 +1531,13 @@ class HybridOMR:
 
         # Sanity check: grid must fit within warped image
         warped_h_mm = page_h_mm - 2 * corner_offset_mm
-        row_step_mm = bubble_mm + 2 * gap_mm
+        row_step_mm = bubble_mm + 2 * row_margin_mm  # row height = bubble + top/bottom margin
         grid_height_mm = header_row_mm + rows_per_col * row_step_mm
         max_grid_top = warped_h_mm - grid_height_mm - 5  # 5mm safety margin
 
         if grid_top_mm is None or grid_top_mm > max_grid_top or grid_top_mm < 20:
-            grid_top_mm = 52.0
+            # Use safe fallback that fits within image
+            grid_top_mm = min(52.0, max(20.0, max_grid_top - 2))
             self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm (max allowed: {max_grid_top:.0f}mm)")
 
         self.log(f"  Layout: {n_cols} cols, {rows_per_col} rows, bubble={bubble_mm}mm, gap={gap_mm}mm")
