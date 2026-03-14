@@ -2734,7 +2734,9 @@ class HybridOMR:
         """Detect filled answers in grid using relative scoring."""
         detected_answers = {}
         invalid_answers = {}
-        SCORE_THRESHOLD = 3.0
+        SCORE_THRESHOLD = 6.0       # Min relative difference (darkest - baseline)
+        MIN_DARKEST_ABS = 35.0      # Min absolute darkness % for filled bubble
+        NOISE_CEILING = 28.0        # If all bubbles below this, row is definitely empty
 
         for q_num in sorted(grid.keys()):
             fills = {}
@@ -2759,6 +2761,11 @@ class HybridOMR:
             baseline = float(np.median([v for _, v in sorted_f[1:]]))
             score = darkest_val - baseline
 
+            # If all bubbles are below noise ceiling, skip entirely (empty row)
+            if darkest_val < NOISE_CEILING:
+                self.log(f"  Q{q_num}: empty (all below noise ceiling, max={darkest_val:.1f}%)")
+                continue
+
             second_letter, second_val = sorted_f[1]
             if len(sorted_f) >= 3:
                 base_multi = float(np.median([v for _, v in sorted_f[2:]]))
@@ -2768,7 +2775,7 @@ class HybridOMR:
                 score_1, score_2 = score, 0
 
             min_fill = min(fills.values())
-            eff_threshold = SCORE_THRESHOLD if min_fill < 40 else max(SCORE_THRESHOLD, 9.0)
+            eff_threshold = SCORE_THRESHOLD if min_fill < 40 else max(SCORE_THRESHOLD, 12.0)
 
             is_multi = (score_1 >= eff_threshold and score_2 >= 15.0
                         and second_val >= 55.0 and second_val >= darkest_val * 0.70
@@ -2776,10 +2783,10 @@ class HybridOMR:
             if is_multi:
                 self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
                 invalid_answers[str(q_num)] = [darkest_letter, second_letter]
-            elif score >= eff_threshold:
+            elif score >= eff_threshold and darkest_val >= MIN_DARKEST_ABS:
                 detected_answers[str(q_num)] = darkest_letter
             else:
-                self.log(f"  Q{q_num}: empty (score={score:.1f})")
+                self.log(f"  Q{q_num}: empty (score={score:.1f}, darkest={darkest_val:.1f}%)")
 
         return detected_answers, invalid_answers
 
