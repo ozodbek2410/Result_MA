@@ -468,30 +468,46 @@ A) А.С.Пушкин  B) Л.Н.Толстой  C) Ф.М.Достоевский"
   /**
    * Call Groq API
    */
+  private static readonly REQUEST_TIMEOUT_MS = 30_000; // 30s timeout for API calls
+
   private static async callGroqAPI(text: string, model: string, apiKey: string): Promise<GroqQuestion[]> {
-    const response = await fetch(this.GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: this.SYSTEM_PROMPT,
-          },
-          {
-            role: 'user',
-            content: text,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 4096,
-        response_format: { type: 'json_object' },
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(this.GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: this.SYSTEM_PROMPT,
+            },
+            {
+              role: 'user',
+              content: text,
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 4096,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        throw new Error(`Groq API timeout (${this.REQUEST_TIMEOUT_MS / 1000}s)`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();

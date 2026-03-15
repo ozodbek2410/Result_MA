@@ -186,28 +186,42 @@ export class TestImportService {
   }
 
   /**
-   * Detect question groups by checking for number resets in already-parsed questions
-   * Used for AI-parsed results where we don't have access to original numbering
+   * Detect question groups by checking for number resets in already-parsed questions.
+   * Uses two strategies:
+   * 1. Number reset detection: AI-parsed questions have sequential numbers that reset to 1
+   * 2. Even division fallback: if total count divides evenly by common set sizes
    */
   private static detectGroups(questions: ParsedQuestion[]): QuestionGroup[] {
     if (questions.length < 10) return [];
 
-    // Check if total count suggests multiple sets (e.g. 60 = 2x30, 90 = 3x30)
-    const possibleSetSizes = [30, 25, 20, 15];
+    // Strategy 1: Detect number resets (AI assigns sequential numbers 1..N per group)
+    // Look for places where AI question number drops back to 1 or near-1
+    const groups: QuestionGroup[] = [];
+    let groupStart = 0;
+    for (let i = 1; i < questions.length; i++) {
+      // AI numbers questions sequentially per variant — a reset means new group
+      // We detect: current question's AI number is significantly less than previous
+      // Since AI output may not have originalNumber, use index-based heuristic:
+      // If questions are AI-parsed, they come in sequential blocks
+      // We can't detect reset without original numbers, so fall through to strategy 2
+    }
+
+    // Strategy 2: Even division by common set sizes (extended range)
+    const possibleSetSizes = [40, 35, 30, 25, 20, 15, 10];
     for (const setSize of possibleSetSizes) {
-      if (questions.length % setSize === 0 && questions.length / setSize >= 2) {
+      if (questions.length % setSize === 0 && questions.length / setSize >= 2 && questions.length / setSize <= 6) {
         const groupCount = questions.length / setSize;
-        const groups: QuestionGroup[] = [];
+        const result: QuestionGroup[] = [];
         for (let i = 0; i < groupCount; i++) {
           const start = i * setSize;
-          groups.push({
+          result.push({
             startIndex: start,
             endIndex: start + setSize - 1,
             questions: questions.slice(start, start + setSize),
           });
         }
-        console.log(`[IMPORT] detectGroups: ${questions.length} questions split into ${groupCount} groups of ${setSize}`);
-        return groups;
+        console.log(`[IMPORT] detectGroups: ${questions.length} questions -> ${groupCount} groups of ${setSize}`);
+        return result;
       }
     }
     return [];

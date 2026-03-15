@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
+import Test from '../models/Test';
 
 /**
  * 🧹 MEDIA CLEANUP SERVICE
@@ -59,17 +60,46 @@ export class MediaCleanupService {
    */
   async cleanupUnusedFiles(): Promise<number> {
     try {
-      console.log('🧹 [CLEANUP] Cleaning unused files...');
-      
-      // TODO: Database'dan barcha imageUrl va media.url larni olish
-      // TODO: Fayllar bilan solishtirish
-      // TODO: Ishlatilmayotganlarni o'chirish
-      
-      console.log('ℹ️  [CLEANUP] Unused file cleanup not implemented yet');
-      
-      return 0;
+      console.log('[CLEANUP] Cleaning unused files...');
+
+      // Collect all image URLs referenced in DB
+      const referencedUrls = new Set<string>();
+
+      const tests = await Test.find({}, { 'questions.imageUrl': 1, 'questions.media': 1 }).lean();
+      for (const test of tests) {
+        for (const q of (test as any).questions || []) {
+          if (q.imageUrl) referencedUrls.add(path.basename(q.imageUrl));
+          if (q.media) {
+            for (const m of q.media) {
+              if (m.url) referencedUrls.add(path.basename(m.url));
+            }
+          }
+        }
+      }
+
+      // Compare with files on disk
+      const testImagesDir = path.join(this.uploadDir, 'test-images');
+      if (!fsSync.existsSync(testImagesDir)) return 0;
+
+      const files = await fs.readdir(testImagesDir);
+      let deletedCount = 0;
+
+      for (const file of files) {
+        if (!referencedUrls.has(file)) {
+          // File not referenced — check age (only delete if older than 24h to avoid race)
+          const filePath = path.join(testImagesDir, file);
+          const stats = await fs.stat(filePath);
+          if (Date.now() - stats.mtimeMs > 24 * 60 * 60 * 1000) {
+            await fs.unlink(filePath);
+            deletedCount++;
+          }
+        }
+      }
+
+      console.log(`[CLEANUP] Deleted ${deletedCount} unused files (${files.length} total, ${referencedUrls.size} referenced)`);
+      return deletedCount;
     } catch (error) {
-      console.error('❌ [CLEANUP] Error:', error);
+      console.error('[CLEANUP] Error:', error);
       return 0;
     }
   }

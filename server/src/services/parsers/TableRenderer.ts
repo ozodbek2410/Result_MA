@@ -85,21 +85,30 @@ export class TableRenderer {
     tables: Array<{ id: string; html: string }>
   ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
-    
-    console.log(`🎨 [RENDERER] Rendering ${tables.length} tables...`);
-    
-    // Har bir jadvalni render qilish
-    for (const table of tables) {
-      try {
-        const imageUrl = await this.renderTableAsImage(table.html, table.id);
-        results.set(table.id, imageUrl);
-      } catch (error) {
-        console.error(`❌ [RENDERER] Failed to render ${table.id}:`, error);
+
+    console.log(`[RENDERER] Rendering ${tables.length} tables...`);
+
+    // Parallel rendering with concurrency limit of 3
+    const CONCURRENCY = 3;
+    for (let i = 0; i < tables.length; i += CONCURRENCY) {
+      const batch = tables.slice(i, i + CONCURRENCY);
+      const settled = await Promise.allSettled(
+        batch.map(async (table) => {
+          const imageUrl = await this.renderTableAsImage(table.html, table.id);
+          return { id: table.id, imageUrl };
+        })
+      );
+      for (const result of settled) {
+        if (result.status === 'fulfilled') {
+          results.set(result.value.id, result.value.imageUrl);
+        } else {
+          console.error(`[RENDERER] Table render failed:`, result.reason);
+        }
       }
     }
-    
-    console.log(`✅ [RENDERER] Rendered ${results.size}/${tables.length} tables`);
-    
+
+    console.log(`[RENDERER] Rendered ${results.size}/${tables.length} tables`);
+
     return results;
   }
 

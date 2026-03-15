@@ -3,6 +3,7 @@ import Student from './models/Student';
 import { PandocDocxService } from './services/pandocDocxService';
 import { CrmSyncService } from './services/crmSyncService';
 import { CrmApiService } from './services/crmApiService';
+import { MediaCleanupService } from './services/mediaCleanupService';
 
 /**
  * Автоматический планировщик для повышения класса учеников
@@ -93,12 +94,32 @@ async function runCrmSync() {
   }
 }
 
+/**
+ * Clean up old uploaded files (older than 7 days)
+ */
+async function cleanupOldUploads() {
+  try {
+    const cleanupService = new MediaCleanupService();
+    const deleted = await cleanupService.cleanupOldFiles(7);
+    if (deleted > 0) {
+      console.log(`[SCHEDULER] Cleaned up ${deleted} old uploaded files`);
+    }
+  } catch (error) {
+    console.error('[SCHEDULER] Error cleaning up old uploads:', error);
+  }
+}
+
 export function initScheduler() {
   cron.schedule('0 0 1 9 *', promoteStudentsAuto, {
     timezone: 'Asia/Tashkent'
   });
 
   cron.schedule('0 * * * *', cleanupTempFiles, {
+    timezone: 'Asia/Tashkent'
+  });
+
+  // Clean old uploads daily at 3 AM
+  cron.schedule('0 3 * * *', cleanupOldUploads, {
     timezone: 'Asia/Tashkent'
   });
 

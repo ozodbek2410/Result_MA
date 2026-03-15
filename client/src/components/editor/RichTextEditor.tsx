@@ -14,9 +14,7 @@ interface RichTextEditorProps {
 }
 
 export default function RichTextEditor({ value, onChange, placeholder = 'Matnni kiriting...', className = '' }: RichTextEditorProps) {
-  const [showSymbols, setShowSymbols] = useState(false);
-  const [activeTab, setActiveTab] = useState<'basic' | 'greek' | 'operators' | 'advanced'>('basic');
-  const [editorKey] = useState(() => Math.random()); // Уникальный ключ для редактора
+  const [editorKey] = useState(() => Math.random());
   const formulaConvertedRef = useRef(false);
 
   // Мемоизируем расширения чтобы они не пересоздавались
@@ -242,9 +240,7 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
 
   const insertFormula = () => {
     if (editor) {
-      // НЕ фокусируем автоматически - только вставляем формулу
       editor.chain().setFormula('').run();
-      setShowSymbols(true);
     }
   };
 
@@ -268,80 +264,68 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
     }
   };
 
-  // Категории символов
-  const symbolCategories = {
-    basic: [
-      { latex: '\\sqrt{}', label: '√' },
-      { latex: '\\frac{}{}', label: 'a/b' },
-      { latex: '^{}', label: 'xⁿ' },
-      { latex: '_{}', label: 'xₙ' },
-      { latex: '()', label: '( )' },
-      { latex: '\\pm', label: '±' },
-      { latex: '\\times', label: '×' },
-      { latex: '\\div', label: '÷' },
-      { latex: '=', label: '=' },
-      { latex: '\\neq', label: '≠' },
-      { latex: '<', label: '<' },
-      { latex: '>', label: '>' },
-      { latex: '\\leq', label: '≤' },
-      { latex: '\\geq', label: '≥' },
-      { latex: '\\infty', label: '∞' },
-    ],
-    greek: [
-      { latex: '\\alpha', label: 'α' },
-      { latex: '\\beta', label: 'β' },
-      { latex: '\\gamma', label: 'γ' },
-      { latex: '\\delta', label: 'δ' },
-      { latex: '\\epsilon', label: 'ε' },
-      { latex: '\\theta', label: 'θ' },
-      { latex: '\\lambda', label: 'λ' },
-      { latex: '\\mu', label: 'μ' },
-      { latex: '\\pi', label: 'π' },
-      { latex: '\\sigma', label: 'σ' },
-      { latex: '\\phi', label: 'φ' },
-      { latex: '\\omega', label: 'ω' },
-      { latex: '\\Gamma', label: 'Γ' },
-      { latex: '\\Delta', label: 'Δ' },
-      { latex: '\\Theta', label: 'Θ' },
-      { latex: '\\Lambda', label: 'Λ' },
-      { latex: '\\Sigma', label: 'Σ' },
-      { latex: '\\Omega', label: 'Ω' },
-    ],
-    operators: [
-      { latex: '\\sum', label: 'Σ' },
-      { latex: '\\prod', label: '∏' },
-      { latex: '\\int', label: '∫' },
-      { latex: '\\lim', label: 'lim' },
-      { latex: '\\sin', label: 'sin' },
-      { latex: '\\cos', label: 'cos' },
-      { latex: '\\tan', label: 'tan' },
-      { latex: '\\log', label: 'log' },
-      { latex: '\\ln', label: 'ln' },
-      { latex: '\\in', label: '∈' },
-      { latex: '\\notin', label: '∉' },
-      { latex: '\\subset', label: '⊂' },
-      { latex: '\\cup', label: '∪' },
-      { latex: '\\cap', label: '∩' },
-      { latex: '\\forall', label: '∀' },
-      { latex: '\\exists', label: '∃' },
-    ],
-    advanced: [
-      { latex: '\\partial', label: '∂' },
-      { latex: '\\nabla', label: '∇' },
-      { latex: '\\approx', label: '≈' },
-      { latex: '\\equiv', label: '≡' },
-      { latex: '\\propto', label: '∝' },
-      { latex: '\\perp', label: '⊥' },
-      { latex: '\\parallel', label: '∥' },
-      { latex: '\\angle', label: '∠' },
-      { latex: '\\to', label: '→' },
-      { latex: '\\Rightarrow', label: '⇒' },
-      { latex: '\\Leftrightarrow', label: '⇔' },
-      { latex: '\\cdot', label: '·' },
-      { latex: '\\circ', label: '∘' },
-      { latex: '\\emptyset', label: '∅' },
-    ],
-  };
+  // Quick formula buttons — eng ko'p ishlatiladigan amallar
+  const quickFormulas = [
+    { latex: '\\frac{}{}', label: 'a/b', title: 'Kasr' },
+    { latex: '\\sqrt{}', label: '√', title: 'Ildiz' },
+    { latex: '^{2}', label: 'x\u00B2', title: 'Kvadrat' },
+    { latex: '^{}', label: 'x\u207F', title: 'Daraja' },
+    { latex: '_{}', label: 'x\u2099', title: 'Indeks' },
+    { latex: '\\log_{}', label: 'log', title: 'Logarifm' },
+    { latex: '\\pm', label: '\u00B1', title: 'Plyus-minus' },
+    { latex: '\\times', label: '\u00D7', title: "Ko'paytirish" },
+    { latex: '\\leq', label: '\u2264', title: 'Kichik yoki teng' },
+    { latex: '\\geq', label: '\u2265', title: 'Katta yoki teng' },
+    { latex: '\\neq', label: '\u2260', title: 'Teng emas' },
+    { latex: '\\infty', label: '\u221E', title: 'Cheksizlik' },
+    { latex: '\\pi', label: '\u03C0', title: 'Pi' },
+    { latex: '\\alpha', label: '\u03B1', title: 'Alfa' },
+    { latex: '\\beta', label: '\u03B2', title: 'Beta' },
+    { latex: '\\sum', label: '\u03A3', title: "Yig'indi" },
+    { latex: '\\int', label: '\u222B', title: 'Integral' },
+    { latex: '\\cdot', label: '\u00B7', title: 'Nuqta' },
+  ];
+
+  // Extended categories for "more" panel
+  const [showMore, setShowMore] = useState(false);
+  const moreFormulas = [
+    { latex: '\\nthroot{}{}', label: '\u207F\u221A', title: 'n-ildiz' },
+    { latex: '\\sin', label: 'sin', title: 'Sinus' },
+    { latex: '\\cos', label: 'cos', title: 'Kosinus' },
+    { latex: '\\tan', label: 'tan', title: 'Tangens' },
+    { latex: '\\ln', label: 'ln', title: 'Natural log' },
+    { latex: '\\lg', label: 'lg', title: 'Log 10' },
+    { latex: '\\lim', label: 'lim', title: 'Limit' },
+    { latex: '\\to', label: '\u2192', title: "O'tish" },
+    { latex: '\\Rightarrow', label: '\u21D2', title: 'Implikatsiya' },
+    { latex: '\\Leftrightarrow', label: '\u21D4', title: 'Ekvivalentlik' },
+    { latex: '\\approx', label: '\u2248', title: 'Taxminan' },
+    { latex: '\\equiv', label: '\u2261', title: 'Aynan teng' },
+    { latex: '\\angle', label: '\u2220', title: 'Burchak' },
+    { latex: '\\perp', label: '\u22A5', title: 'Perpendikulyar' },
+    { latex: '\\parallel', label: '\u2225', title: 'Parallel' },
+    { latex: '\\triangle', label: '\u25B3', title: 'Uchburchak' },
+    { latex: '\\in', label: '\u2208', title: "To'plamga tegishli" },
+    { latex: '\\subset', label: '\u2282', title: "Qism to'plam" },
+    { latex: '\\cup', label: '\u222A', title: 'Birlashma' },
+    { latex: '\\cap', label: '\u2229', title: 'Kesishma' },
+    { latex: '\\emptyset', label: '\u2205', title: "Bo'sh to'plam" },
+    { latex: '\\forall', label: '\u2200', title: 'Barcha uchun' },
+    { latex: '\\exists', label: '\u2203', title: 'Mavjud' },
+    { latex: '\\partial', label: '\u2202', title: 'Qisman hosila' },
+    { latex: '\\gamma', label: '\u03B3', title: 'Gamma' },
+    { latex: '\\delta', label: '\u03B4', title: 'Delta' },
+    { latex: '\\theta', label: '\u03B8', title: 'Teta' },
+    { latex: '\\lambda', label: '\u03BB', title: 'Lambda' },
+    { latex: '\\sigma', label: '\u03C3', title: 'Sigma' },
+    { latex: '\\omega', label: '\u03C9', title: 'Omega' },
+    { latex: '\\phi', label: '\u03C6', title: 'Fi' },
+    { latex: '\\Delta', label: '\u0394', title: 'Katta Delta' },
+    { latex: '\\vec{}', label: 'v\u20D7', title: 'Vektor' },
+    { latex: '\\overline{}', label: 'x\u0304', title: 'Ustidan chiziq' },
+    { latex: '^{\\circ}', label: '\u00B0', title: 'Daraja belgisi' },
+    { latex: '\\div', label: '\u00F7', title: "Bo'lish" },
+  ];
 
   if (!editor) {
     return null;
@@ -349,17 +333,54 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
 
   return (
     <div className={`relative ${className}`}>
-      {/* Toolbar */}
-      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 border-b bg-gray-50/50 rounded-t-lg flex-wrap">
-        <div className="flex-1 min-w-0"></div>
-
-        <div className="text-xs text-gray-400 hidden md:block">
-          Tahrirlash: Enter yoki 2x bosish
-        </div>
+      {/* Formula Quick Toolbar */}
+      <div className="flex items-center gap-0.5 px-1.5 py-1 border-b bg-gray-50/80 rounded-t-lg flex-wrap">
+        {quickFormulas.map((f, i) => (
+          <button
+            key={i}
+            type="button"
+            title={f.title}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              insertSymbol(f.latex);
+            }}
+            className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-sm sm:text-base rounded hover:bg-blue-100 hover:text-blue-700 active:bg-blue-200 transition-colors text-gray-600 font-medium"
+          >
+            {f.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          title="Ko'proq formulalar"
+          onClick={() => setShowMore(!showMore)}
+          className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs rounded transition-colors font-bold ${showMore ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200 text-gray-500'}`}
+        >
+          {showMore ? '\u2715' : '\u00B7\u00B7\u00B7'}
+        </button>
       </div>
 
+      {/* Extended formulas panel */}
+      {showMore && (
+        <div className="flex items-center gap-0.5 px-1.5 py-1 border-b bg-blue-50/50 flex-wrap">
+          {moreFormulas.map((f, i) => (
+            <button
+              key={i}
+              type="button"
+              title={f.title}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                insertSymbol(f.latex);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-sm sm:text-base rounded hover:bg-blue-100 hover:text-blue-700 active:bg-blue-200 transition-colors text-gray-600"
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Editor */}
-      <div className="border border-t-0 rounded-b-lg bg-white">
+      <div className={`border ${showMore ? '' : 'border-t-0'} rounded-b-lg bg-white`}>
         <EditorContent editor={editor} />
       </div>
     </div>

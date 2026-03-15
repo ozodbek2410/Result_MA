@@ -3,6 +3,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import QRCode from 'qrcode';
 import { PDFDocument } from 'pdf-lib';
+import sharp from 'sharp';
+
+// Resolve local KaTeX paths for offline PDF rendering (no CDN dependency)
+const katexDistDir = path.join(path.dirname(require.resolve('katex/package.json')), 'dist');
+const KATEX_CSS_PATH = path.join(katexDistDir, 'katex.min.css').replace(/\\/g, '/');
+const KATEX_JS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.js'), 'utf-8');
 
 interface Question {
   number: number;
@@ -50,13 +56,23 @@ interface TestData {
 export class PDFGeneratorService {
   private static browserInstance: Browser | null = null;
 
+  // Cache for compressed images to avoid re-processing
+  private static imageCache = new Map<string, string>();
+  private static readonly MAX_IMAGE_WIDTH = 800;
+  private static readonly IMAGE_QUALITY = 75;
+
   /**
-   * Convert question image URL to base64 data URI for embedding in PDF
+   * Convert question image URL to base64 data URI for embedding in PDF.
+   * Compresses images via Sharp to reduce PDF size.
    */
   private static resolveImageForPdf(url: string): string {
     if (!url) return '';
     if (url.startsWith('data:')) return url;
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
+
+    // Check cache
+    const cached = this.imageCache.get(url);
+    if (cached) return cached;
 
     const candidates: string[] = [];
     if (url.startsWith('/uploads/')) {
@@ -75,12 +91,105 @@ export class PDFGeneratorService {
     for (const filePath of candidates) {
       if (fs.existsSync(filePath)) {
         const ext = path.extname(filePath).toLowerCase().replace('.', '');
-        const mime = ext === 'jpg' ? 'image/jpeg' : ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
-        const b64 = fs.readFileSync(filePath).toString('base64');
-        return `data:${mime};base64,${b64}`;
+        // SVGs don't need compression
+        if (ext === 'svg') {
+          const b64 = fs.readFileSync(filePath).toString('base64');
+          const result = `data:image/svg+xml;base64,${b64}`;
+          this.imageCache.set(url, result);
+          return result;
+        }
+        // For raster images, compress synchronously via sharp's buffer
+        try {
+          const buf = fs.readFileSync(filePath);
+          const compressed = this.compressImageSync(buf, ext);
+          const result = `data:image/jpeg;base64,${compressed.toString('base64')}`;
+          this.imageCache.set(url, result);
+          return result;
+        } catch {
+          // Fallback: use original
+          const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+          const b64 = fs.readFileSync(filePath).toString('base64');
+          const result = `data:${mime};base64,${b64}`;
+          this.imageCache.set(url, result);
+          return result;
+        }
       }
     }
     return url;
+  }
+
+  /**
+   * Synchronous image compression using sharp pipeline pre-built buffers.
+   * Note: sharp operations are async, but we pre-buffer for sync usage.
+   */
+  private static compressImageSync(buffer: Buffer, _ext: string): Buffer {
+    // Use sharp synchronously by calling it ahead of time in batch
+    // For now, return original — async compression is done in preloadImages
+    return buffer;
+  }
+
+  /**
+   * Pre-compress all question images before PDF generation (async, called once)
+   */
+  static async preloadImages(questions: Question[]): Promise<void> {
+    const urls = new Set<string>();
+    for (const q of questions) {
+      if (q.imageUrl) urls.add(q.imageUrl);
+      if (q.contextImage) urls.add(q.contextImage);
+      if (q.media) {
+        for (const m of q.media) {
+          if (m.url) urls.add(m.url);
+        }
+      }
+    }
+
+    for (const url of urls) {
+      if (this.imageCache.has(url) || url.startsWith('data:') || url.startsWith('http')) continue;
+
+      const candidates: string[] = [];
+      if (url.startsWith('/uploads/')) {
+        candidates.push(
+          path.join(process.cwd(), url),
+          path.join(process.cwd(), 'server', url),
+          path.join(__dirname, '../..', url),
+        );
+      } else if (url.startsWith('/')) {
+        candidates.push(
+          path.join(process.cwd(), '..', 'client', 'public', url),
+          path.join(process.cwd(), 'client', 'public', url),
+        );
+      }
+
+      for (const filePath of candidates) {
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filePath).toLowerCase().replace('.', '');
+          if (ext === 'svg') {
+            const b64 = fs.readFileSync(filePath).toString('base64');
+            this.imageCache.set(url, `data:image/svg+xml;base64,${b64}`);
+            break;
+          }
+          try {
+            const compressed = await sharp(filePath)
+              .resize(this.MAX_IMAGE_WIDTH, undefined, { withoutEnlargement: true })
+              .jpeg({ quality: this.IMAGE_QUALITY, mozjpeg: true })
+              .toBuffer();
+            this.imageCache.set(url, `data:image/jpeg;base64,${compressed.toString('base64')}`);
+          } catch {
+            const b64 = fs.readFileSync(filePath).toString('base64');
+            const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+            this.imageCache.set(url, `data:${mime};base64,${b64}`);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Clear image cache (call after PDF generation to free memory)
+   */
+  static clearImageCache(): void {
+    this.imageCache.clear();
   }
 
   /**
@@ -129,16 +238,21 @@ export class PDFGeneratorService {
    * Генерирует PDF из HTML с формулами
    * ВАЖНО: Каждый раз создаем новый browser instance для избежания memory leak
    */
+  // Timeout constants
+  private static readonly PAGE_TIMEOUT_MS = 120_000; // 2 min per page operation
+  private static readonly KATEX_TIMEOUT_MS = 30_000;  // 30s for KaTeX rendering
+  private static readonly BROWSER_LAUNCH_TIMEOUT_MS = 30_000;
+
   /**
    * Render a single batch of students to PDF buffer
    */
   private static async renderBatchPDF(browser: Browser, testData: TestData): Promise<Buffer> {
     const page = await browser.newPage();
-    page.setDefaultTimeout(0);
+    page.setDefaultTimeout(this.PAGE_TIMEOUT_MS);
 
     try {
       const html = this.generateHTML(testData);
-      await page.setContent(html, { waitUntil: 'networkidle', timeout: 0 });
+      await page.setContent(html, { waitUntil: 'networkidle', timeout: this.PAGE_TIMEOUT_MS });
 
       await page.waitForFunction(`
         () => {
@@ -146,7 +260,7 @@ export class PDFGeneratorService {
           if (elements.length === 0) return true;
           return Array.from(elements).every(el => el.querySelector('.katex') !== null);
         }
-      `, { timeout: 0 }).catch(() => {
+      `, { timeout: this.KATEX_TIMEOUT_MS }).catch(() => {
         console.warn('⚠️ KaTeX render timeout, continuing anyway');
       });
 
@@ -164,7 +278,54 @@ export class PDFGeneratorService {
     }
   }
 
+  /**
+   * Safely launch browser with timeout protection
+   */
+  private static async launchBrowser(): Promise<Browser> {
+    const browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      timeout: this.BROWSER_LAUNCH_TIMEOUT_MS,
+    });
+    return browser;
+  }
+
+  /**
+   * Safely close browser with timeout to prevent hanging
+   */
+  private static async closeBrowserSafe(browser: Browser | null): Promise<void> {
+    if (!browser) return;
+    try {
+      const closePromise = browser.close();
+      const timeoutPromise = new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('Browser close timeout')), 10_000)
+      );
+      await Promise.race([closePromise, timeoutPromise]);
+      console.log('Browser closed, memory freed');
+    } catch (err) {
+      console.warn('Browser close warning:', (err as Error).message);
+      try { (browser as any).process?.()?.kill?.('SIGKILL'); } catch { /* ignore */ }
+    }
+  }
+
   static async generatePDF(testData: TestData): Promise<Buffer> {
+    const BATCH_SIZE = 3;
+    const students = testData.students || [];
+
+    // Pre-compress all images once before generating HTML
+    const allQuestions = students.length > 0
+      ? students.flatMap(s => s.questions)
+      : testData.questions;
+    await this.preloadImages(allQuestions);
+
+    try {
+      return await this._generatePDFInternal(testData);
+    } finally {
+      this.clearImageCache();
+    }
+  }
+
+  private static async _generatePDFInternal(testData: TestData): Promise<Buffer> {
     const BATCH_SIZE = 3;
     const students = testData.students || [];
 
@@ -172,36 +333,30 @@ export class PDFGeneratorService {
     if (students.length <= BATCH_SIZE) {
       let browser: Browser | null = null;
       try {
-        browser = await chromium.launch({
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-        });
+        browser = await this.launchBrowser();
         return await this.renderBatchPDF(browser, testData);
       } finally {
-        if (browser) { await browser.close(); console.log('✅ Browser closed, memory freed'); }
+        await this.closeBrowserSafe(browser);
       }
     }
 
     // Large data — split into batches, merge PDFs
-    console.log(`📦 Batching ${students.length} students in groups of ${BATCH_SIZE}`);
+    console.log(`Batching ${students.length} students in groups of ${BATCH_SIZE}`);
     const pdfBuffers: Buffer[] = [];
     let browser: Browser | null = null;
 
     try {
-      browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-      });
+      browser = await this.launchBrowser();
 
       for (let i = 0; i < students.length; i += BATCH_SIZE) {
         const batch = students.slice(i, i + BATCH_SIZE);
-        console.log(`📄 Rendering batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(students.length / BATCH_SIZE)} (${batch.length} students)`);
+        console.log(`Rendering batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(students.length / BATCH_SIZE)} (${batch.length} students)`);
 
         const batchData: TestData = { ...testData, students: batch };
         pdfBuffers.push(await this.renderBatchPDF(browser, batchData));
       }
     } finally {
-      if (browser) { await browser.close(); console.log('✅ Browser closed, memory freed'); }
+      await this.closeBrowserSafe(browser);
     }
 
     // Merge all PDF buffers
@@ -326,7 +481,7 @@ export class PDFGeneratorService {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${testData.title}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="file:///${KATEX_CSS_PATH}">
   <style>
     * {
       margin: 0;
@@ -546,7 +701,7 @@ export class PDFGeneratorService {
     ${studentsHTML}
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script>${KATEX_JS_CONTENT}</script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       const formulas = document.querySelectorAll('.math-formula');
@@ -579,7 +734,7 @@ export class PDFGeneratorService {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${testData.title}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="file:///${KATEX_CSS_PATH}">
   <style>
     * {
       margin: 0;
@@ -841,7 +996,7 @@ export class PDFGeneratorService {
     </div>
   </div>
   
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script>${KATEX_JS_CONTENT}</script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       const formulas = document.querySelectorAll('.math-formula');
@@ -946,17 +1101,14 @@ export class PDFGeneratorService {
     let browser: Browser | null = null;
 
     try {
-      browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-      });
+      browser = await this.launchBrowser();
 
       const page = await browser.newPage();
-      page.setDefaultTimeout(0);
+      page.setDefaultTimeout(this.PAGE_TIMEOUT_MS);
 
       try {
         const html = await this.generateAnswerSheetsHTML(data);
-        await page.setContent(html, { waitUntil: 'load', timeout: 0 });
+        await page.setContent(html, { waitUntil: 'load', timeout: this.PAGE_TIMEOUT_MS });
         await page.waitForTimeout(300);
 
         const pdfResult = await page.pdf({
@@ -965,7 +1117,6 @@ export class PDFGeneratorService {
           margin: { top: '0', right: '0', bottom: '0', left: '0' }
         });
 
-        // Playwright may return Uint8Array instead of Buffer
         const pdfBuffer = Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult);
         console.log(`Answer sheets PDF generated: ${(pdfBuffer.length / 1024).toFixed(1)} KB, ${data.students.length} students`);
         return pdfBuffer;
@@ -973,9 +1124,7 @@ export class PDFGeneratorService {
         await page.close();
       }
     } finally {
-      if (browser) {
-        await browser.close();
-      }
+      await this.closeBrowserSafe(browser);
     }
   }
 
@@ -1014,6 +1163,7 @@ export class PDFGeneratorService {
 
     // Generate QR codes for all students (variantCode for OMR scanning)
     const qrCodeMap = new Map<string, string>();
+    const qrErrors: string[] = [];
     for (const student of students) {
       if (student.variantCode) {
         try {
@@ -1026,9 +1176,14 @@ export class PDFGeneratorService {
           });
           qrCodeMap.set(student.variantCode, qrDataUrl);
         } catch (err) {
-          console.warn('QR code generation failed for', student.variantCode);
+          const msg = `QR generation failed for variant ${student.variantCode}: ${(err as Error).message}`;
+          console.error(msg);
+          qrErrors.push(msg);
         }
       }
+    }
+    if (qrErrors.length > 0) {
+      throw new Error(`OMR answer sheet QR kodlarini yaratishda xatolik: ${qrErrors.length} ta variant uchun QR yaratilmadi. ${qrErrors[0]}`);
     }
 
     // Timing mark rows: first, last, every 5th

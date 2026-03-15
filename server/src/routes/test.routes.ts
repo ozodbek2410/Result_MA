@@ -21,6 +21,18 @@ import { S3Service } from '../services/s3Service';
 
 const router = express.Router();
 
+/**
+ * Safely remove a temp uploaded file (non-blocking, fire-and-forget)
+ */
+function cleanupTempFile(filePath: string): void {
+  if (!filePath) return;
+  fs.unlink(filePath, (err) => {
+    if (err && err.code !== 'ENOENT') {
+      console.warn(`[CLEANUP] Failed to remove temp file ${filePath}:`, err.message);
+    }
+  });
+}
+
 // Определяем базовую директорию сервера
 // __dirname в скомпилированном коде: /var/www/resultMA/server/dist/routes
 // Поднимаемся на 2 уровня вверх: /var/www/resultMA/server
@@ -497,6 +509,7 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     } catch (parseError: any) {
       console.error('Parse error:', parseError);
       logs = TestImportService.getParsingLogs();
+      cleanupTempFile(absolutePath);
       return res.status(400).json({
         message: parseError.message || 'Faylni tahlil qilishda xatolik',
         details: parseError.toString(),
@@ -505,6 +518,7 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     }
 
     if (!questions || questions.length === 0) {
+      cleanupTempFile(absolutePath);
       return res.status(400).json({
         message: 'Faylda savollar topilmadi. Iltimos, fayl formatini tekshiring.',
         hint: 'Savollar 1., 2., 3. formatida raqamlanishi va A), B), C), D) variantlari bo\'lishi kerak.',
@@ -513,6 +527,10 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     }
 
     console.log(`Successfully parsed ${questions.length} questions (type: ${detectedType})${groups ? `, ${groups.length} groups` : ''}`);
+
+    // Cleanup: remove temp uploaded file after successful parse
+    cleanupTempFile(absolutePath);
+
     res.json({
       message: 'Fayl muvaffaqiyatli tahlil qilindi',
       questions,
@@ -524,7 +542,12 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
   } catch (error: any) {
     console.error('Error importing test:', error);
     const logs = TestImportService.getParsingLogs();
-    res.status(500).json({ 
+    // Cleanup temp file even on error
+    if (req.file) {
+      const filePath = path.isAbsolute(req.file.path) ? req.file.path : path.join(SERVER_ROOT, req.file.path);
+      cleanupTempFile(filePath);
+    }
+    res.status(500).json({
       message: error.message || 'Import xatosi',
       details: error.toString(),
       logs

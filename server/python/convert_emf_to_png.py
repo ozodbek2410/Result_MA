@@ -28,17 +28,21 @@ def convert_emf_to_png(input_path, output_path, target_width=None, target_height
     try:
         img = Image.open(input_path)
 
-        # 150 DPI da render qilish - yaxshi sifat, lekin haddan tashqari katta emas
+        # 300 DPI da render qilish — yaxshi sifat formula rasmlar uchun
         try:
-            img.load(dpi=150)
+            img.load(dpi=300)
         except TypeError:
             pass
 
         # Agar Word dan o'lcham berilgan bo'lsa, aynan shu o'lchamga resize qilish
         if target_width and target_height and target_width > 0 and target_height > 0:
             img = img.resize((target_width, target_height), Image.LANCZOS)
-        # Agar o'lcham berilmagan bo'lsa, native o'lchamda qoldirish
-        # Hech qanday sun'iy kattalashtirish yo'q
+        else:
+            # Minimum o'lcham: formula rasmlar juda kichik bo'lmasligi uchun
+            MIN_WIDTH = 200
+            if img.width < MIN_WIDTH and img.width > 0:
+                scale = MIN_WIDTH / img.width
+                img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
 
         # RGBA bo'lsa, oq fon qo'shish
         if img.mode == 'RGBA':
@@ -49,7 +53,7 @@ def convert_emf_to_png(input_path, output_path, target_width=None, target_height
             img = img.convert('RGB')
 
         # PNG sifat parametrlari
-        img.save(output_path, 'PNG', optimize=True, dpi=(150, 150))
+        img.save(output_path, 'PNG', optimize=True, dpi=(300, 300))
 
         print(f"Converted: {input_path} -> {output_path} ({img.width}x{img.height}px)")
         return True

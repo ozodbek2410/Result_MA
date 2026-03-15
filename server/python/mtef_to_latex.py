@@ -124,7 +124,7 @@ class MTEFParser:
         prod_ver = self.read_byte()
         prod_sub = self.read_byte()
 
-        if version != 3:
+        if version not in (3,):
             return f'[MTEF v{version} not supported]'
 
         # Parse records — equation may have multiple top-level sections
@@ -142,6 +142,261 @@ class MTEFParser:
                 break
         raw = ''.join(parts).strip()
         return self._postprocess(raw)
+
+    def _parse_v5_placeholder(self) -> str:
+        """Parse MTEF v5 (MathType/DSMT6) binary and return LaTeX.
+        Format: DSMT6\\0, \\0, null-term encoding name, 0x11-prefixed font entries, then records."""
+        # Skip DSMT identifier (null-terminated: 'DSMT6\0' or 'DSMT5\0')
+        while self.pos < len(self.data) and self.data[self.pos] != 0:
+            self.pos += 1
+        self.pos += 1  # skip null
+
+        # Skip separator null byte
+        if self.pos < len(self.data) and self.data[self.pos] == 0:
+            self.pos += 1
+
+        # Read encoding name (null-terminated): "WinAllBasicCodePages"
+        while self.pos < len(self.data) and self.data[self.pos] != 0:
+            self.pos += 1
+        self.pos += 1  # skip null
+
+        # Read font style definitions: each starts with 0x11, then typeface_idx, then null-terminated name
+        self.v5_fonts = {}  # typeface_idx -> font_name
+        while self.pos < len(self.data) and self.data[self.pos] == 0x11:
+            self.pos += 1  # skip 0x11 tag
+            tf_idx = self.read_byte()
+            name_start = self.pos
+            while self.pos < len(self.data) and self.data[self.pos] != 0:
+                self.pos += 1
+            font_name = self.data[name_start:self.pos].decode('ascii', errors='replace')
+            self.pos += 1  # skip null
+            self.v5_fonts[tf_idx] = font_name
+
+        # Now parse MTEF records (same tag structure as v3)
+        parts = []
+        while self.pos < len(self.data):
+            result = self.parse_records_v5()
+            if result:
+                parts.append(result)
+            if self.pos >= len(self.data):
+                break
+            remaining = self.data[self.pos:]
+            if all(b == 0 for b in remaining):
+                break
+        raw = ''.join(parts).strip()
+        return self._postprocess(raw)
+
+    def parse_records_v5(self) -> str:
+        """Parse MTEF v5 records — same tags as v3 but CHAR encoding differs."""
+        parts = []
+        while self.pos < len(self.data):
+            tag_byte = self.read_byte()
+            if tag_byte == -1:
+                break
+            tag_type = tag_byte & 0x0F
+            tag_flags = (tag_byte >> 4) & 0x0F
+
+            if tag_type == 0:  # END
+                break
+            elif tag_type == 1:  # LINE
+                if tag_flags & 0x01:  # null line
+                    if tag_flags & 0x04:
+                        self.read_word()
+                    continue
+                if tag_flags & 0x08:
+                    self.skip_nudge()
+                if tag_flags & 0x04:
+                    self.read_word()
+                if tag_flags & 0x02:
+                    self.skip_ruler()
+                content = self.parse_records_v5()
+                parts.append(content)
+            elif tag_type == 2:  # CHAR
+                parts.append(self.parse_char_v5(tag_flags))
+            elif tag_type == 3:  # TMPL
+                parts.append(self.parse_tmpl_v5(tag_flags))
+            elif tag_type == 4:  # PILE
+                parts.append(self.parse_pile_v5(tag_flags))
+            elif tag_type == 5:  # MATRIX
+                self.skip_until_end()
+            elif tag_type == 6:  # EMBELL
+                parts.append(self.parse_embell(tag_flags))
+            elif tag_type == 9:  # SIZE
+                self.parse_size(tag_flags)
+            elif 10 <= tag_type <= 14:
+                pass
+            elif tag_type == 8:  # FONT
+                self.parse_font_def(tag_flags)
+            else:
+                pass
+        return ''.join(parts)
+
+    def parse_char_v5(self, flags: int) -> str:
+        """Parse CHAR in MTEF v5 format.
+        v5 CHAR: [nudge] [typeface] [mtcode(16)] [font_position(8)] [embells]
+        Options bits: 0x01=nudge, 0x02=has_embell, 0x04=has_font_position, 0x08=has_mtcode"""
+        if flags & 0x01:  # nudge
+            self.skip_nudge()
+
+        typeface_raw = self.read_byte()
+        typeface = typeface_raw - 128 if typeface_raw >= 128 else typeface_raw
+
+        # v5: mtcode is always present (16-bit), then optional 8-bit font position
+        mtcode = self.read_word()
+        font_pos = 0
+        if flags & 0x04:  # has font position
+            font_pos = self.read_byte()
+
+        # Handle embellishments
+        if flags & 0x02:
+            embell = self.parse_embellishment_list()
+            return embell + self.char_to_latex(typeface, mtcode)
+
+        return self.char_to_latex(typeface, mtcode)
+
+    def parse_tmpl_v5(self, flags: int) -> str:
+        """Parse TMPL in MTEF v5 — same structure as v3 but uses parse_records_v5."""
+        if flags & 0x08:
+            self.skip_nudge()
+
+        selector = self.read_byte()
+        variation = self.read_byte()
+        if variation & 0x80:
+            self.read_byte()  # tmpl_opts
+            variation &= 0x7F
+
+        # v5 uses same selectors as v3 for common templates
+        if selector == 0x0d:  # ROOT
+            index_slot = self.parse_records_v5()
+            radicand = self.parse_records_v5()
+            if variation == 0:
+                return f'\\sqrt{{{radicand}}}'
+            if index_slot:
+                return f'\\sqrt[{index_slot}]{{{radicand}}}'
+            return f'\\sqrt{{{radicand}}}'
+
+        elif selector == 0x0e:  # FRACT
+            self.parse_records_v5()  # bar slot
+            lines = self._collect_lines_v5()
+            num = lines[0] if lines else ''
+            den = lines[1] if len(lines) > 1 else ''
+            return f'\\frac{{{num}}}{{{den}}}'
+
+        elif selector == 0x0f:  # SCRIPT (sub/super)
+            if variation == 0:
+                base = self.parse_records_v5()
+                sup = self.parse_records_v5()
+                return f'{base}^{{{sup}}}'
+            elif variation == 1:
+                base = self.parse_records_v5()
+                sub = self.parse_records_v5()
+                return f'{base}_{{{sub}}}'
+            else:
+                base = self.parse_records_v5()
+                sub = self.parse_records_v5()
+                sup = self.parse_records_v5()
+                return f'{base}_{{{sub}}}^{{{sup}}}'
+
+        elif selector in (0x00, 0x01, 0x02, 0x03, 0x04, 0x05):
+            fence_map = {0: ('\\langle ', '\\rangle'), 1: ('(', ')'), 2: ('\\{', '\\}'),
+                        3: ('[', ']'), 4: ('|', '|'), 5: ('\\|', '\\|')}
+            left, right = fence_map.get(selector, ('(', ')'))
+            self.parse_records_v5()
+            content = self.parse_records_v5()
+            if variation == 0:
+                return f'{left}{content}{right}'
+            elif variation == 1:
+                return f'{left}{content}'
+            return f'{content}{right}'
+
+        elif selector in (0x10, 0x11, 0x12):
+            op_map = {0x10: '\\int', 0x11: '\\sum', 0x12: '\\prod'}
+            op = op_map.get(selector, '\\int')
+            main = self.parse_records_v5()
+            lower = self.parse_records_v5()
+            upper = self.parse_records_v5()
+            result = op
+            if lower:
+                result += f'_{{{lower}}}'
+            if upper:
+                result += f'^{{{upper}}}'
+            if main:
+                result += f' {main}'
+            return result
+
+        else:
+            content = self.parse_records_v5()
+            return content
+
+    def parse_pile_v5(self, flags: int) -> str:
+        """Parse PILE in v5"""
+        if flags & 0x08:
+            self.skip_nudge()
+        self.read_byte()  # halign
+        if flags & 0x02:
+            self.skip_ruler()
+        lines = self._collect_lines_v5()
+        if len(lines) > 1:
+            return '\\begin{array}{c}' + ' \\\\ '.join(lines) + '\\end{array}'
+        return lines[0] if lines else ''
+
+    def _collect_lines_v5(self) -> list:
+        """Collect LINE records for v5"""
+        lines = []
+        while self.pos < len(self.data):
+            tag_byte = self.read_byte()
+            if tag_byte == -1:
+                break
+            tag_type = tag_byte & 0x0F
+            tag_flags = (tag_byte >> 4) & 0x0F
+            if tag_type == 0:
+                break
+            elif tag_type == 1:
+                if tag_flags & 0x01:
+                    if tag_flags & 0x04:
+                        self.read_word()
+                    continue
+                if tag_flags & 0x08:
+                    self.skip_nudge()
+                if tag_flags & 0x04:
+                    self.read_word()
+                if tag_flags & 0x02:
+                    self.skip_ruler()
+                sub = self._collect_lines_v5()
+                lines.extend(sub)
+            elif tag_type == 2:
+                s = self.parse_char_v5(tag_flags)
+                if lines:
+                    lines[-1] += s
+                else:
+                    lines.append(s)
+            elif tag_type == 3:
+                s = self.parse_tmpl_v5(tag_flags)
+                if lines:
+                    lines[-1] += s
+                else:
+                    lines.append(s)
+            elif tag_type == 4:
+                s = self.parse_pile_v5(tag_flags)
+                if lines:
+                    lines[-1] += s
+                else:
+                    lines.append(s)
+            elif tag_type == 5:
+                self.skip_until_end()
+            elif tag_type == 6:
+                s = self.parse_embell(tag_flags)
+                if lines:
+                    lines[-1] += s
+                else:
+                    lines.append(s)
+            elif tag_type == 9:
+                self.parse_size(tag_flags)
+            elif 10 <= tag_type <= 14:
+                pass
+            elif tag_type == 8:
+                self.parse_font_def(tag_flags)
+        return lines
 
     @staticmethod
     def _postprocess(latex: str) -> str:

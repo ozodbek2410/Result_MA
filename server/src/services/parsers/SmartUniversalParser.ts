@@ -1,5 +1,11 @@
 import { BaseParser, ParsedQuestion } from './BaseParser';
 import { GroqService } from '../groqService';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+import fs from 'fs';
+
+const execFileAsync = promisify(execFile);
 
 type DetectedContentType = 'math' | 'physics' | 'chemistry' | 'biology' | 'literature' | 'history' | 'english' | 'generic';
 
@@ -57,7 +63,10 @@ export class SmartUniversalParser extends BaseParser {
         }
       }
 
-      console.log(`✅ [SMART] Parsed ${questions.length} questions (type: ${this.detectedType})`);
+      // 9.5. OCR formula images — convert [rasm] variants to LaTeX text
+      await this.ocrFormulaImages(questions);
+
+      console.log(`[SMART] Parsed ${questions.length} questions (type: ${this.detectedType})`);
 
       // 10. Validate and report
       this.validateAndReportIssues(questions);
@@ -149,30 +158,38 @@ export class SmartUniversalParser extends BaseParser {
   }
 
   /**
-   * Handle multiple variants in one file (from MathParser)
-   * Converts "1-Variant: 1-30" + "2-Variant: 1-30" → "1-60"
+   * Handle multiple variants in one file.
+   * Auto-detects question count in first variant, renumbers second variant accordingly.
+   * Only renumbers question markers at line start (not numbers inside question text).
    */
   private handleMultipleVariants(markdown: string): string {
-    const variantPattern = /(\d+)-Variant/gi;
+    const variantPattern = /(\d+)\s*-\s*[Vv]ariant/gi;
     const variantMatches = Array.from(markdown.matchAll(variantPattern));
 
-    if (variantMatches.length === 2) {
-      console.log('📋 [SMART] Found 2 variants, merging...');
-      const variant1Start = variantMatches[0].index!;
-      const variant2Start = variantMatches[1].index!;
-      const variant1Text = markdown.substring(variant1Start, variant2Start);
-      let variant2Text = markdown.substring(variant2Start);
+    if (variantMatches.length !== 2) return markdown;
 
-      for (let i = 30; i >= 1; i--) {
-        const oldPattern = new RegExp(`(^|\\n|\\s)${i}([.)])`, 'g');
-        variant2Text = variant2Text.replace(oldPattern, `$1${i + 30}$2`);
-      }
+    console.log('[SMART] Found 2 variants, merging...');
+    const variant1Start = variantMatches[0].index!;
+    const variant2Start = variantMatches[1].index!;
+    const variant1Text = markdown.substring(variant1Start, variant2Start);
+    let variant2Text = markdown.substring(variant2Start);
 
-      console.log('✅ [SMART] Variants merged: 1-30 + 31-60');
-      return variant1Text + '\n\n' + variant2Text;
+    // Auto-detect question count in first variant by finding highest question number
+    const questionNumbers = Array.from(variant1Text.matchAll(/(?:^|\n)\s*(\d+)\s*[.)]/g))
+      .map(m => parseInt(m[1]))
+      .filter(n => n >= 1 && n <= 100);
+    const variant1Count = questionNumbers.length > 0 ? Math.max(...questionNumbers) : 30;
+
+    // Renumber variant2: only match question markers at LINE START
+    // This prevents renumbering numbers inside question text like "30 ta o'quvchi"
+    for (let i = variant1Count; i >= 1; i--) {
+      // (?:^|\n) ensures we only match line-start question markers
+      const pattern = new RegExp(`(^|\\n)(\\s*)${i}(\\s*[.)])`, 'g');
+      variant2Text = variant2Text.replace(pattern, `$1$2${i + variant1Count}$3`);
     }
 
-    return markdown;
+    console.log(`[SMART] Variants merged: 1-${variant1Count} + ${variant1Count + 1}-${variant1Count * 2}`);
+    return variant1Text + '\n\n' + variant2Text;
   }
 
   /**
@@ -472,6 +489,78 @@ export class SmartUniversalParser extends BaseParser {
   /**
    * Validate and report parsing issues
    */
+  /**
+   * OCR formula images in variants — convert [rasm] placeholders to LaTeX.
+   * Uses pix2tex Python package for math formula recognition.
+   */
+  private async ocrFormulaImages(questions: ParsedQuestion[]): Promise<void> {
+    // Collect all variant images that need OCR
+    const ocrTargets: Array<{ question: ParsedQuestion; variant: ParsedQuestion['variants'][0]; filePath: string }> = [];
+
+    for (const q of questions) {
+      for (const v of q.variants) {
+        if ((!v.text || v.text === '[rasm]') && v.imageUrl) {
+          // Resolve image file path from URL
+          const urlPath = v.imageUrl;
+          const candidates = [
+            path.join(process.cwd(), urlPath),
+            path.join(process.cwd(), 'server', urlPath),
+            path.join(__dirname, '../../..', urlPath),
+          ];
+          for (const fp of candidates) {
+            if (fs.existsSync(fp)) {
+              ocrTargets.push({ question: q, variant: v, filePath: fp });
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (ocrTargets.length === 0) return;
+
+    console.log(`[OCR] ${ocrTargets.length} formula images to OCR...`);
+
+    // Call Python formula_ocr.py in batch mode
+    const scriptPath = path.join(__dirname, '..', '..', '..', 'python', 'formula_ocr.py');
+    const pythonPaths = ['python', 'py', 'python3'];
+    const imagePaths = ocrTargets.map(t => t.filePath);
+
+    for (const pyPath of pythonPaths) {
+      try {
+        const { stdout } = await execFileAsync(
+          pyPath,
+          [scriptPath, '--json', ...imagePaths],
+          { timeout: 120000, maxBuffer: 10 * 1024 * 1024 }
+        );
+
+        const results: Record<string, string> = JSON.parse(stdout.trim());
+        let ocrCount = 0;
+
+        for (const target of ocrTargets) {
+          const latex = results[target.filePath];
+          if (latex && latex.length > 0) {
+            // Wrap in \(...\) delimiters for rendering
+            target.variant.text = `\\(${latex}\\)`;
+            ocrCount++;
+          }
+        }
+
+        console.log(`[OCR] ${ocrCount}/${ocrTargets.length} formulas recognized`);
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('pix2tex not installed')) {
+          console.warn('[OCR] pix2tex not installed, skipping formula OCR');
+          return;
+        }
+        // Try next python path
+      }
+    }
+
+    console.warn('[OCR] Python not available for formula OCR');
+  }
+
   /**
    * AI validation — fix questions with < 4 variants using Groq AI
    * Only sends the problematic questions' raw text to AI, not the entire document

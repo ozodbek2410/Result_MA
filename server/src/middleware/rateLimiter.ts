@@ -32,92 +32,92 @@ export const apiLimiter = rateLimit({
   }
 });
 
-// Strict limiter for authentication endpoints (DISABLED)
+// Strict limiter for authentication endpoints
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10000, // Практически без ограничений
-  skipSuccessfulRequests: true, // Don't count successful requests
+  max: 20, // 20 failed attempts per 15 min
+  skipSuccessfulRequests: true,
   message: {
     error: 'Too many login attempts, please try again later.',
     retryAfter: '15 minutes'
   },
   handler: (req: Request, res: Response) => {
-    console.warn(`⚠️  Auth rate limit exceeded for IP: ${req.ip}`);
+    console.warn(`Rate limit: auth exceeded for IP: ${req.ip}`);
     res.status(429).json({
       error: 'Too many login attempts',
-      message: 'Your account has been temporarily locked due to too many failed login attempts. Please try again in 15 minutes.',
+      message: 'Juda ko\'p urinish. 15 daqiqadan keyin qayta urinib ko\'ring.',
       retryAfter: '15 minutes'
     });
   }
 });
 
-// Limiter for file uploads (DISABLED)
+// Limiter for file uploads
 export const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10000, // Практически без ограничений
+  max: 100, // 100 uploads per hour
   message: {
     error: 'Too many file uploads, please try again later.',
     retryAfter: '1 hour'
   },
   handler: (req: Request, res: Response) => {
-    console.warn(`⚠️  Upload rate limit exceeded for IP: ${req.ip}`);
+    console.warn(`Rate limit: upload exceeded for IP: ${req.ip}`);
     res.status(429).json({
       error: 'Too many uploads',
-      message: 'You have exceeded the upload limit. Please try again in 1 hour.',
+      message: 'Fayl yuklash limiti oshdi. 1 soatdan keyin qayta urinib ko\'ring.',
       retryAfter: '1 hour'
     });
   }
 });
 
-// Limiter for OMR scanning (DISABLED)
+// Limiter for OMR scanning
 export const omrLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10000, // Практически без ограничений
+  max: 200, // 200 scans per hour
   message: {
     error: 'Too many scan requests, please try again later.',
     retryAfter: '1 hour'
   },
   handler: (req: Request, res: Response) => {
-    console.warn(`⚠️  OMR rate limit exceeded for IP: ${req.ip}`);
+    console.warn(`Rate limit: OMR exceeded for IP: ${req.ip}`);
     res.status(429).json({
       error: 'Too many scan requests',
-      message: 'You have exceeded the scan limit. Please try again in 1 hour.',
+      message: 'Skanerlash limiti oshdi. 1 soatdan keyin qayta urinib ko\'ring.',
       retryAfter: '1 hour'
     });
   }
 });
 
-// Limiter for AI parsing (DISABLED)
+// Limiter for AI parsing
 export const aiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10000, // Практически без ограничений
+  max: 60, // 60 AI requests per hour
   message: {
     error: 'Too many AI parsing requests, please try again later.',
     retryAfter: '1 hour'
   },
   handler: (req: Request, res: Response) => {
-    console.warn(`⚠️  AI parsing rate limit exceeded for IP: ${req.ip}`);
+    console.warn(`Rate limit: AI parsing exceeded for IP: ${req.ip}`);
     res.status(429).json({
       error: 'Too many AI parsing requests',
-      message: 'You have exceeded the AI parsing limit. Please try again in 1 hour.',
+      message: 'AI tahlil limiti oshdi. 1 soatdan keyin qayta urinib ko\'ring.',
       retryAfter: '1 hour'
     });
   }
 });
 
-// Более мягкий лимитер для batch операций (DISABLED)
+// Limiter for batch operations
 export const batchLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10000, // Практически без ограничений
+  max: 50, // 50 batch operations per 15 min
   message: {
     error: 'Too many batch requests, please try again later.',
     retryAfter: '15 minutes'
   },
   handler: (req: Request, res: Response) => {
-    console.warn(`⚠️  Batch rate limit exceeded for IP: ${req.ip}`);
+    console.warn(`Rate limit: batch exceeded for IP: ${req.ip}`);
     res.status(429).json({
       error: 'Too many batch requests',
-      message: 'You have exceeded the batch request limit. Please try again later.',
+      message: 'Ommaviy so\'rovlar limiti oshdi. 15 daqiqadan keyin qayta urinib ko\'ring.',
       retryAfter: '15 minutes'
     });
   }

@@ -10,6 +10,24 @@ import { TableRenderer } from './TableRenderer';
 
 const execFileAsync = promisify(execFile);
 
+// Check Python availability at module load
+let pythonAvailable = false;
+let pythonPath = '';
+(async () => {
+  for (const pyPath of ['python', 'py', 'python3']) {
+    try {
+      await execFileAsync(pyPath, ['--version'], { timeout: 5000 });
+      pythonAvailable = true;
+      pythonPath = pyPath;
+      console.log(`[PARSER] Python found: ${pyPath}`);
+      break;
+    } catch { /* try next */ }
+  }
+  if (!pythonAvailable) {
+    console.warn('[PARSER] Python not found! OLE equation formulas will not be extracted. Install Python 3 to enable formula extraction.');
+  }
+})();
+
 // Pandoc JSON AST types for DOCX parsing
 type PandocAttr = [string, string[], [string, string][]];
 
@@ -28,6 +46,12 @@ type PandocInline =
   | { t: 'Image'; c: [PandocAttr, PandocInline[], [string, string]] }
   | { t: 'Span'; c: [PandocAttr, PandocInline[]] }
   | { t: 'Quoted'; c: [{ t: string }, PandocInline[]] }
+  | { t: 'Cite'; c: [unknown[], PandocInline[]] }
+  | { t: 'SmallCaps'; c: PandocInline[] }
+  | { t: 'RawInline'; c: [string, string] }
+  | { t: 'Note'; c: PandocBlock[] }
+  | { t: 'Link'; c: [PandocAttr, PandocInline[], [string, string]] }
+  | { t: 'Code'; c: [PandocAttr, string] }
   | { t: 'Link'; c: [PandocAttr, PandocInline[], [string, string]] }
   | { t: 'Code'; c: [PandocAttr, string] }
   | { t: 'RawInline'; c: [string, string] }
@@ -70,6 +94,7 @@ export interface ParsedQuestion {
   correctAnswer: string;
   points: number;
   originalNumber?: number; // Fayldagi asl savol raqami (gap detection uchun)
+  needsReview?: boolean; // Parse qilinmagan yoki to'liq bo'lmagan savollar uchun
   imageUrl?: string; // Legacy support
   imageWidth?: number; // Word dagi original kenglik (px)
   imageHeight?: number; // Word dagi original balandlik (px)
@@ -124,8 +149,11 @@ export abstract class BaseParser {
         // If table contains question numbering — extract as plain text (not image)
         try {
           const tableText = this.extractTextFromTableAst(block.c);
-          if (/(?:^|\n)?\*?\*?\d+\s*\*?\*?[.)\u2026]/m.test(tableText)) {
-            console.log(`📋 [TABLE] Table ${tableIdx} contains question — extracting as text`);
+          // Only treat as question-table if MULTIPLE question markers found
+          // (prevents single "1." in a data table from triggering text extraction)
+          const questionMarkers = tableText.match(/(?:^|\n)\s*\*?\*?\d+\s*\*?\*?[.)\u2026]/gm);
+          if (questionMarkers && questionMarkers.length >= 2) {
+            console.log(`[TABLE] Table ${tableIdx} contains ${questionMarkers.length} questions — extracting as text`);
             return '\n' + tableText + '\n';
           }
         } catch { /* ignore */ }
@@ -225,7 +253,23 @@ export abstract class BaseParser {
         }
         case 'Link': return this.serializeInlines(il.c[1]);
         case 'Code': return il.c[1];
-        case 'RawInline':
+        case 'Cite': {
+          // Citation: [citations, inlines] — serialize the visible text
+          const citeInlines = Array.isArray(il.c) && il.c.length > 1 ? il.c[1] : [];
+          return Array.isArray(citeInlines) ? this.serializeInlines(citeInlines) : '';
+        }
+        case 'SmallCaps': {
+          // SmallCaps wraps inlines — preserve text content
+          return Array.isArray(il.c) ? this.serializeInlines(il.c) : '';
+        }
+        case 'RawInline': {
+          // RawInline: [format, content] — preserve HTML content if it's meaningful
+          if (Array.isArray(il.c) && il.c.length > 1 && typeof il.c[1] === 'string') {
+            // Strip HTML tags but keep text content (e.g., <br> → newline)
+            return il.c[1].replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+          }
+          return '';
+        }
         case 'Note': return '';
         default: return '';
       }
@@ -240,38 +284,38 @@ export abstract class BaseParser {
     const serializeCells = (rows: unknown[]): string => {
       if (!Array.isArray(rows)) return '';
       return rows.map(row => {
+        if (!Array.isArray(row)) return '';
         // Row: [attr, [Cell, ...]]
-        const rowArr = row as unknown[];
-        const cells = rowArr[1] as unknown[] || rowArr;
-        const actualCells = Array.isArray(cells) ? cells : [];
-        const tds = actualCells.map(cell => {
+        const cells = Array.isArray(row[1]) ? row[1] : row;
+        const tds = (Array.isArray(cells) ? cells : []).map(cell => {
           // Cell: [attr, alignment, rowSpan, colSpan, [Block, ...]]
-          const cellArr = cell as unknown[];
-          if (!Array.isArray(cellArr) || cellArr.length < 5) return '<td></td>';
-          const rowSpan = cellArr[2] as number || 1;
-          const colSpan = cellArr[3] as number || 1;
-          const blocks = cellArr[4] as PandocBlock[];
+          if (!Array.isArray(cell) || cell.length < 5) return '<td></td>';
+          const rowSpan = typeof cell[2] === 'number' ? cell[2] : 1;
+          const colSpan = typeof cell[3] === 'number' ? cell[3] : 1;
+          const blocks = cell[4];
           if (!Array.isArray(blocks)) return '<td></td>';
-          const text = blocks.map(b => this.serializeBlock(b)).filter(s => s).join(' ');
+          const text = (blocks as PandocBlock[]).map(b => this.serializeBlock(b)).filter(s => s).join(' ');
           let attrs = '';
           if (rowSpan > 1) attrs += ` rowspan="${rowSpan}"`;
           if (colSpan > 1) attrs += ` colspan="${colSpan}"`;
           return `<td${attrs}>${text}</td>`;
         }).join('');
         return `<tr>${tds}</tr>`;
-      }).join('\n');
+      }).filter(s => s).join('\n');
     };
 
     try {
+      if (!Array.isArray(tableContent) || tableContent.length < 5) return '';
+
       // tableContent = [attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]
-      const tableHead = tableContent[3] as unknown[];
-      const tableBodies = tableContent[4] as unknown[];
+      const tableHead = tableContent[3];
+      const tableBodies = tableContent[4];
 
       let html = '<table>\n';
 
       // TableHead: [attr, [Row, ...]]
-      if (tableHead && Array.isArray(tableHead)) {
-        const headRows = (tableHead[1] || tableHead) as unknown[];
+      if (Array.isArray(tableHead)) {
+        const headRows = Array.isArray(tableHead[1]) ? tableHead[1] : tableHead;
         if (Array.isArray(headRows) && headRows.length > 0) {
           const headHtml = serializeCells(headRows);
           if (headHtml) html += `<thead>${headHtml}</thead>\n`;
@@ -279,12 +323,12 @@ export abstract class BaseParser {
       }
 
       // TableBody: [[attr, rowHeadCount, [Row...headRows], [Row...bodyRows]], ...]
-      if (tableBodies && Array.isArray(tableBodies)) {
+      if (Array.isArray(tableBodies)) {
         html += '<tbody>\n';
         for (const body of tableBodies) {
-          const bodyArr = body as unknown[];
+          if (!Array.isArray(body)) continue;
           // bodyRows are at index 3
-          const bodyRows = (Array.isArray(bodyArr) && bodyArr.length >= 4 ? bodyArr[3] : bodyArr) as unknown[];
+          const bodyRows = body.length >= 4 && Array.isArray(body[3]) ? body[3] : body;
           if (Array.isArray(bodyRows)) {
             html += serializeCells(bodyRows);
           }
@@ -400,45 +444,49 @@ export abstract class BaseParser {
       // DOCX XML dan rasm o'lchamlarini OLDIN o'qish (VML/DrawingML aniqroq)
       this.extractImageDimensionsFromDocxXml(zip);
 
-      for (const { entry, name } of imageFiles) {
-        const imageBuffer = entry.getData();
-        const ext = path.extname(name).toLowerCase();
+      // Separate EMF/WMF (need conversion, sequential) from raster (parallel save)
+      const emfFiles: typeof imageFiles = [];
+      const rasterFiles: typeof imageFiles = [];
 
-        // Skip formula images — they are OLE equations converted to LaTeX
-        const imgNumMatch = name.match(/image(\d+)/);
+      for (const file of imageFiles) {
+        const imgNumMatch = file.name.match(/image(\d+)/);
         if (imgNumMatch && this.extractedFormulas.has(imgNumMatch[1])) {
-          console.log(`⏭️ [PARSER] Skipping formula image: ${name} (OLE equation → LaTeX)`);
-          continue;
+          continue; // Skip formula images — already converted to LaTeX
         }
-
-        // EMF/WMF formatlarini PNG ga konvertatsiya qilish
+        const ext = path.extname(file.name).toLowerCase();
         if (ext === '.emf' || ext === '.wmf') {
-          try {
-            const convertedUrl = await this.convertEmfToPng(imageBuffer, name, uploadDir);
-            if (convertedUrl) {
-              this.extractedImages.set(name, convertedUrl);
-              console.log(`✅ [PARSER] Converted ${ext.toUpperCase()} to PNG: ${name} -> ${convertedUrl}`);
-              continue;
-            }
-          } catch (error) {
-            console.error(`❌ [PARSER] Failed to convert ${name}:`, error);
-            // Fallback: save original file
-          }
+          emfFiles.push(file);
+        } else {
+          rasterFiles.push(file);
         }
-        
-        // Oddiy rasmlarni saqlash
+      }
+
+      // Save raster images in parallel
+      await Promise.all(rasterFiles.map(async ({ entry, name }) => {
+        const imageBuffer = entry.getData();
         const uniqueName = `${uuidv4()}${path.extname(name)}`;
         const savePath = path.join(uploadDir, uniqueName);
-        
         await fs.writeFile(savePath, imageBuffer);
-        
-        const imageUrl = `/uploads/test-images/${uniqueName}`;
-        this.extractedImages.set(name, imageUrl);
-        
-        console.log(`✅ [PARSER] Saved image: ${name} -> ${imageUrl}`);
+        this.extractedImages.set(name, `/uploads/test-images/${uniqueName}`);
+      }));
+
+      // Convert EMF/WMF sequentially (each spawns external process)
+      for (const { entry, name } of emfFiles) {
+        const imageBuffer = entry.getData();
+        try {
+          const convertedUrl = await this.convertEmfToPng(imageBuffer, name, uploadDir);
+          if (convertedUrl) {
+            this.extractedImages.set(name, convertedUrl);
+            continue;
+          }
+        } catch { /* fallback below */ }
+        // Fallback: save original
+        const uniqueName = `${uuidv4()}${path.extname(name)}`;
+        await fs.writeFile(path.join(uploadDir, uniqueName), imageBuffer);
+        this.extractedImages.set(name, `/uploads/test-images/${uniqueName}`);
       }
-      
-      console.log(`✅ [PARSER] Extracted ${this.extractedImages.size} images`);
+
+      console.log(`[PARSER] Extracted ${this.extractedImages.size} images (${rasterFiles.length} raster, ${emfFiles.length} EMF/WMF)`);
     } catch (error) {
       console.error('❌ [PARSER] Error extracting images:', error);
     }
@@ -449,34 +497,30 @@ export abstract class BaseParser {
    * Returns Map<imageNum, latexString> for formula images.
    */
   private async extractOleEquationFormulas(filePath: string): Promise<void> {
+    if (!pythonAvailable) {
+      console.warn('[PARSER] Skipping OLE equation extraction — Python not available');
+      return;
+    }
+
     try {
       const scriptPath = path.join(__dirname, '..', '..', '..', 'python', 'mtef_to_latex.py');
-      const pythonPaths = ['python', 'py', 'python3'];
+      const { stdout } = await execFileAsync(pythonPath, [scriptPath, '--json-map', filePath], { timeout: 30000 });
+      const parsed = stdout.trim();
+      if (!parsed || parsed === '{}') return;
 
-      for (const pyPath of pythonPaths) {
-        try {
-          const { stdout } = await execFileAsync(pyPath, [scriptPath, '--json-map', filePath], { timeout: 30000 });
-          const parsed = stdout.trim();
-          if (!parsed || parsed === '{}') return;
-
-          const map: Record<string, string> = JSON.parse(parsed);
-          for (const [imgFile, latex] of Object.entries(map)) {
-            const numMatch = imgFile.match(/image(\d+)/);
-            if (numMatch) {
-              this.extractedFormulas.set(numMatch[1], latex);
-            }
-          }
-
-          if (this.extractedFormulas.size > 0) {
-            console.log(`📐 [PARSER] Extracted ${this.extractedFormulas.size} OLE equation formulas`);
-          }
-          return;
-        } catch {
-          // Try next python path
+      const map: Record<string, string> = JSON.parse(parsed);
+      for (const [imgFile, latex] of Object.entries(map)) {
+        const numMatch = imgFile.match(/image(\d+)/);
+        if (numMatch) {
+          this.extractedFormulas.set(numMatch[1], latex);
         }
       }
+
+      if (this.extractedFormulas.size > 0) {
+        console.log(`[PARSER] Extracted ${this.extractedFormulas.size} OLE equation formulas`);
+      }
     } catch (error) {
-      console.error('⚠️ [PARSER] OLE equation extraction failed:', error);
+      console.warn('[PARSER] OLE equation extraction failed:', (error as Error).message);
     }
   }
 
@@ -565,46 +609,22 @@ export abstract class BaseParser {
       
       let converted = false;
       
-      // 2. PRIORITY 1: Python + Pillow (eng sifatli)
-      const pythonPaths = [
-        'python',
-        'py',
-        'python3',
-        'C:\\Python314\\python.exe',
-        'C:\\Python313\\python.exe',
-        'C:\\Python312\\python.exe',
-        'C:\\Python311\\python.exe',
-        'C:\\Python310\\python.exe',
-        '/usr/bin/python3',
-        '/usr/local/bin/python3',
-      ];
-      
+      // 2. PRIORITY 1: Python + Pillow (eng sifatli) — use cached python path
       const scriptPath = path.join(__dirname, '..', '..', '..', 'python', 'convert_emf_to_png.py');
-      console.log(`🐍 [PARSER] Python script path: ${scriptPath}`);
-      
-      for (const pythonPath of pythonPaths) {
+
+      if (pythonAvailable && pythonPath) {
         try {
-          const { stdout, stderr } = await execFileAsync(pythonPath, [
-            scriptPath,
-            tempEmfPath,
-            pngPath
-          ]);
-          
+          const { stdout } = await execFileAsync(pythonPath, [
+            scriptPath, tempEmfPath, pngPath
+          ], { timeout: 15000 });
+
           if (fsSync.existsSync(pngPath)) {
             converted = true;
-            console.log(`✅ [PARSER] Converted EMF to PNG using Python + Pillow`);
-            if (stdout) console.log(`   ${stdout.trim()}`);
-            break;
+            if (stdout?.trim()) console.log(`[PARSER] EMF→PNG via Python: ${stdout.trim()}`);
           }
-        } catch (err: any) {
-          // Log error for debugging
-          console.log(`⚠️ [PARSER] Python attempt failed (${pythonPath}): ${err.message}`);
-          
-          // Python failed, try next path or fallback
-          if (err.stderr && err.stderr.includes('Pillow not installed')) {
-            console.log(`⚠️ [PARSER] Pillow not installed, trying fallback methods...`);
-            break; // Skip other Python paths
-          }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.log(`[PARSER] Python EMF conversion failed: ${msg}`);
         }
       }
       
@@ -1159,20 +1179,18 @@ export abstract class BaseParser {
         console.log(`✅ [PARSER] Question ${i + 1}: ${question.text.substring(0, 50)}...`);
         questions.push(question);
       } else {
-        // CRITICAL: If question failed to parse, add empty placeholder
-        console.log(`⚠️ [PARSER] Failed to parse question ${i + 1}, adding empty placeholder`);
+        // Question failed to parse — mark for review, do NOT set fake correctAnswer
+        console.warn(`[PARSER] Failed to parse question ${i + 1}, marking for review`);
         const questionNumber = parseInt(match[1]);
+        // Extract raw text from block for user to see what was in the source
+        const rawText = block.replace(/^(?:\*\*\s*)?\d+(?:\*\*\s*)?[.)]\s*/, '').replace(/\s+/g, ' ').trim();
         questions.push({
-          text: `Savol ${questionNumber} (parse qilinmadi)`,
+          text: rawText || `Savol ${questionNumber} (parse qilinmadi)`,
           contextText: pendingContextText || undefined,
-          variants: [
-            { letter: 'A', text: '' },
-            { letter: 'B', text: '' },
-            { letter: 'C', text: '' },
-            { letter: 'D', text: '' },
-          ],
-          correctAnswer: 'A',
+          variants: [],
+          correctAnswer: '',
           points: 1,
+          needsReview: true,
         });
         pendingContextText = '';
       }
@@ -1421,9 +1439,12 @@ export abstract class BaseParser {
 
     // Protect (A), ( A ) etc. inside question text — these are reference markers, not variants
     cleanLine = cleanLine.replace(/\(\s*([A-D])\s*\)/g, '[$1]');
+    // Protect function-like patterns: f(A), g(B), etc. — letter before ( is not a variant
+    cleanLine = cleanLine.replace(/([a-zA-Z])\(([A-D])\)/g, '$1[$2]');
 
     // Find where variants start (first A), B), C), or D))
-    const firstVariantMatch = cleanLine.match(/[A-D]\s*\)/);
+    // Require: variant letter must NOT be preceded by a word character (prevents "formula A)" matching)
+    const firstVariantMatch = cleanLine.match(/(?<![a-zA-Z\d])[A-D]\s*\)/);
     if (!firstVariantMatch) return null;
 
     // Include "** " or "**" prefix before first variant letter
@@ -1449,13 +1470,12 @@ export abstract class BaseParser {
     // Remove bold markers
     let cleanVariants = variantsText.replace(/\*\*/g, ' ').replace(/(?<!_)__([^_]+)__(?!_)/g, '$1').replace(/\s+/g, ' ');
 
-    // Split by variant letters (uppercase only)
-    const parts = cleanVariants.split(/(?=[A-D]\s*\))/);
+    // Split by variant letters — require non-word char before letter to avoid splitting "formulaA)"
+    const parts = cleanVariants.split(/(?<![a-zA-Z\d])(?=[A-D]\s*\))/);
     const variants: { letter: string; text: string }[] = [];
 
     const seenLetters = new Set<string>();
     for (const part of parts) {
-      // Use [\s\S]* instead of .* to match across newlines (OLE formula images on next line)
       const match = part.match(/^([A-D])\s*\)\s*([\s\S]*)$/);
       if (match) {
         const letter = match[1].toUpperCase();
@@ -1967,10 +1987,11 @@ export abstract class BaseParser {
           const url = this.findImageByNumber(imgNum);
           if (!url) continue;
 
-          // Skip: juda baland portrait rasmlar (OMR answer sheet, dekorativ)
-          // height > 1.4 * width VA height > 400px — bu odatda savol diagrammasi emas
-          if (dims && dims.heightPx > 1.4 * dims.widthPx && dims.heightPx > 400) {
-            console.log(`  ⏭️ [MEDIA] Skipping image ${imgNum} (${dims.widthPx}x${dims.heightPx}px — likely answer sheet)`);
+          // Skip only very tall, narrow images that are clearly OMR answer sheets
+          // Must be: height > 2x width AND height > 800px AND width < 400px
+          // This preserves portrait diagrams/graphs while filtering full-page answer sheets
+          if (dims && dims.heightPx > 2 * dims.widthPx && dims.heightPx > 800 && dims.widthPx < 400) {
+            console.log(`[MEDIA] Skipping image ${imgNum} (${dims.widthPx}x${dims.heightPx}px — likely answer sheet)`);
             continue;
           }
 
