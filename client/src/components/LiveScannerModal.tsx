@@ -260,7 +260,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
 
     // ---- Per-edge sampling: each side (top/bottom/left/right) checked independently ----
     const edgeSamples = 8;
-    const edgeM = Math.max(6, Math.round(afw * 0.06));
+    const edgeM = Math.max(8, Math.round(afw * 0.10));
     const sideVals: number[][] = [[], [], [], []]; // top, bottom, left, right
     let outerBrightTotal = 0, outerN = 0;
     const brightThr = avgBright > 10 ? avgBright * 0.6 : 80;
@@ -293,8 +293,10 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         }
       }
     }
-    // Per-edge: each side must have 5/8+ bright samples (paper visible on ALL 4 sides)
-    const minBrightPerSide = 5;
+    // Per-edge: each side must have 3/8+ bright samples (paper visible on ALL 4 sides)
+    // Lowered from 5 to 3: OMR answer sheets have dark elements at edges
+    // (corner marks 8mm, QR code top-right, timing marks along left/right)
+    const minBrightPerSide = 3;
     const sideBrightCounts = sideVals.map(sv => sv.filter(v => v > brightThr).length);
     const allSidesOK = sideBrightCounts.every(c => c >= minBrightPerSide);
     // Aggregate stats
