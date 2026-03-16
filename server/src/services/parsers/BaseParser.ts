@@ -660,24 +660,35 @@ export abstract class BaseParser {
         }
       }
       
-      // 4. FALLBACK 2: wmf2svg + convert (Linux — libwmf + ImageMagick)
+      // 4. FALLBACK 2: wmf2svg — save as SVG directly (vector, best quality)
       if (!converted) {
-        const tempSvgPath = tempEmfPath.replace(/\.(emf|wmf)$/i, '.svg');
+        const svgName = `${uuidv4()}.svg`;
+        const svgPath = path.join(uploadDir, svgName);
         try {
-          await execFileAsync('wmf2svg', [tempEmfPath, '-o', tempSvgPath], { timeout: 10000 });
-          if (fsSync.existsSync(tempSvgPath)) {
-            await execFileAsync('convert', [
-              tempSvgPath, '-density', '300', '-background', 'white',
-              '-alpha', 'remove', '-flatten', '-resize', '600>', pngPath
-            ], { timeout: 10000 });
-            if (fsSync.existsSync(pngPath)) {
-              converted = true;
-            }
-            try { await fs.unlink(tempSvgPath); } catch { /* ignore */ }
+          await execFileAsync('wmf2svg', [tempEmfPath, '-o', svgPath], { timeout: 10000 });
+          if (fsSync.existsSync(svgPath) && fsSync.statSync(svgPath).size > 100) {
+            // SVG saved directly — no PNG conversion needed, browsers render SVG natively
+            try { await fs.unlink(tempEmfPath); } catch { /* ignore */ }
+            // Update dimensions from SVG viewBox
+            try {
+              const svgContent = await fs.readFile(svgPath, 'utf-8');
+              const vbMatch = svgContent.match(/viewBox="[^"]*\s([\d.]+)\s([\d.]+)"/);
+              const wMatch = svgContent.match(/width="([\d.]+)"/);
+              const hMatch = svgContent.match(/height="([\d.]+)"/);
+              if (wMatch && hMatch) {
+                const numMatch = originalName.match(/image(\d+)/);
+                if (numMatch && !this.imageDimensions.has(numMatch[1])) {
+                  const w = Math.round(parseFloat(wMatch[1]));
+                  const h = Math.round(parseFloat(hMatch[1]));
+                  if (w > 0 && h > 0) {
+                    this.imageDimensions.set(numMatch[1], { widthPx: w, heightPx: h });
+                  }
+                }
+              }
+            } catch { /* ignore */ }
+            return `/uploads/test-images/${svgName}`;
           }
-        } catch {
-          try { await fs.unlink(tempSvgPath); } catch { /* ignore */ }
-        }
+        } catch { /* fallback below */ }
       }
 
       // 5. FALLBACK 3: ImageMagick direct (oxirgi imkoniyat)
