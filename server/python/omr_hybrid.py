@@ -1522,25 +1522,16 @@ class HybridOMR:
 
         grid_left_mm = grid_left_page_mm - corner_offset_mm
 
-        # Bubble positions calibrated from actual scanned images
-        # React flex layout compresses number_width, so we calibrate from detected bubbles
-        bubble_centers_mm = None
-        if bubbles and len(bubbles) >= 16:
-            bubble_centers_mm = self._calibrate_bubble_x_from_detections(
-                bubbles, w_img, h_img, n_cols, col_width_mm, col_gap_mm,
-                grid_left_mm, px_per_mm_x, bubble_mm, gap_mm
-            )
-
-        if bubble_centers_mm is None:
-            # Fallback: estimate from layout (timing_area + num_width + bubbles)
-            right_timing_area_mm = 4.0
-            available_mm = col_width_mm - timing_mark_area_mm - num_w_mm - right_timing_area_mm
-            actual_gap = max(0, (available_mm - 4 * bubble_mm) / 3.0)
-            bubble_offset_mm = timing_mark_area_mm + num_w_mm
-            bubble_centers_mm = []
-            for bi in range(4):
-                cx_mm = bubble_offset_mm + bi * (bubble_mm + actual_gap) + bubble_mm / 2
-                bubble_centers_mm.append(cx_mm)
+        # Use exact layout mm positions — calibration from detected bubbles was
+        # producing 1.5mm left shift due to timing marks being included as candidates
+        right_timing_area_mm = 4.0
+        available_mm = col_width_mm - timing_mark_area_mm - num_w_mm - right_timing_area_mm
+        actual_gap = max(0, (available_mm - 4 * bubble_mm) / 3.0)
+        bubble_offset_mm = timing_mark_area_mm + num_w_mm
+        bubble_centers_mm = []
+        for bi in range(4):
+            cx_mm = bubble_offset_mm + bi * (bubble_mm + actual_gap) + bubble_mm / 2
+            bubble_centers_mm.append(cx_mm)
 
         # Find grid_top: try bubble-based first, then cross-correlation fallback
         grid_top_mm = None
