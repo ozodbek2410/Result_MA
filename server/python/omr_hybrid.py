@@ -1522,15 +1522,16 @@ class HybridOMR:
 
         grid_left_mm = grid_left_page_mm - corner_offset_mm
 
-        # Use exact layout mm positions — calibration from detected bubbles was
-        # producing 1.5mm left shift due to timing marks being included as candidates
-        right_timing_area_mm = 4.0
-        available_mm = col_width_mm - timing_mark_area_mm - num_w_mm - right_timing_area_mm
-        actual_gap = max(0, (available_mm - 4 * bubble_mm) / 3.0)
+        # Exact bubble positions from AnswerSheet.tsx CSS layout:
+        # Container: [timing_mark 4mm][number 7mm][flex: A gap B gap C gap D][right_timing 4mm]
+        # Bubbles: flex-start, each bubbleSize mm, gap = bubbleGap mm (from getGridLayout)
+        # right_timing is OUTSIDE the flex container, so bubble positions are:
+        # A center = timing + number + bubble/2
+        # B center = timing + number + bubble + gap + bubble/2  etc.
         bubble_offset_mm = timing_mark_area_mm + num_w_mm
         bubble_centers_mm = []
         for bi in range(4):
-            cx_mm = bubble_offset_mm + bi * (bubble_mm + actual_gap) + bubble_mm / 2
+            cx_mm = bubble_offset_mm + bi * (bubble_mm + gap_mm) + bubble_mm / 2
             bubble_centers_mm.append(cx_mm)
 
         # Find grid_top: try bubble-based first, then cross-correlation fallback
