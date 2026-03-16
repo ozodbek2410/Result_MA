@@ -22,9 +22,10 @@ def ocr_formula(image_path: str, model) -> str:
         img = Image.open(image_path)
 
         # Upscale small images for better OCR accuracy
-        MIN_WIDTH = 200
+        # Formula images from WMF are typically tiny (~100-200px) — need 400+ for good OCR
+        MIN_WIDTH = 400
         if img.width < MIN_WIDTH and img.width > 0:
-            scale = max(2, MIN_WIDTH // img.width)
+            scale = max(2, MIN_WIDTH // img.width + 1)
             img = img.resize((img.width * scale, img.height * scale), Image.LANCZOS)
 
         # Convert to RGB if needed

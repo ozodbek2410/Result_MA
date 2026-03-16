@@ -668,7 +668,7 @@ export abstract class BaseParser {
           if (fsSync.existsSync(tempSvgPath)) {
             await execFileAsync('convert', [
               tempSvgPath, '-density', '300', '-background', 'white',
-              '-alpha', 'remove', '-flatten', '-resize', '400>', pngPath
+              '-alpha', 'remove', '-flatten', '-resize', '600>', pngPath
             ], { timeout: 10000 });
             if (fsSync.existsSync(pngPath)) {
               converted = true;
@@ -687,7 +687,7 @@ export abstract class BaseParser {
           try {
             await execFileAsync(magickPath, [
               tempEmfPath, '-density', '300', '-background', 'white',
-              '-alpha', 'remove', '-flatten', '-resize', '400>', pngPath
+              '-alpha', 'remove', '-flatten', '-resize', '600>', pngPath
             ], { timeout: 10000 });
             if (fsSync.existsSync(pngPath)) {
               converted = true;
