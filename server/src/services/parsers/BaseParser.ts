@@ -660,34 +660,40 @@ export abstract class BaseParser {
         }
       }
       
-      // 4. FALLBACK 2: ImageMagick (oxirgi imkoniyat)
+      // 4. FALLBACK 2: wmf2svg + convert (Linux — libwmf + ImageMagick)
       if (!converted) {
-        const magickPaths = [
-          'C:\\Program Files\\ImageMagick-7.1.2-Q16-HDRI\\magick.exe',
-          'C:\\Program Files\\ImageMagick-7.1.1-Q16-HDRI\\magick.exe',
-          'magick',
-          'convert',
-          '/usr/local/bin/magick',
-          '/usr/bin/convert',
-        ];
-        
+        const tempSvgPath = tempEmfPath.replace(/\.(emf|wmf)$/i, '.svg');
+        try {
+          await execFileAsync('wmf2svg', [tempEmfPath, '-o', tempSvgPath], { timeout: 10000 });
+          if (fsSync.existsSync(tempSvgPath)) {
+            await execFileAsync('convert', [
+              tempSvgPath, '-density', '300', '-background', 'white',
+              '-alpha', 'remove', '-flatten', '-resize', '400>', pngPath
+            ], { timeout: 10000 });
+            if (fsSync.existsSync(pngPath)) {
+              converted = true;
+            }
+            try { await fs.unlink(tempSvgPath); } catch { /* ignore */ }
+          }
+        } catch {
+          try { await fs.unlink(tempSvgPath); } catch { /* ignore */ }
+        }
+      }
+
+      // 5. FALLBACK 3: ImageMagick direct (oxirgi imkoniyat)
+      if (!converted) {
+        const magickPaths = ['magick', 'convert', '/usr/bin/convert', '/usr/local/bin/magick'];
         for (const magickPath of magickPaths) {
           try {
             await execFileAsync(magickPath, [
-              tempEmfPath,
-              '-density', '96',
-              '-quality', '100',
-              '-background', 'white',
-              '-alpha', 'remove',
-              '-flatten',
-              pngPath
-            ]);
-            converted = true;
-            console.log(`✅ [PARSER] Converted EMF to PNG using ImageMagick`);
-            break;
-          } catch (err) {
-            // Try next path
-          }
+              tempEmfPath, '-density', '300', '-background', 'white',
+              '-alpha', 'remove', '-flatten', '-resize', '400>', pngPath
+            ], { timeout: 10000 });
+            if (fsSync.existsSync(pngPath)) {
+              converted = true;
+              break;
+            }
+          } catch { /* try next */ }
         }
       }
       
