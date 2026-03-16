@@ -2726,8 +2726,8 @@ class HybridOMR:
         """Detect filled answers in grid using relative scoring."""
         detected_answers = {}
         invalid_answers = {}
-        SCORE_THRESHOLD = 6.0       # Min relative difference (darkest - baseline)
-        MIN_DARKEST_ABS = 35.0      # Min absolute darkness % for filled bubble
+        SCORE_THRESHOLD = 8.0       # Min relative difference (darkest - baseline)
+        MIN_DARKEST_ABS = 38.0      # Min absolute darkness % for filled bubble
         NOISE_CEILING = 28.0        # If all bubbles below this, row is definitely empty
 
         for q_num in sorted(grid.keys()):
