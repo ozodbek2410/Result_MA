@@ -2935,9 +2935,14 @@ class HybridOMR:
             self.log(f"  Pass2: det_rate={final_rate:.0f}%, retrying with enhanced fill image")
             det2, inv2 = self._detect_fills(grid, fill_enhanced, bubble_w, w_proc, h_proc)
             det2, inv2, _ = self._check_header_shift(grid, det2, inv2, fill_enhanced, bubble_w, w_proc, h_proc)
-            if len(det2) > len(detected_answers):
+            # Only use Pass2 if it finds significantly more (>50% more) answers
+            # to avoid CLAHE-amplified false positives on empty bubbles
+            p1_count = max(len(detected_answers), 1)
+            if len(det2) > len(detected_answers) and len(det2) >= p1_count * 1.5:
                 self.log(f"  Pass2 better: {len(det2)} vs {len(detected_answers)}")
                 detected_answers, invalid_answers = det2, inv2
+            else:
+                self.log(f"  Pass2 skipped: {len(det2)} vs {len(detected_answers)} (not 50%+ improvement)")
 
         self.log(f"\nAniqlangan: {len(detected_answers)} ta javob")
 
