@@ -27,9 +27,12 @@ def scan_qr_code(image_path):
             """Clean and normalize QR code data"""
             if not data:
                 return None
-            # Remove whitespace and convert to uppercase
-            cleaned = data.strip().upper()
-            # Remove any non-alphanumeric characters except hyphens
+            cleaned = data.strip()
+            # If it's JSON (starts with {), preserve as-is
+            if cleaned.startswith('{'):
+                return cleaned if cleaned else None
+            # Plain string: uppercase + remove non-alphanumeric
+            cleaned = cleaned.upper()
             cleaned = ''.join(c for c in cleaned if c.isalnum() or c == '-')
             return cleaned if cleaned else None
         
