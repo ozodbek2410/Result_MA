@@ -58,14 +58,14 @@ npm run test:e2e         # Playwright testlar
 docker-compose up -d     # MongoDB + Redis + MinIO
 
 # Deploy (VPS)
-ssh root@167.86.95.237 "cd /var/www/Result_MA && git pull && pm2 restart 8"
+ssh root@167.86.95.237 "cd /var/www/Result_MA && git pull && cd server && npx tsc && cd ../client && npm run build && pm2 restart resultma-server resultma-worker"
 ```
 
 ## Deploy
 - **VPS**: `167.86.95.237`, user: `root`
 - **Path**: `/var/www/Result_MA`
-- **PM2 ID**: `8` (resultma-server)
-- **Deploy qilish**: `deploy` deganda — git push + VPS da `git pull && pm2 restart 8`
+- **PM2 ID**: `20` (resultma-server), `21` (resultma-worker)
+- **Deploy qilish**: `deploy` deganda — git push + VPS da `git pull && cd server && npx tsc && cd ../client && npm run build && pm2 restart resultma-server resultma-worker`
 
 ## Kod qoidalari
 - **Naming**: camelCase (o'zgaruvchilar, funksiyalar), PascalCase (komponentlar, interfeys, class)
