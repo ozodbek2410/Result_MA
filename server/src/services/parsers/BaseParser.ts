@@ -477,13 +477,11 @@ export abstract class BaseParser {
           const convertedUrl = await this.convertEmfToPng(imageBuffer, name, uploadDir);
           if (convertedUrl) {
             this.extractedImages.set(name, convertedUrl);
-            continue;
           }
-        } catch { /* fallback below */ }
-        // Fallback: save original
-        const uniqueName = `${uuidv4()}${path.extname(name)}`;
-        await fs.writeFile(path.join(uploadDir, uniqueName), imageBuffer);
-        this.extractedImages.set(name, `/uploads/test-images/${uniqueName}`);
+          // If conversion fails, don't save raw WMF — browsers can't display it
+        } catch {
+          console.warn(`[PARSER] EMF/WMF conversion failed for ${name}, skipping`);
+        }
       }
 
       console.log(`[PARSER] Extracted ${this.extractedImages.size} images (${rasterFiles.length} raster, ${emfFiles.length} EMF/WMF)`);
@@ -600,7 +598,9 @@ export abstract class BaseParser {
     uploadDir: string
   ): Promise<string | null> {
     try {
-      const tempEmfPath = path.join(uploadDir, `temp_${uuidv4()}.emf`);
+      // Use original extension (.wmf or .emf) — tools like wmf2svg require correct ext
+      const origExt = path.extname(originalName).toLowerCase() || '.emf';
+      const tempEmfPath = path.join(uploadDir, `temp_${uuidv4()}${origExt}`);
       const uniqueName = `${uuidv4()}.png`;
       const pngPath = path.join(uploadDir, uniqueName);
       
@@ -647,7 +647,7 @@ export abstract class BaseParser {
               tempEmfPath
             ]);
             
-            const tempPngPath = tempEmfPath.replace('.emf', '.png');
+            const tempPngPath = tempEmfPath.replace(/\.(emf|wmf)$/i, '.png');
             if (fsSync.existsSync(tempPngPath)) {
               await fs.rename(tempPngPath, pngPath);
               converted = true;
