@@ -2841,8 +2841,8 @@ class HybridOMR:
                     third_val = sorted_f[2][1] if len(sorted_f) >= 3 else 0
                     fourth_val = sorted_f[3][1] if len(sorted_f) >= 4 else 0
                     others_avg = (third_val + fourth_val) / 2 if fourth_val > 0 else third_val
-                    # Both filled must be 12%+ above unfilled average
-                    if darkest_val - others_avg >= 12.0 and second_val - others_avg >= 5.0:
+                    # Both filled must be 15%+ above unfilled average
+                    if darkest_val - others_avg >= 15.0 and second_val - others_avg >= 8.0:
                         is_multi = True
             if is_multi:
                 self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
