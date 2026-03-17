@@ -2741,9 +2741,9 @@ class HybridOMR:
         return False, darkness_pct
 
     def _detect_fills(self, grid, enhanced, bubble_w, w_proc, h_proc, color_img=None):
-        """Detect filled answers using HORIZONTAL PROFILE SCANNING.
-        Instead of measuring 4 fixed points, scans entire row to find darkest peaks.
-        This eliminates X calibration dependency and handles ink bleed naturally."""
+        """Detect filled answers: fixed-point measurement + disambiguation scan.
+        Uses blue-pen-aware ink detection. When two adjacent letters are close
+        in darkness, scans between them to find actual ink center."""
         detected_answers = {}
         invalid_answers = {}
         SCORE_THRESHOLD = 8.0
@@ -2760,73 +2760,57 @@ class HybridOMR:
         else:
             fill_img = enhanced
 
-        r_y = max(3, int(bubble_w * 0.25))  # vertical strip half-height
-
         for q_num in sorted(grid.keys()):
-            if 'A' not in grid[q_num] or 'D' not in grid[q_num]:
-                continue
-
-            cy = grid[q_num]['A']['y']
-            x_a = grid[q_num]['A']['x']
-            x_d = grid[q_num]['D']['x']
-
-            # Extract horizontal strip covering A through D
-            margin = int(bubble_w * 0.5)
-            x_start = max(0, x_a - margin)
-            x_end = min(w_proc, x_d + margin)
-            y1 = max(0, cy - r_y)
-            y2 = min(h_proc, cy + r_y)
-
-            if x_end - x_start < 4 or y2 - y1 < 2:
-                continue
-
-            strip = fill_img[y1:y2, x_start:x_end]
-            # Collapse to 1D horizontal profile (mean across Y axis)
-            profile = np.mean(strip.astype(np.float64), axis=0)
-            darkness = (255.0 - profile) / 255.0 * 100.0
-
-            # Measure darkness at each ABCD position (fixed-point, for scoring)
             fills = {}
-            r_x = max(3, int(bubble_w * 0.30))
             for letter in ['A', 'B', 'C', 'D']:
-                bx = grid[q_num][letter]['x']
-                lx = max(0, bx - r_x - x_start)
-                rx = min(len(darkness), bx + r_x - x_start)
-                if rx - lx < 2:
+                if letter not in grid[q_num]:
+                    continue
+                b = grid[q_num][letter]
+                r = max(3, int(bubble_w * 0.30))
+                y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
+                x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
+                if x2 - x1 < 2 or y2 - y1 < 2:
                     fills[letter] = 0.0
-                else:
-                    fills[letter] = float(np.mean(darkness[lx:rx]))
+                    continue
+                mean_val = float(np.mean(fill_img[y1:y2, x1:x2]))
+                fills[letter] = (255.0 - mean_val) / 255.0 * 100.0
 
-            # ALSO find the actual peak in the profile (X-calibration-independent)
-            # Smooth profile to avoid border noise spikes
-            kernel_size = max(3, int(bubble_w * 0.3)) | 1  # odd number
-            smoothed = cv2.GaussianBlur(darkness.reshape(1, -1), (kernel_size, 1), 0).flatten()
+            if len(fills) < 4:
+                continue
 
-            peak_idx = int(np.argmax(smoothed))
-            peak_dark = float(smoothed[peak_idx])
-            peak_x_abs = peak_idx + x_start
-
-            # Find nearest letter to peak position
-            distances = {letter: abs(grid[q_num][letter]['x'] - peak_x_abs)
-                         for letter in ['A', 'B', 'C', 'D']}
-            peak_letter = min(distances, key=distances.get)
-
-            # Use peak_letter if it differs from fixed-point and peak is strong
             sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
             darkest_letter, darkest_val = sorted_f[0]
+            second_letter, second_val = sorted_f[1]
 
-            # If peak scan found a different letter AND peak is within bubble distance
-            if peak_letter != darkest_letter and distances[peak_letter] < bubble_w * 1.2:
-                # Measure peak darkness with small ROI around actual peak
-                pr = max(3, int(bubble_w * 0.25))
-                pl = max(0, peak_idx - pr)
-                prr = min(len(darkness), peak_idx + pr)
-                peak_measured = float(np.mean(darkness[pl:prr]))
-                # Use peak letter if its measured darkness is competitive
-                if peak_measured >= darkest_val * 0.85:
-                    fills[peak_letter] = peak_measured
-                    sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
-                    darkest_letter, darkest_val = sorted_f[0]
+            # DISAMBIGUATION: if top 2 are adjacent and close (within 25%),
+            # scan between them to find actual ink center
+            letter_order = ['A', 'B', 'C', 'D']
+            if darkest_val > MIN_DARKEST_ABS and second_val > darkest_val * 0.75:
+                i1 = letter_order.index(darkest_letter)
+                i2 = letter_order.index(second_letter)
+                if abs(i1 - i2) == 1:  # adjacent letters
+                    # Micro-scan: sample between the two positions
+                    cy = grid[q_num][darkest_letter]['y']
+                    x1_scan = grid[q_num][letter_order[min(i1,i2)]]['x']
+                    x2_scan = grid[q_num][letter_order[max(i1,i2)]]['x']
+                    r_y = max(3, int(bubble_w * 0.20))
+                    sy1, sy2 = max(0, cy - r_y), min(h_proc, cy + r_y)
+                    strip = fill_img[sy1:sy2, max(0,x1_scan-2):min(w_proc,x2_scan+2)]
+                    if strip.size > 0:
+                        profile = np.mean(strip.astype(np.float64), axis=0)
+                        dark_profile = (255.0 - profile) / 255.0 * 100.0
+                        peak_local = int(np.argmax(dark_profile))
+                        peak_x_abs = peak_local + max(0, x1_scan - 2)
+                        # Which letter is peak closest to?
+                        d1 = abs(grid[q_num][darkest_letter]['x'] - peak_x_abs)
+                        d2 = abs(grid[q_num][second_letter]['x'] - peak_x_abs)
+                        if d2 < d1:
+                            # Peak is closer to second letter — swap
+                            self.log(f"  Q{q_num}: disambig {darkest_letter}→{second_letter} (peak closer by {d1-d2:.0f}px)")
+                            fills[second_letter] = darkest_val  # give it the higher value
+                            sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
+                            darkest_letter, darkest_val = sorted_f[0]
+                            second_letter, second_val = sorted_f[1]
 
             baseline = float(np.median([v for _, v in sorted_f[1:]]))
             score = darkest_val - baseline
@@ -2835,7 +2819,6 @@ class HybridOMR:
                 self.log(f"  Q{q_num}: empty (all below noise ceiling, max={darkest_val:.1f}%)")
                 continue
 
-            second_letter, second_val = sorted_f[1]
             if len(sorted_f) >= 3:
                 base_multi = float(np.median([v for _, v in sorted_f[2:]]))
                 score_1 = darkest_val - base_multi
