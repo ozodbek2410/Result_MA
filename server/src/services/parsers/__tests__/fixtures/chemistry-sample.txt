@@ -1,0 +1,29 @@
+1) \(H_2SO_4\) ning nomi nima?
+A) Sulfat kislota
+**B) Oltingugurt kislota**
+C) Xlorid kislota
+D) Nitrat kislota
+
+2) Quyidagi reaksiyani balanslang: \(Fe + O_2 \to Fe_2O_3\)
+A) \(2Fe + O_2 \to Fe_2O_3\)
+B) \(Fe + 3O_2 \to Fe_2O_3\)
+**C) \(4Fe + 3O_2 \to 2Fe_2O_3\)**
+D) \(Fe + O_2 \to 2Fe_2O_3\)
+
+3) \(NaCl\) ning molyar massasi qancha?
+A) \(23 \text{ g/mol}\)
+B) \(35.5 \text{ g/mol}\)
+**C) \(58.5 \text{ g/mol}\)**
+D) \(40 \text{ g/mol}\)
+
+4) Avogadro soni nechaga teng?
+A) \(6.02 \cdot 10^{22}\)
+**B) \(6.02 \cdot 10^{23}\)**
+C) \(6.02 \cdot 10^{24}\)
+D) \(3.01 \cdot 10^{23}\)
+
+5) \(CaCO_3\) qizdirilganda qanday moddalar hosil bo'ladi?
+A) \(Ca + CO_3\)
+**B) \(CaO + CO_2\)**
+C) \(Ca(OH)_2 + CO_2\)
+D) \(CaO + CO_3\)

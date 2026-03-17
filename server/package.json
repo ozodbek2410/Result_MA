@@ -7,6 +7,8 @@
     "worker": "tsx watch src/worker.ts",
     "dev:all": "tsx watch src/index.ts & tsx watch src/worker.ts",
     "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "start": "node dist/index.js",
     "start:worker": "node dist/worker.js",
     "start:all": "node dist/index.js & node dist/worker.js",
@@ -41,6 +43,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",
     "@aws-sdk/s3-request-presigner": "^3.500.0",
+    "@resultma/shared": "*",
     "@types/compression": "^1.8.1",
     "@types/ioredis": "^4.28.10",
     "@types/pdfkit": "^0.17.5",
@@ -99,6 +102,7 @@
     "@types/uuid": "^9.0.7",
     "@types/xml2js": "^0.4.14",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.0"
   }
 }

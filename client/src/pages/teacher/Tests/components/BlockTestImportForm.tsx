@@ -11,6 +11,27 @@ import RichTextEditor from '@/components/editor/RichTextEditor';
 import MathText from '@/components/MathText';
 import { convertChemistryToTiptapJson, convertPhysicsToTiptapJson, convertLatexToTiptapJson } from '@/lib/latexUtils';
 
+/**
+ * V2 Pipeline: universal converter — server formulalarni \(...\) ichida qaytaradi.
+ * Fan bilish SHART EMAS, faqat \( delimiter borligini tekshiradi.
+ */
+function convertV2(t: string): string | ReturnType<typeof convertLatexToTiptapJson> {
+  if (typeof t !== 'string' || (!t.includes('\\(') && !t.includes('\\['))) return t;
+  return convertLatexToTiptapJson(t);
+}
+
+/**
+ * V1 Pipeline: fan-specific converter (legacy).
+ * Server raw text qaytaradi, client formula detect qilishi kerak.
+ */
+function convertV1(t: string, parserKey: string): string | ReturnType<typeof convertLatexToTiptapJson> {
+  const hasFormula = typeof t === 'string' && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
+  if (!hasFormula) return t;
+  if (parserKey === 'physics') return convertPhysicsToTiptapJson(t);
+  if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
+  return convertLatexToTiptapJson(t);
+}
+
 export interface BlockTestFormData {
   classNumber: number;
   subjectId: string;
@@ -254,15 +275,9 @@ export function BlockTestImportForm({
           headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000,
         });
         if (data.questions?.length > 0) {
-          // Convert raw text to TipTap JSON with formula nodes
-          const hasFormula = (t: string) => typeof t === 'string' && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
-          const convert = (t: string) => {
-            if (!hasFormula(t)) return t;
-            if (pk === 'physics') return convertPhysicsToTiptapJson(t);
-            // Chemistry converter handles ^/_ patterns for all subjects
-            if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
-            return convertLatexToTiptapJson(t);
-          };
+          // V2 parser formulalarni \(...\) bilan qaytaradi — fan bilish kerak emas
+          const isV2 = data.parserUsed === 'ai' || data.parserUsed === 'regex' || data.parserUsed === 'ai+regex';
+          const convert = (t: string) => isV2 ? convertV2(t) : convertV1(t, pk);
           const converted = (data.questions as ParsedQuestion[]).map((q: ParsedQuestion) => ({
             ...q,
             text: convert(q.text),
@@ -305,7 +320,9 @@ export function BlockTestImportForm({
         return;
       }
 
+      const isV2 = data.parserUsed === 'ai' || data.parserUsed === 'regex' || data.parserUsed === 'ai+regex';
       const convert = (t: string) => {
+        if (isV2) return convertV2(t);
         if (typeof t !== 'string' || (!t.includes('^') && !t.includes('_') && !t.includes('\\(') && !t.includes('\\['))) return t;
         if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
         return convertLatexToTiptapJson(t);

@@ -21,11 +21,14 @@ import {
   BarChart3,
   QrCode,
   UserMinus,
+  UserPlus,
   Trash2,
   BookOpen,
   Save,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  X,
+  Loader2
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
@@ -55,6 +58,12 @@ export default function GroupDetailPage() {
   const [savingLetters, setSavingLetters] = useState(false);
   const [showSubjectConfig, setShowSubjectConfig] = useState(false);
   const [showStudentLetters, setShowStudentLetters] = useState(false);
+  // O'quvchi qo'shish modal
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [addStudentSearch, setAddStudentSearch] = useState('');
+  const [allStudentsList, setAllStudentsList] = useState<any[]>([]);
+  const [addStudentLoading, setAddStudentLoading] = useState(false);
+  const [addingStudentId, setAddingStudentId] = useState<string | null>(null);
   const { success, error } = useToast();
 
   useEffect(() => {
@@ -200,6 +209,36 @@ export default function GroupDetailPage() {
     }
   };
 
+
+  const openAddStudentModal = async () => {
+    setShowAddStudent(true);
+    setAddStudentSearch('');
+    if (allStudentsList.length === 0) {
+      setAddStudentLoading(true);
+      try {
+        const { data } = await api.get('/students');
+        setAllStudentsList(data);
+      } catch {
+        error('O\'quvchilar ro\'yxatini yuklashda xatolik');
+      } finally {
+        setAddStudentLoading(false);
+      }
+    }
+  };
+
+  const handleAddStudent = async (studentId: string, studentName: string) => {
+    setAddingStudentId(studentId);
+    try {
+      await api.post(`/teacher/groups/${id}/students/${studentId}`);
+      success(`${studentName} guruhga qo'shildi`);
+      fetchStudents();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Xatolik';
+      error(msg);
+    } finally {
+      setAddingStudentId(null);
+    }
+  };
 
   const handleRemoveStudent = async (studentId: string, studentName: string) => {
     if (!confirm(`${studentName} ni guruhdan chiqarmoqchimisiz?`)) return;
@@ -550,7 +589,13 @@ export default function GroupDetailPage() {
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">O'quvchilar ro'yxati</CardTitle>
-            <Badge variant="info" size="md">{students.length} ta o'quvchi</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="info" size="md">{students.length} ta</Badge>
+              <Button size="sm" onClick={openAddStudentModal}>
+                <UserPlus className="w-4 h-4 mr-1" />
+                <span className="hidden sm:inline">Qo'shish</span>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-4">
@@ -728,10 +773,92 @@ export default function GroupDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Add Student Modal */}
+      {showAddStudent && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddStudent(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-bold text-gray-900">O'quvchi qo'shish</h3>
+              <button onClick={() => setShowAddStudent(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 border-b">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Ism bo'yicha qidirish..."
+                  value={addStudentSearch}
+                  onChange={e => setAddStudentSearch(e.target.value)}
+                  className="pl-10"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {addStudentLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                </div>
+              ) : (() => {
+                const existingIds = new Set(students.map((s: { _id: string }) => s._id));
+                const filtered = allStudentsList
+                  .filter(s => !existingIds.has(s._id))
+                  .filter(s => addStudentSearch.length >= 2
+                    ? s.fullName?.toLowerCase().includes(addStudentSearch.toLowerCase())
+                    : true
+                  )
+                  .slice(0, 50);
+
+                if (addStudentSearch.length < 2) {
+                  return (
+                    <div className="py-8 text-center text-gray-500">
+                      <Search className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm">Kamida 2 ta harf kiriting</p>
+                    </div>
+                  );
+                }
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-8 text-center text-gray-500">
+                      <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm">O'quvchi topilmadi</p>
+                    </div>
+                  );
+                }
+
+                return filtered.map(student => (
+                  <div key={student._id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {student.fullName?.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{student.fullName}</p>
+                        <p className="text-xs text-gray-500">{student.classNumber ? `${student.classNumber}-sinf` : ''} {student.phone || ''}</p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleAddStudent(student._id, student.fullName)}
+                      loading={addingStudentId === student._id}
+                      disabled={!!addingStudentId}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Student Profile Modal */}
-      <StudentProfileModal 
-        studentId={selectedStudentId} 
-        onClose={() => setSelectedStudentId(null)} 
+      <StudentProfileModal
+        studentId={selectedStudentId}
+        onClose={() => setSelectedStudentId(null)}
       />
 
       {/* QR Code Modal */}

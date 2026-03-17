@@ -649,6 +649,128 @@ A) А.С.Пушкин  B) Л.Н.Толстой  C) Ф.М.Достоевский"
     return fixed;
   }
 
+  // ============================================================
+  // V2 Pipeline: Structured parsing with custom prompt
+  // ============================================================
+
+  /**
+   * Generic structured API call — v2 pipeline uchun.
+   * Custom system prompt + text → raw JSON response.
+   * Mavjud key rotation va retry logikasini qayta ishlatadi.
+   */
+  static async parseStructured(
+    text: string,
+    systemPrompt: string,
+    options?: { model?: string; maxTokens?: number; temperature?: number }
+  ): Promise<unknown> {
+    this.initializeKeys();
+
+    if (this.apiKeys.length === 0) {
+      this.addLog('warning', '⚠️ No Groq API keys available');
+      return null;
+    }
+
+    const model = options?.model || this.FALLBACK_MODEL;
+    const maxTokens = options?.maxTokens || 8192;
+    const temperature = options?.temperature || 0.1;
+
+    this.addLog('info', `🤖 [V2] Structured parse: ${text.length} chars, model=${model}`);
+
+    const maxKeyAttempts = this.apiKeys.length;
+
+    for (let keyAttempt = 0; keyAttempt < maxKeyAttempts; keyAttempt++) {
+      const key = this.getBestAvailableKey();
+      if (!key) {
+        this.addLog('warning', '⏳ No keys available, waiting 5s...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        continue;
+      }
+
+      const status = this.keyStatuses.get(key);
+      if (!status) continue;
+
+      for (let attempt = 1; attempt <= this.MAX_RETRIES_PER_KEY; attempt++) {
+        try {
+          this.addLog('info', `🔄 [V2] Key #${status.index} attempt ${attempt}`, status.index);
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT_MS);
+
+          let response: Response;
+          try {
+            response = await fetch(this.GROQ_API_URL, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: text },
+                ],
+                temperature,
+                max_tokens: maxTokens,
+                response_format: { type: 'json_object' },
+              }),
+              signal: controller.signal,
+            });
+          } catch (err: unknown) {
+            const error = err as Error;
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+              throw new Error(`Groq API timeout (${this.REQUEST_TIMEOUT_MS / 1000}s)`);
+            }
+            throw err;
+          } finally {
+            clearTimeout(timeoutId);
+          }
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Groq API error: ${response.status} - ${errorText}`);
+          }
+
+          const data = await response.json() as Record<string, unknown>;
+          const choices = data.choices as Array<{ message: { content: string } }>;
+          const content = choices?.[0]?.message?.content;
+
+          if (!content) {
+            throw new Error('No content in Groq response');
+          }
+
+          this.markKeySuccess(key);
+          this.addLog('success', `✅ [V2] Parsed ${content.length} chars response`);
+
+          return JSON.parse(content);
+
+        } catch (error: unknown) {
+          const err = error as Error;
+          const isRateLimit = err.message.includes('429') || err.message.includes('rate limit');
+          const isPayloadTooLarge = err.message.includes('413') || err.message.includes('too large');
+
+          this.addLog('error', `❌ [V2] Key #${status.index}: ${err.message.substring(0, 100)}`, status.index);
+
+          if (isPayloadTooLarge) {
+            throw new Error('Request too large for AI model');
+          }
+
+          if (isRateLimit || attempt === this.MAX_RETRIES_PER_KEY) {
+            this.markKeyError(key, isRateLimit);
+            break;
+          }
+
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    this.addLog('error', '❌ [V2] All keys exhausted');
+    return null;
+  }
+
   /**
    * Get detailed statistics about all keys
    */

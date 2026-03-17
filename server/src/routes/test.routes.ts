@@ -10,6 +10,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { TestImportService } from '../services/testImportService';
+import { ImportOrchestrator } from '../services/parsers/ImportOrchestrator';
 import { PDFExportService } from '../services/pdfExportService';
 import { PDFGeneratorService } from '../services/pdfGeneratorService';
 import { PandocDocxService } from '../services/pandocDocxService';
@@ -498,21 +499,49 @@ router.post('/import', authenticate, upload.single('file'), async (req: AuthRequ
     let questions;
     let detectedType = 'generic';
     let groups: Array<{ startIndex: number; endIndex: number; questions: unknown[] }> | undefined;
-    let logs: any[] = [];
+    let logs: unknown[] = [];
+
+    // V2 Parser feature flag: 'v1' | 'v2' | 'v2-compare'
+    const parserVersion = process.env.DOCX_PARSER_VERSION || 'v1';
 
     try {
-      const result = await TestImportService.importTest(absolutePath, format, subjectId);
-      questions = result.questions;
-      detectedType = result.detectedType;
-      groups = result.groups;
-      logs = TestImportService.getParsingLogs();
-    } catch (parseError: any) {
-      console.error('Parse error:', parseError);
+      if ((parserVersion === 'v2' || parserVersion === 'v2-compare') && format === 'word') {
+        // V2: AI-first pipeline
+        const orchestrator = new ImportOrchestrator();
+        const v2Result = await orchestrator.parseDocx(absolutePath);
+
+        if (parserVersion === 'v2-compare') {
+          // Compare mode: V2 natijasini log qilish, V1 natija qaytarish
+          console.log(`[V2-COMPARE] V2 parsed ${v2Result.count} questions (${v2Result.parserUsed})`);
+          const v1Result = await TestImportService.importTest(absolutePath, format, subjectId);
+          console.log(`[V2-COMPARE] V1 parsed ${v1Result.questions.length} questions`);
+          console.log(`[V2-COMPARE] Difference: V2=${v2Result.count}, V1=${v1Result.questions.length}`);
+          questions = v1Result.questions;
+          detectedType = v1Result.detectedType;
+          groups = v1Result.groups;
+          logs = TestImportService.getParsingLogs();
+        } else {
+          // V2 mode: yangi pipeline natija qaytaradi
+          questions = v2Result.questions;
+          detectedType = v2Result.detectedType;
+          logs = v2Result.logs || [];
+        }
+      } else {
+        // V1: hozirgi parser (default)
+        const result = await TestImportService.importTest(absolutePath, format, subjectId);
+        questions = result.questions;
+        detectedType = result.detectedType;
+        groups = result.groups;
+        logs = TestImportService.getParsingLogs();
+      }
+    } catch (parseError: unknown) {
+      const err = parseError as Error;
+      console.error('Parse error:', err);
       logs = TestImportService.getParsingLogs();
       cleanupTempFile(absolutePath);
       return res.status(400).json({
-        message: parseError.message || 'Faylni tahlil qilishda xatolik',
-        details: parseError.toString(),
+        message: err.message || 'Faylni tahlil qilishda xatolik',
+        details: err.toString(),
         logs
       });
     }
