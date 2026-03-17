@@ -2741,53 +2741,96 @@ class HybridOMR:
         return False, darkness_pct
 
     def _detect_fills(self, grid, enhanced, bubble_w, w_proc, h_proc, color_img=None):
-        """Detect filled answers in grid using relative scoring.
-        If color_img provided, uses blue-channel-aware detection for blue pen."""
+        """Detect filled answers using HORIZONTAL PROFILE SCANNING.
+        Instead of measuring 4 fixed points, scans entire row to find darkest peaks.
+        This eliminates X calibration dependency and handles ink bleed naturally."""
         detected_answers = {}
         invalid_answers = {}
-        SCORE_THRESHOLD = 8.0       # Min relative difference (darkest - baseline)
-        MIN_DARKEST_ABS = 30.0      # Min absolute darkness % for filled bubble
-        NOISE_CEILING = 22.0        # If all bubbles below this, row is definitely empty
+        SCORE_THRESHOLD = 8.0
+        MIN_DARKEST_ABS = 30.0
+        NOISE_CEILING = 22.0
 
-        # Build blue-aware grayscale: max(standard_gray, inverted_blue_channel)
-        # Blue pen: high B channel → low inverted_B → but we want it DARK
-        # Formula: use min(R,G) as "ink channel" — blue pen has low R and G
+        # Build blue-pen-aware image: min(R,G) detects both blue and black ink
         if color_img is not None and len(color_img.shape) == 3:
             b_ch, g_ch, r_ch = cv2.split(color_img)
-            # Ink detection: lower min(R,G) = more ink (works for blue AND black pen)
             ink_gray = np.minimum(r_ch, g_ch)
             clahe_ink = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             ink_enhanced = clahe_ink.apply(ink_gray)
-            # Use the DARKER of standard enhanced and ink-enhanced
             fill_img = np.minimum(enhanced, ink_enhanced)
         else:
             fill_img = enhanced
 
-        for q_num in sorted(grid.keys()):
-            fills = {}
-            for letter in ['A', 'B', 'C', 'D']:
-                if letter not in grid[q_num]:
-                    continue
-                b = grid[q_num][letter]
-                # Tight ROI (30% of bubble width) — avoids border, more precise
-                r = max(3, int(bubble_w * 0.30))
-                y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
-                x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
-                if x2 - x1 < 2 or y2 - y1 < 2:
-                    fills[letter] = 0.0
-                    continue
-                mean_val = float(np.mean(fill_img[y1:y2, x1:x2]))
-                fills[letter] = (255.0 - mean_val) / 255.0 * 100.0
+        r_y = max(3, int(bubble_w * 0.25))  # vertical strip half-height
 
-            if len(fills) < 4:
+        for q_num in sorted(grid.keys()):
+            if 'A' not in grid[q_num] or 'D' not in grid[q_num]:
                 continue
 
+            cy = grid[q_num]['A']['y']
+            x_a = grid[q_num]['A']['x']
+            x_d = grid[q_num]['D']['x']
+
+            # Extract horizontal strip covering A through D
+            margin = int(bubble_w * 0.5)
+            x_start = max(0, x_a - margin)
+            x_end = min(w_proc, x_d + margin)
+            y1 = max(0, cy - r_y)
+            y2 = min(h_proc, cy + r_y)
+
+            if x_end - x_start < 4 or y2 - y1 < 2:
+                continue
+
+            strip = fill_img[y1:y2, x_start:x_end]
+            # Collapse to 1D horizontal profile (mean across Y axis)
+            profile = np.mean(strip.astype(np.float64), axis=0)
+            darkness = (255.0 - profile) / 255.0 * 100.0
+
+            # Measure darkness at each ABCD position (fixed-point, for scoring)
+            fills = {}
+            r_x = max(3, int(bubble_w * 0.30))
+            for letter in ['A', 'B', 'C', 'D']:
+                bx = grid[q_num][letter]['x']
+                lx = max(0, bx - r_x - x_start)
+                rx = min(len(darkness), bx + r_x - x_start)
+                if rx - lx < 2:
+                    fills[letter] = 0.0
+                else:
+                    fills[letter] = float(np.mean(darkness[lx:rx]))
+
+            # ALSO find the actual peak in the profile (X-calibration-independent)
+            # Smooth profile to avoid border noise spikes
+            kernel_size = max(3, int(bubble_w * 0.3)) | 1  # odd number
+            smoothed = cv2.GaussianBlur(darkness.reshape(1, -1), (kernel_size, 1), 0).flatten()
+
+            peak_idx = int(np.argmax(smoothed))
+            peak_dark = float(smoothed[peak_idx])
+            peak_x_abs = peak_idx + x_start
+
+            # Find nearest letter to peak position
+            distances = {letter: abs(grid[q_num][letter]['x'] - peak_x_abs)
+                         for letter in ['A', 'B', 'C', 'D']}
+            peak_letter = min(distances, key=distances.get)
+
+            # Use peak_letter if it differs from fixed-point and peak is strong
             sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
             darkest_letter, darkest_val = sorted_f[0]
+
+            # If peak scan found a different letter AND peak is within bubble distance
+            if peak_letter != darkest_letter and distances[peak_letter] < bubble_w * 1.2:
+                # Measure peak darkness with small ROI around actual peak
+                pr = max(3, int(bubble_w * 0.25))
+                pl = max(0, peak_idx - pr)
+                prr = min(len(darkness), peak_idx + pr)
+                peak_measured = float(np.mean(darkness[pl:prr]))
+                # Use peak letter if its measured darkness is competitive
+                if peak_measured >= darkest_val * 0.85:
+                    fills[peak_letter] = peak_measured
+                    sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
+                    darkest_letter, darkest_val = sorted_f[0]
+
             baseline = float(np.median([v for _, v in sorted_f[1:]]))
             score = darkest_val - baseline
 
-            # If all bubbles are below noise ceiling, skip entirely (empty row)
             if darkest_val < NOISE_CEILING:
                 self.log(f"  Q{q_num}: empty (all below noise ceiling, max={darkest_val:.1f}%)")
                 continue
