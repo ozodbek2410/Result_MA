@@ -1692,6 +1692,14 @@ class HybridOMR:
             self.log(f"  Calibration rejected: uneven spacing {spacings}")
             return None
 
+        # Fix timing-mark contamination: if A position is too far left (<13mm),
+        # timing marks shifted it. Use calibrated SPACING but CSS-based start offset.
+        min_a_mm = timing_mark_area_mm + num_w_mm + bubble_mm / 2  # ~13.75mm
+        if result[0] < min_a_mm - 0.5:
+            avg_spacing = float(np.mean(spacings))
+            self.log(f"  Calibration offset fix: A was {result[0]:.1f}mm, shifting to {min_a_mm:.1f}mm (spacing={avg_spacing:.1f}mm)")
+            result = [min_a_mm + i * avg_spacing for i in range(4)]
+
         self.log(f"  Calibrated bubble X: {[f'{x:.1f}' for x in result]}mm (from {len(all_offsets)//4} cols)")
         return result
 
