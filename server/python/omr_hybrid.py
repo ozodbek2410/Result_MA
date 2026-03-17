@@ -2832,6 +2832,17 @@ class HybridOMR:
             is_multi = (score_1 >= eff_threshold and score_2 >= 15.0
                         and second_val >= 55.0 and second_val >= darkest_val * 0.70
                         and darkest_val >= 60.0)
+            # Relaxed multi for ADJACENT letters: ink bleeds between neighbors
+            # If both are well above baseline and adjacent (A-B, B-C, C-D)
+            letter_order = ['A', 'B', 'C', 'D']
+            if not is_multi and darkest_val >= 45.0 and second_val >= 40.0:
+                i1 = letter_order.index(darkest_letter)
+                i2 = letter_order.index(second_letter)
+                if abs(i1 - i2) == 1 and second_val >= darkest_val * 0.65:
+                    third_val = sorted_f[2][1] if len(sorted_f) >= 3 else 0
+                    # Both must be significantly above the 3rd bubble
+                    if darkest_val - third_val >= 8.0 and second_val - third_val >= 5.0:
+                        is_multi = True
             if is_multi:
                 self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
                 invalid_answers[str(q_num)] = [darkest_letter, second_letter]
