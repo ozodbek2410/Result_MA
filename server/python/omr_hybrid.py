@@ -1522,17 +1522,22 @@ class HybridOMR:
 
         grid_left_mm = grid_left_page_mm - corner_offset_mm
 
-        # Exact bubble positions from AnswerSheet.tsx CSS layout:
-        # Container: [timing_mark 4mm][number 7mm][flex: A gap B gap C gap D][right_timing 4mm]
-        # Bubbles: flex-start, each bubbleSize mm, gap = bubbleGap mm (from getGridLayout)
-        # right_timing is OUTSIDE the flex container, so bubble positions are:
-        # A center = timing + number + bubble/2
-        # B center = timing + number + bubble + gap + bubble/2  etc.
-        bubble_offset_mm = timing_mark_area_mm + num_w_mm
-        bubble_centers_mm = []
-        for bi in range(4):
-            cx_mm = bubble_offset_mm + bi * (bubble_mm + gap_mm) + bubble_mm / 2
-            bubble_centers_mm.append(cx_mm)
+        # Try calibration from detected bubbles first (more accurate than CSS math)
+        # The actual printed/rendered spacing is ~0.2mm less than CSS spec
+        bubble_centers_mm = None
+        if bubbles and len(bubbles) >= 16:
+            bubble_centers_mm = self._calibrate_bubble_x_from_detections(
+                bubbles, w_img, h_img, n_cols, col_width_mm, col_gap_mm,
+                grid_left_mm, px_per_mm_x, bubble_mm, gap_mm
+            )
+
+        if bubble_centers_mm is None:
+            # Fallback: CSS layout math
+            bubble_offset_mm = timing_mark_area_mm + num_w_mm
+            bubble_centers_mm = []
+            for bi in range(4):
+                cx_mm = bubble_offset_mm + bi * (bubble_mm + gap_mm) + bubble_mm / 2
+                bubble_centers_mm.append(cx_mm)
 
         # Find grid_top: try bubble-based first, then cross-correlation fallback
         grid_top_mm = None
@@ -1609,9 +1614,10 @@ class HybridOMR:
                                               px_per_mm_x, bubble_mm, gap_mm):
         """Calibrate bubble X positions from detected bubble clusters.
         Returns ABSOLUTE mm positions for A,B,C,D within each column."""
-        # Filter: only real bubbles (not timing marks — too small)
+        # Filter: only real bubbles — exclude timing marks (3mm) and small noise
+        # Timing marks are ~55% of bubble size (3mm vs 5.5mm), filter at 80%
         median_w = float(np.median([b['w'] for b in bubbles]))
-        big_bubbles = [b for b in bubbles if b['w'] >= median_w * 0.7]
+        big_bubbles = [b for b in bubbles if b['w'] >= median_w * 0.80]
         if len(big_bubbles) < 16:
             return None
 
@@ -2726,8 +2732,8 @@ class HybridOMR:
         """Detect filled answers in grid using relative scoring."""
         detected_answers = {}
         invalid_answers = {}
-        SCORE_THRESHOLD = 10.0      # Min relative difference (darkest - baseline)
-        MIN_DARKEST_ABS = 40.0      # Min absolute darkness % for filled bubble
+        SCORE_THRESHOLD = 8.0       # Min relative difference (darkest - baseline)
+        MIN_DARKEST_ABS = 33.0      # Min absolute darkness % for filled bubble (blue pen ~33-40%)
         NOISE_CEILING = 28.0        # If all bubbles below this, row is definitely empty
 
         for q_num in sorted(grid.keys()):
@@ -2777,6 +2783,8 @@ class HybridOMR:
                 invalid_answers[str(q_num)] = [darkest_letter, second_letter]
             elif score >= eff_threshold and darkest_val >= MIN_DARKEST_ABS:
                 detected_answers[str(q_num)] = darkest_letter
+                fill_str = ' '.join(f"{l}={v:.0f}%" for l, v in sorted_f)
+                self.log(f"  Q{q_num}: → {darkest_letter} (score={score:.1f}, {fill_str})")
             else:
                 self.log(f"  Q{q_num}: empty (score={score:.1f}, darkest={darkest_val:.1f}%)")
 
