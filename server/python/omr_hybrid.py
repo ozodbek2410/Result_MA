@@ -1694,7 +1694,9 @@ class HybridOMR:
 
         # Fix timing-mark contamination: if A position is too far left (<13mm),
         # timing marks shifted it. Use calibrated SPACING but CSS-based start offset.
-        min_a_mm = timing_mark_area_mm + num_w_mm + bubble_mm / 2  # ~13.75mm
+        timing_area = 4.0  # TIMING_MARK_SIZE(3) + 1mm gap
+        num_width = 7.0 if bubble_mm <= 5.5 else 8.0
+        min_a_mm = timing_area + num_width + bubble_mm / 2  # ~13.75mm for 90q
         if result[0] < min_a_mm - 0.5:
             avg_spacing = float(np.mean(spacings))
             self.log(f"  Calibration offset fix: A was {result[0]:.1f}mm, shifting to {min_a_mm:.1f}mm (spacing={avg_spacing:.1f}mm)")
