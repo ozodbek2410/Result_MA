@@ -3036,7 +3036,7 @@ class HybridOMR:
             # Pass2 CLAHE often converts valid MULTIs into single answers (worse)
             p1_total = len(detected_answers) + len(invalid_answers)
             p2_total = len(det2) + len(inv2)
-            if p2_total > p1_total and p2_total >= max(p1_total, 1) * 1.5:
+            if p2_total > p1_total and p2_total >= max(p1_total, 1) * 2.0:
                 self.log(f"  Pass2 better: {p2_total} vs {p1_total} (det+inv)")
                 detected_answers, invalid_answers = det2, inv2
             else:
