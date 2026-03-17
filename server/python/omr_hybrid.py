@@ -1693,14 +1693,16 @@ class HybridOMR:
             return None
 
         # Fix timing-mark contamination: if A position is too far left (<13mm),
-        # timing marks shifted it. Use calibrated SPACING but CSS-based start offset.
+        # timing marks shifted it. Use MIDPOINT between calibrated and CSS offset.
         timing_area = 4.0  # TIMING_MARK_SIZE(3) + 1mm gap
         num_width = 7.0 if bubble_mm <= 5.5 else 8.0
         min_a_mm = timing_area + num_width + bubble_mm / 2  # ~13.75mm for 90q
         if result[0] < min_a_mm - 0.5:
             avg_spacing = float(np.mean(spacings))
-            self.log(f"  Calibration offset fix: A was {result[0]:.1f}mm, shifting to {min_a_mm:.1f}mm (spacing={avg_spacing:.1f}mm)")
-            result = [min_a_mm + i * avg_spacing for i in range(4)]
+            # Use midpoint: calibrated is too left, CSS is too right
+            mid_a = (result[0] + min_a_mm) / 2
+            self.log(f"  Calibration offset fix: A was {result[0]:.1f}mm, CSS={min_a_mm:.1f}mm, using mid={mid_a:.1f}mm (spacing={avg_spacing:.1f}mm)")
+            result = [mid_a + i * avg_spacing for i in range(4)]
 
         self.log(f"  Calibrated bubble X: {[f'{x:.1f}' for x in result]}mm (from {len(all_offsets)//4} cols)")
         return result
@@ -2813,6 +2815,28 @@ class HybridOMR:
                 self.log(f"  Q{q_num}: → {darkest_letter} (score={score:.1f}, {fill_str})")
             else:
                 self.log(f"  Q{q_num}: empty (score={score:.1f}, darkest={darkest_val:.1f}%)")
+
+        # Post-filter: detect systematic false positives (same letter in >50% of a column)
+        if self.TOTAL_QUESTIONS:
+            total = self.TOTAL_QUESTIONS
+            n_c = 4 if total > 75 else (3 if total > 44 else 2)
+            rpc = (total + n_c - 1) // n_c
+            for col in range(n_c):
+                col_start = col * rpc + 1
+                col_end = min(col_start + rpc, total + 1)
+                col_answers = {q: detected_answers[str(q)] for q in range(col_start, col_end) if str(q) in detected_answers}
+                if len(col_answers) < 4:
+                    continue
+                # Count most common letter in this column
+                from collections import Counter
+                letter_counts = Counter(col_answers.values())
+                most_common_letter, most_common_count = letter_counts.most_common(1)[0]
+                # If one letter is >50% of detected in this column AND >4 instances → systematic noise
+                if most_common_count > len(col_answers) * 0.50 and most_common_count >= 4:
+                    self.log(f"  ⚠️ Systematic false positive: col{col+1} has {most_common_count}x '{most_common_letter}' in {len(col_answers)} detected — removing")
+                    for q, ans in list(col_answers.items()):
+                        if ans == most_common_letter:
+                            del detected_answers[str(q)]
 
         return detected_answers, invalid_answers
 
