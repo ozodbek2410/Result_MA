@@ -2738,13 +2738,28 @@ class HybridOMR:
 
         return False, darkness_pct
 
-    def _detect_fills(self, grid, enhanced, bubble_w, w_proc, h_proc):
-        """Detect filled answers in grid using relative scoring."""
+    def _detect_fills(self, grid, enhanced, bubble_w, w_proc, h_proc, color_img=None):
+        """Detect filled answers in grid using relative scoring.
+        If color_img provided, uses blue-channel-aware detection for blue pen."""
         detected_answers = {}
         invalid_answers = {}
         SCORE_THRESHOLD = 8.0       # Min relative difference (darkest - baseline)
-        MIN_DARKEST_ABS = 33.0      # Min absolute darkness % for filled bubble (blue pen ~33-40%)
-        NOISE_CEILING = 28.0        # If all bubbles below this, row is definitely empty
+        MIN_DARKEST_ABS = 30.0      # Min absolute darkness % for filled bubble
+        NOISE_CEILING = 22.0        # If all bubbles below this, row is definitely empty
+
+        # Build blue-aware grayscale: max(standard_gray, inverted_blue_channel)
+        # Blue pen: high B channel → low inverted_B → but we want it DARK
+        # Formula: use min(R,G) as "ink channel" — blue pen has low R and G
+        if color_img is not None and len(color_img.shape) == 3:
+            b_ch, g_ch, r_ch = cv2.split(color_img)
+            # Ink detection: lower min(R,G) = more ink (works for blue AND black pen)
+            ink_gray = np.minimum(r_ch, g_ch)
+            clahe_ink = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            ink_enhanced = clahe_ink.apply(ink_gray)
+            # Use the DARKER of standard enhanced and ink-enhanced
+            fill_img = np.minimum(enhanced, ink_enhanced)
+        else:
+            fill_img = enhanced
 
         for q_num in sorted(grid.keys()):
             fills = {}
@@ -2752,13 +2767,14 @@ class HybridOMR:
                 if letter not in grid[q_num]:
                     continue
                 b = grid[q_num][letter]
-                r = max(4, int(bubble_w * 0.45))
+                # Tight ROI (30% of bubble width) — avoids border, more precise
+                r = max(3, int(bubble_w * 0.30))
                 y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
                 x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
                 if x2 - x1 < 2 or y2 - y1 < 2:
                     fills[letter] = 0.0
                     continue
-                mean_val = float(np.mean(enhanced[y1:y2, x1:x2]))
+                mean_val = float(np.mean(fill_img[y1:y2, x1:x2]))
                 fills[letter] = (255.0 - mean_val) / 255.0 * 100.0
 
             if len(fills) < 4:
@@ -2834,7 +2850,7 @@ class HybridOMR:
                             b['y'] += row_h_px
                             bx, by, bw, bh = b['bbox']
                             b['bbox'] = (bx, by + row_h_px, bw, bh)
-                    new_det, new_inv = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
+                    new_det, new_inv = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc, color_img=getattr(self, '_color_resized', None))
                     self.log(f"  After Y-shift: {len(new_det)} answers (was {total_detected})")
                     # Only accept shift if it actually improved detection
                     if len(new_det) > total_detected:
@@ -2875,6 +2891,7 @@ class HybridOMR:
 
         # 2. Preprocess: resize to 1000px + CLAHE
         resized, enhanced, scale = self._preprocess(warped)
+        self._color_resized = resized  # Store for blue-pen-aware fill detection
         h_proc, w_proc = enhanced.shape[:2]
 
         # 3. Detect bubbles (always — needed for Y calibration)
@@ -2910,7 +2927,7 @@ class HybridOMR:
         sample_q = next(iter(grid.values()))
         bubble_w = sample_q.get('A', {}).get('w', int(w_proc / 45))
 
-        detected_answers, invalid_answers = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
+        detected_answers, invalid_answers = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc, color_img=resized)
         self.log(f"  Initial: {len(detected_answers)} answers")
 
         # Header-shift fix (layer 2)
@@ -2933,7 +2950,7 @@ class HybridOMR:
                 grid_method = "detection"
                 sample_q2 = next(iter(grid.values()))
                 bubble_w = sample_q2.get('A', {}).get('w', int(w_proc / 45))
-                detected_answers, invalid_answers = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc)
+                detected_answers, invalid_answers = self._detect_fills(grid, enhanced, bubble_w, w_proc, h_proc, color_img=getattr(self, '_color_resized', None))
                 self.log(f"  Detection grid: {len(detected_answers)} answers")
                 detected_answers, invalid_answers, shifted = self._check_header_shift(
                     grid, detected_answers, invalid_answers, enhanced, bubble_w, w_proc, h_proc)
@@ -2951,7 +2968,7 @@ class HybridOMR:
             clahe_fill = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
             fill_enhanced = clahe_fill.apply(stretched)
             self.log(f"  Pass2: det_rate={final_rate:.0f}%, retrying with enhanced fill image")
-            det2, inv2 = self._detect_fills(grid, fill_enhanced, bubble_w, w_proc, h_proc)
+            det2, inv2 = self._detect_fills(grid, fill_enhanced, bubble_w, w_proc, h_proc, color_img=getattr(self, '_color_resized', None))
             det2, inv2, _ = self._check_header_shift(grid, det2, inv2, fill_enhanced, bubble_w, w_proc, h_proc)
             # Only use Pass2 if it finds significantly more (>50% more) answers
             # to avoid CLAHE-amplified false positives on empty bubbles
