@@ -772,6 +772,81 @@ A) А.С.Пушкин  B) Л.Н.Толстой  C) Ф.М.Достоевский"
   }
 
   /**
+   * Formula rasmini (PNG base64) LaTeX ga o'girish — Groq vision model orqali.
+   * Mammoth fallback da WMF formula rasmlarni LaTeX textga aylantirish uchun.
+   */
+  static async formulaToLatex(pngBase64: string): Promise<string | null> {
+    this.initializeKeys();
+    if (this.apiKeys.length === 0) return null;
+
+    const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+
+    for (let attempt = 0; attempt < Math.min(3, this.apiKeys.length); attempt++) {
+      const key = this.getBestAvailableKey();
+      if (!key) break;
+      const status = this.keyStatuses.get(key);
+      if (!status) continue;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        let response: Response;
+        try {
+          response = await fetch(this.GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${key}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: VISION_MODEL,
+              messages: [{
+                role: 'user',
+                content: [
+                  {
+                    type: 'image_url',
+                    image_url: { url: `data:image/png;base64,${pngBase64}` },
+                  },
+                  {
+                    type: 'text',
+                    text: 'This image contains a mathematical formula from a Word document. Extract it as LaTeX. Return ONLY the raw LaTeX expression — no delimiters like \\( \\), no explanation, no markdown. Examples: "x^2+y^2=r^2" or "\\frac{a}{b}" or "\\sqrt{x+1}".',
+                  },
+                ],
+              }],
+              max_tokens: 200,
+              temperature: 0.0,
+            }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        if (!response.ok) {
+          const isRateLimit = response.status === 429;
+          this.markKeyError(key, isRateLimit);
+          continue;
+        }
+
+        const data = await response.json() as Record<string, unknown>;
+        const choices = data.choices as Array<{ message: { content: string } }>;
+        const latex = choices?.[0]?.message?.content?.trim();
+
+        if (latex) {
+          this.markKeySuccess(key);
+          return latex;
+        }
+      } catch (error: unknown) {
+        const err = error as Error;
+        this.markKeyError(key, err.message.includes('429'));
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Get detailed statistics about all keys
    */
   static getDetailedStats(): any[] {
