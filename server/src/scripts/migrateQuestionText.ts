@@ -17,7 +17,7 @@ dotenv.config();
 function tiptapToText(json: unknown): string {
   if (!json) return '';
   if (typeof json === 'string') {
-    try { json = JSON.parse(json); } catch { return json; }
+    try { json = JSON.parse(json); } catch { return json as string; }
   }
   if (typeof json !== 'object') return String(json);
 
