@@ -239,15 +239,11 @@ export default function BlockTestsPage() {
     [blockTests, searchQuery]
   );
 
+  // Testlarni sinf/guruh bo'yicha guruhlash
   const groupedArray = useMemo(() => {
-    console.log('📊 Grouping block tests:', blockTests.length);
-    
-    const groupedTests = filteredTests.reduce((acc: any, test) => {
-      // Группируем по классу/группе и периоду (месяц+год)
+    const groupedTests = filteredTests.reduce((acc: Record<string, any>, test) => {
       const gId = test.groupId?._id || test.groupId || '';
       const key = `${test.classNumber}-${gId}-${test.periodMonth}-${test.periodYear}`;
-
-      console.log(`📝 Test: class=${test.classNumber}, group=${gId}, period=${test.periodMonth}/${test.periodYear}, key=${key}`);
 
       if (!acc[key]) {
         acc[key] = {
@@ -260,9 +256,7 @@ export default function BlockTestsPage() {
           tests: []
         };
       }
-      
       acc[key].tests.push(test);
-      
       return acc;
     }, {});
 
@@ -271,6 +265,27 @@ export default function BlockTestsPage() {
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
   }, [filteredTests]);
+
+  // Oy bo'yicha guruhlash: { "Mart 2026": [...], "Fevral 2026": [...] }
+  const monthGroups = useMemo(() => {
+    const monthNames = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+    const groups: Record<string, { label: string; sortKey: number; items: typeof groupedArray }> = {};
+
+    for (const group of groupedArray) {
+      const g = group as any;
+      const month = g.periodMonth || new Date(g.date).getMonth() + 1;
+      const year = g.periodYear || new Date(g.date).getFullYear();
+      const key = `${year}-${String(month).padStart(2, '0')}`;
+      const label = `${monthNames[month - 1]} ${year}`;
+
+      if (!groups[key]) {
+        groups[key] = { label, sortKey: year * 100 + month, items: [] };
+      }
+      groups[key].items.push(g);
+    }
+
+    return Object.values(groups).sort((a, b) => b.sortKey - a.sortKey);
+  }, [groupedArray]);
 
   const handleDeleteTest = useCallback(async (group: any) => {
     if (!confirm('Bu guruhdagi barcha testlarni o\'chirmoqchimisiz?')) return;
@@ -719,7 +734,7 @@ export default function BlockTestsPage() {
         <PageNavbar
           title="Blok testlar"
           description="Blok testlarni yaratish va boshqarish"
-          badge={`${groupedArray.length} ta`}
+          badge={`${groupedArray.length} ta test`}
           showSearch={blockTests.length > 0}
           searchValue={searchQuery}
           onSearchChange={setSearchQuery}
@@ -740,90 +755,101 @@ export default function BlockTestsPage() {
           gradient={true}
         />
 
-        {/* Block Tests Grid */}
-        {groupedArray.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {groupedArray.map((group: any, groupIndex: number) => {
-              const firstTest = group.tests[0];
-              const monthNames = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
-              const monthName = monthNames[(group.periodMonth || 1) - 1];
-              const d = new Date(group.date);
-              const formattedDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
-              const groupName = (group as any).groupId?.name
-                ? `${(group as any).groupId.classNumber}-${(group as any).groupId.letter} ${(group as any).groupId.name}`
-                : `${group.classNumber}-sinf`;
-              const totalQuestions = group.tests.reduce((s: number, t: any) => s + (t.subjectTests?.reduce((ss: number, st: any) => ss + (st.questions?.length || 0), 0) || 0), 0);
-
-              return (
-                <div
-                  key={`${group.classNumber}-${group.dateKey}`}
-                  style={{ animationDelay: `${groupIndex * 40}ms` }}
-                  className="group animate-slide-in"
-                  onMouseEnter={() => prefetchBlockTestData(firstTest._id)}
-                >
-                  <div
-                    className="bg-white border border-slate-200 rounded-xl hover:border-purple-300 hover:shadow-md transition-all duration-200 cursor-pointer p-4 relative"
-                    onClick={() => handleCardClick(firstTest)}
-                  >
-                    {/* Header: icon + title + actions */}
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <BookOpen className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-slate-900 text-sm truncate group-hover:text-purple-600 transition-colors">
-                          {groupName}
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">{monthName} blok testi</p>
-                      </div>
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/teacher/block-tests/import?editId=${firstTest._id}`);
-                          }}
-                          className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Tahrirlash"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-slate-400" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteTest(group);
-                          }}
-                          className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                          title="O'chirish"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Info badges */}
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-xs font-medium">
-                        {monthName} {group.periodYear}
-                      </span>
-                      {totalQuestions > 0 && (
-                        <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs font-medium">
-                          {totalQuestions} savol
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      <div className="flex items-center gap-1.5 text-slate-400">
-                        <Calendar className="w-3 h-3" />
-                        <span className="text-xs">{formattedDate}</span>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all" />
-                    </div>
+        {/* Block Tests — oy bo'yicha guruhlanadi */}
+        {monthGroups.length > 0 ? (
+          <div className="space-y-6">
+            {monthGroups.map((monthGroup) => (
+              <div key={monthGroup.label}>
+                {/* Oy sarlavhasi */}
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 rounded-lg">
+                    <Calendar className="w-4 h-4 text-purple-600" />
+                    <h2 className="text-sm font-bold text-purple-700">{monthGroup.label}</h2>
                   </div>
+                  <span className="text-xs text-slate-400">{monthGroup.items.length} ta test</span>
+                  <div className="flex-1 h-px bg-slate-100" />
                 </div>
-              );
-            })}
+
+                {/* Oy ichidagi testlar grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                  {monthGroup.items.map((group: any, groupIndex: number) => {
+                    const firstTest = group.tests[0];
+                    const monthNames = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+                    const monthName = monthNames[(group.periodMonth || 1) - 1];
+                    const d = new Date(group.date);
+                    const formattedDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+                    const groupName = group.groupId?.name
+                      ? `${group.groupId.classNumber}-${group.groupId.letter} ${group.groupId.name}`
+                      : `${group.classNumber}-sinf`;
+                    const totalQuestions = group.tests.reduce((s: number, t: any) => s + (t.subjectTests?.reduce((ss: number, st: any) => ss + (st.questions?.length || 0), 0) || 0), 0);
+
+                    return (
+                      <div
+                        key={`${group.classNumber}-${group.dateKey}`}
+                        style={{ animationDelay: `${groupIndex * 40}ms` }}
+                        className="group animate-slide-in"
+                        onMouseEnter={() => prefetchBlockTestData(firstTest._id)}
+                      >
+                        <div
+                          className="bg-white border border-slate-200 rounded-xl hover:border-purple-300 hover:shadow-md transition-all duration-200 cursor-pointer p-4 relative"
+                          onClick={() => handleCardClick(firstTest)}
+                        >
+                          <div className="flex items-start gap-3 mb-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                              <BookOpen className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-slate-900 text-sm truncate group-hover:text-purple-600 transition-colors">
+                                {groupName}
+                              </h3>
+                              <p className="text-xs text-slate-500 mt-0.5">{monthName} blok testi</p>
+                            </div>
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/teacher/block-tests/import?editId=${firstTest._id}`);
+                                }}
+                                className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Tahrirlash"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteTest(group);
+                                }}
+                                className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                                title="O'chirish"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 mb-3">
+                            {totalQuestions > 0 && (
+                              <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs font-medium">
+                                {totalQuestions} savol
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                            <div className="flex items-center gap-1.5 text-slate-400">
+                              <Calendar className="w-3 h-3" />
+                              <span className="text-xs">{formattedDate}</span>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all" />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="bg-gradient-to-br from-white via-purple-50/30 to-pink-50/30 border border-purple-100 rounded-2xl shadow-lg p-16 text-center">
