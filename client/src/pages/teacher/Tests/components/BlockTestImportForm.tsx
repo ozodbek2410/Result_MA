@@ -9,7 +9,7 @@ import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import MathText from '@/components/MathText';
-import { convertChemistryToTiptapJson, convertPhysicsToTiptapJson, convertLatexToTiptapJson } from '@/lib/latexUtils';
+import { convertChemistryToTiptapJson, convertPhysicsToTiptapJson, convertLatexToTiptapJson, convertTiptapJsonToText } from '@/lib/latexUtils';
 
 /**
  * V2 Pipeline: universal converter — server formulalarni \(...\) ichida qaytaradi.
@@ -181,11 +181,18 @@ export function BlockTestImportForm({
             const sid = typeof st.subjectId === 'object' ? st.subjectId?._id || '' : st.subjectId || '';
             const subName = typeof st.subjectId === 'object' ? (st.subjectId as { nameUzb?: string })?.nameUzb || '' : '';
             const pk = subName ? getParserKeyFromSubject(subName) : 'math';
-            const needsConvert = (t: string) => typeof t === 'string' && !t.startsWith('{') && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
+            // DB dan kelgan textni TipTap JSON ga convert qilish
+            // DB da 3 xil format bo'lishi mumkin: plain text, \(...\) text, TipTap JSON string
             const convertText = (t: string) => {
-              if (!t || !needsConvert(t)) return t;
+              if (!t) return t;
+              // Agar TipTap JSON string bo'lsa — to'g'ridan-to'g'ri parse qilish
+              if (typeof t === 'string' && t.startsWith('{')) {
+                try { return JSON.parse(t); } catch { /* not JSON */ }
+              }
+              // Plain text / LaTeX text → TipTap JSON
+              const hasFormula = t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\[');
+              if (!hasFormula) return t;
               if (pk === 'physics') return convertPhysicsToTiptapJson(t);
-              // Chemistry converter handles ^/_ patterns for all subjects
               if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
               return convertLatexToTiptapJson(t);
             };
@@ -393,9 +400,15 @@ export function BlockTestImportForm({
       let savedBlockTestId = editId || '';
       for (const tab of done) {
         const qs = tab.questions.map(q => {
-          const text = typeof q.text === 'object' && q.text !== null ? JSON.stringify(q.text) : q.text;
+          // TipTap JSON → plain text with \(...\) delimiters (DB da DOIM shu formatda)
+          const text = typeof q.text === 'object' && q.text !== null
+            ? convertTiptapJsonToText(q.text)
+            : q.text;
           const variants = (q.variants || []).map(v => ({
-            ...v, text: typeof v.text === 'object' && v.text !== null ? JSON.stringify(v.text) : v.text,
+            ...v,
+            text: typeof v.text === 'object' && v.text !== null
+              ? convertTiptapJsonToText(v.text)
+              : v.text,
           }));
           return { ...q, text, variants, imageUrl: q.imageUrl || q.image, image: undefined };
         });
