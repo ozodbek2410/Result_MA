@@ -10,10 +10,10 @@ import { TableRenderer } from './TableRenderer';
 
 const execFileAsync = promisify(execFile);
 
-// Check Python availability at module load
+// Check Python availability at module load — promise so WMF conversion can await it
 let pythonAvailable = false;
 let pythonPath = '';
-(async () => {
+const pythonReadyPromise = (async () => {
   for (const pyPath of ['python', 'py', 'python3']) {
     try {
       await execFileAsync(pyPath, ['--version'], { timeout: 5000 });
@@ -612,6 +612,7 @@ export abstract class BaseParser {
       // 2. PRIORITY 1: Python + Pillow (eng sifatli) — use cached python path
       const scriptPath = path.join(__dirname, '..', '..', '..', 'python', 'convert_emf_to_png.py');
 
+      await pythonReadyPromise;
       if (pythonAvailable && pythonPath) {
         try {
           const { stdout } = await execFileAsync(pythonPath, [

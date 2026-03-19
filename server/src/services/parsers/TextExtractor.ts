@@ -61,8 +61,43 @@ class ExtractionHelper extends BaseParser {
     if (!docEntry) throw new Error('word/document.xml not found');
     const xmlContent = zip.readAsText(docEntry);
 
+    // Rels fayldan rId → media filename mapping
+    const rIdToFile = new Map<string, string>();
+    const relsEntry = zip.getEntry('word/_rels/document.xml.rels');
+    if (relsEntry) {
+      const relsXml = zip.readAsText(relsEntry);
+      const relRegex = /<Relationship[^>]+>/g;
+      let rm;
+      while ((rm = relRegex.exec(relsXml)) !== null) {
+        const idM = rm[0].match(/Id="([^"]+)"/);
+        const targetM = rm[0].match(/Target="media\/([^"]+)"/);
+        if (idM && targetM) rIdToFile.set(idM[1], targetM[2]);
+      }
+    }
+
+    // v:imagedata rId → VIMG marker (atributlarni strip qilishdan OLDIN)
+    const vimgUrls = new Map<number, string>();
+    let vimgCounter = 0;
+    const xmlWithVimgMarkers = xmlContent.replace(
+      /<v:imagedata[^>]*r:id="([^"]+)"[^>]*\/?>/g,
+      (_, rId) => {
+        const filename = rIdToFile.get(rId);
+        if (!filename) return '';
+        const url = this.extractedImages.get(filename);
+        if (!url) {
+          // WMF conversion failed — use placeholder so variant text isn't blank
+          const idx = ++vimgCounter;
+          vimgUrls.set(idx, '');
+          return `<VIMG${idx}/>`;
+        }
+        const idx = ++vimgCounter;
+        vimgUrls.set(idx, url);
+        return `<VIMG${idx}/>`;
+      }
+    );
+
     // Formatting elementlarini olib tashlash (structural tegs qolsin)
-    const stripped = xmlContent
+    const stripped = xmlWithVimgMarkers
       .replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, '')
       .replace(/<w:pPr>[\s\S]*?<\/w:pPr>/g, '')
       .replace(/<m:ctrlPr>[\s\S]*?<\/m:ctrlPr>/g, '')
@@ -86,8 +121,8 @@ class ExtractionHelper extends BaseParser {
       const paraContent = paraMatch[1];
       let line = '';
 
-      // Har bir paragrafda text runlar va OMML formulalarni tartibda o'qish
-      const tokenRegex = /<w:t>([\s\S]*?)<\/w:t>|<m:oMath>([\s\S]*?)<\/m:oMath>/g;
+      // Har bir paragrafda text runlar, OMML formulalar va VIMG rasmlarni tartibda o'qish
+      const tokenRegex = /<w:t>([\s\S]*?)<\/w:t>|<m:oMath>([\s\S]*?)<\/m:oMath>|<VIMG(\d+)\/>/g;
       let token;
       while ((token = tokenRegex.exec(paraContent)) !== null) {
         if (token[1] !== undefined) {
@@ -96,6 +131,10 @@ class ExtractionHelper extends BaseParser {
           const marker = `[FORMULA_${++formulaCount}]`;
           ommlMap.set(marker, `<m:oMath>${token[2]}</m:oMath>`);
           line += marker;
+        } else if (token[3] !== undefined) {
+          // v:imagedata → PNG URL marker (or placeholder if conversion failed)
+          const url = vimgUrls.get(Number(token[3]));
+          line += url ? `___VIMG:${url}___` : '[rasm]';
         }
       }
 
