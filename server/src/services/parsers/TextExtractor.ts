@@ -75,29 +75,45 @@ class ExtractionHelper extends BaseParser {
       }
     }
 
-    // v:imagedata rId → VIMG marker (atributlarni strip qilishdan OLDIN)
-    const vimgUrls = new Map<number, string>();
+    // v:shape → o'lcham + imagedata → VIMG marker (atributlarni strip qilishdan OLDIN)
+    // Format: ___VIMG:URL:WxH___ (W,H pikselda, DOCX pt dan hisoblangan)
+    const vimgData = new Map<number, { url: string; widthPx: number; heightPx: number }>();
     let vimgCounter = 0;
+
     const xmlWithVimgMarkers = xmlContent.replace(
+      /<v:shape[^>]*style="([^"]*)"[^>]*>[\s\S]*?<v:imagedata[^>]*r:id="([^"]+)"[^/]*\/?>\s*<\/v:shape>/g,
+      (fullMatch, style, rId) => {
+        const filename = rIdToFile.get(rId);
+        if (!filename) return '';
+
+        // v:shape style dan o'lcham olish (pt → px, 1pt = 1.333px)
+        const wMatch = style.match(/width:([\d.]+)pt/);
+        const hMatch = style.match(/height:([\d.]+)pt/);
+        const widthPx = wMatch ? Math.round(parseFloat(wMatch[1]) * 1.333) : 0;
+        const heightPx = hMatch ? Math.round(parseFloat(hMatch[1]) * 1.333) : 0;
+
+        const url = this.extractedImages.get(filename) || '';
+        const idx = ++vimgCounter;
+        vimgData.set(idx, { url, widthPx, heightPx });
+        return `<VIMG${idx}/>`;
+      }
+    );
+
+    // Standalone v:imagedata (v:shape yo'q holat)
+    const xmlFinal = xmlWithVimgMarkers.replace(
       /<v:imagedata[^>]*r:id="([^"]+)"[^>]*\/?>/g,
       (_, rId) => {
         const filename = rIdToFile.get(rId);
         if (!filename) return '';
-        const url = this.extractedImages.get(filename);
-        if (!url) {
-          // WMF conversion failed — use placeholder so variant text isn't blank
-          const idx = ++vimgCounter;
-          vimgUrls.set(idx, '');
-          return `<VIMG${idx}/>`;
-        }
+        const url = this.extractedImages.get(filename) || '';
         const idx = ++vimgCounter;
-        vimgUrls.set(idx, url);
+        vimgData.set(idx, { url, widthPx: 0, heightPx: 0 });
         return `<VIMG${idx}/>`;
       }
     );
 
     // Formatting elementlarini olib tashlash (structural tegs qolsin)
-    const stripped = xmlWithVimgMarkers
+    const stripped = xmlFinal
       .replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, '')
       .replace(/<w:pPr>[\s\S]*?<\/w:pPr>/g, '')
       .replace(/<m:ctrlPr>[\s\S]*?<\/m:ctrlPr>/g, '')
@@ -132,9 +148,14 @@ class ExtractionHelper extends BaseParser {
           ommlMap.set(marker, `<m:oMath>${token[2]}</m:oMath>`);
           line += marker;
         } else if (token[3] !== undefined) {
-          // v:imagedata → PNG URL marker (or placeholder if conversion failed)
-          const url = vimgUrls.get(Number(token[3]));
-          line += url ? `___VIMG:${url}___` : '[rasm]';
+          const data = vimgData.get(Number(token[3]));
+          if (data && data.url) {
+            // ___VIMG:URL:WxH___ — URL + DOCX original o'lcham
+            const dim = data.widthPx && data.heightPx ? `:${data.widthPx}x${data.heightPx}` : '';
+            line += `___VIMG:${data.url}${dim}___`;
+          } else {
+            line += '[rasm]';
+          }
         }
       }
 
@@ -191,38 +212,6 @@ class ExtractionHelper extends BaseParser {
     }
     // Konvertlanmagan markerlarni o'chirish
     text = text.replace(/\[FORMULA_\d+\]/g, '');
-
-    // VIMG rasmlarni Groq Vision orqali LaTeX ga o'girish
-    const vimgMatches = Array.from(text.matchAll(/___VIMG:([^_]+)___/g));
-    if (vimgMatches.length > 0) {
-      console.log(`[TextExtractor] VIMG→LaTeX: ${vimgMatches.length} variant images...`);
-      const uploadDir = path.join(__dirname, '..', '..', '..', 'uploads');
-
-      for (let i = 0; i < vimgMatches.length; i += 5) {
-        const batch = vimgMatches.slice(i, i + 5);
-        const results = await Promise.allSettled(batch.map(async (match) => {
-          const url = match[1]; // e.g. /uploads/test-images/uuid.png
-          const filePath2 = path.join(uploadDir, url.replace('/uploads/', ''));
-          try {
-            const buf = await fs.readFile(filePath2);
-            const base64 = buf.toString('base64');
-            const latex = await GroqService.formulaToLatex(base64);
-            if (latex) return { full: match[0], latex };
-          } catch { /* file not found */ }
-          return null;
-        }));
-
-        for (const r of results) {
-          if (r.status === 'fulfilled' && r.value) {
-            text = text.replace(r.value.full, `\\(${r.value.latex}\\)`);
-          }
-        }
-      }
-
-      // Qolgan VIMG markerlarni [rasm] ga o'zgartirish
-      text = text.replace(/___VIMG:[^_]+___/g, '[rasm]');
-      console.log(`[TextExtractor] VIMG→LaTeX done`);
-    }
 
     return text;
   }

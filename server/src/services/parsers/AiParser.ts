@@ -65,7 +65,7 @@ IMPORTANT RULES:
 - Each variant must have exactly one letter: A, B, C, or D
 - If less than 4 variants exist, include only what's in the text
 - If no variants exist, set variants to empty object {}
-- Text markers like ___IMAGE_N___ or ___TABLE_N___ — keep them in the text as-is
+- Text markers like ___IMAGE_N___, ___TABLE_N___, ___VIMG:...:WxH___ — keep them in the text as-is, do NOT remove or modify
 - Return ONLY valid JSON, no additional text before or after`;
 
 /**

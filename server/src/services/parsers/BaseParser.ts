@@ -662,42 +662,49 @@ export abstract class BaseParser {
       }
       
       // 4. FALLBACK 2: ImageMagick direct (PNG — browser compatible)
+      // -density MUST be BEFORE input file for vector formats (WMF/EMF/SVG)
       if (!converted) {
         const magickPaths = ['magick', 'convert', '/usr/bin/convert', '/usr/local/bin/magick'];
         for (const magickPath of magickPaths) {
           try {
             await execFileAsync(magickPath, [
-              tempEmfPath, '-density', '300', '-background', 'white',
-              '-alpha', 'remove', '-flatten', '-resize', '600>', pngPath
-            ], { timeout: 10000 });
-            if (fsSync.existsSync(pngPath)) {
+              '-density', '300', tempEmfPath,
+              '-background', 'white', '-alpha', 'remove', '-flatten',
+              '-trim', '+repage', '-bordercolor', 'white', '-border', '8x8',
+              '-resize', '800>', pngPath
+            ], { timeout: 15000 });
+            if (fsSync.existsSync(pngPath) && fsSync.statSync(pngPath).size > 200) {
               converted = true;
-              console.log(`✅ [PARSER] Converted WMF to PNG using ImageMagick`);
+              console.log(`✅ [PARSER] Converted WMF to PNG using ImageMagick (600 DPI)`);
               break;
             }
           } catch { /* try next */ }
         }
       }
 
-      // 5. FALLBACK 3: wmf2svg → ImageMagick PNG (SVG to'g'ridan-to'g'ri brauzerda yaxshi ko'rinmaydi)
+      // 5. FALLBACK 3: wmf2svg → ImageMagick PNG
       if (!converted) {
         const svgName = `${uuidv4()}.svg`;
         const svgPath = path.join(uploadDir, svgName);
         try {
           await execFileAsync('wmf2svg', [tempEmfPath, '-o', svgPath], { timeout: 10000 });
           if (fsSync.existsSync(svgPath) && fsSync.statSync(svgPath).size > 100) {
-            // SVG → PNG via ImageMagick (SVG direct render fails for math formulas)
-            try {
-              await execFileAsync('convert', [
-                svgPath, '-density', '300', '-background', 'white',
-                '-alpha', 'remove', '-flatten', pngPath
-              ], { timeout: 10000 });
-              if (fsSync.existsSync(pngPath)) {
-                converted = true;
-                console.log(`✅ [PARSER] Converted WMF→SVG→PNG via wmf2svg+ImageMagick`);
-              }
-            } catch { /* ignore */ }
-            // Cleanup SVG
+            const magickPaths = ['magick', 'convert', '/usr/bin/convert', '/usr/local/bin/magick'];
+            for (const mp of magickPaths) {
+              try {
+                await execFileAsync(mp, [
+                  '-density', '300', svgPath,
+                  '-background', 'white', '-alpha', 'remove', '-flatten',
+                  '-trim', '+repage', '-bordercolor', 'white', '-border', '8x8',
+                  '-resize', '800>', pngPath
+                ], { timeout: 15000 });
+                if (fsSync.existsSync(pngPath) && fsSync.statSync(pngPath).size > 200) {
+                  converted = true;
+                  console.log(`✅ [PARSER] Converted WMF→SVG→PNG via wmf2svg+ImageMagick (600 DPI)`);
+                  break;
+                }
+              } catch { /* try next */ }
+            }
             try { await fs.unlink(svgPath); } catch { /* ignore */ }
           }
         } catch { /* fallback below */ }

@@ -80,6 +80,24 @@ export class ImportOrchestrator {
     // 4. OLE formula rasmlarni almashtirish
     questions = this.replaceFormulaImages(questions, content);
 
+    // 4b. Variant WMF rasmlarini (___VIMG:URL:WxH___) imageUrl + o'lcham ga o'tkazish
+    questions = questions.map(q => ({
+      ...q,
+      variants: q.variants.map(v => {
+        // Format: ___VIMG:/uploads/test-images/uuid.png:85x49___ yoki ___VIMG:/uploads/test-images/uuid.png___
+        const imgMatch = v.text.match(/___VIMG:([^:_]+(?:\.[a-z]+))(?::(\d+)x(\d+))?___/);
+        if (imgMatch) {
+          const result: Record<string, unknown> = { ...v, text: '', imageUrl: imgMatch[1] };
+          if (imgMatch[2] && imgMatch[3]) {
+            result.imageWidth = parseInt(imgMatch[2]);
+            result.imageHeight = parseInt(imgMatch[3]);
+          }
+          return result;
+        }
+        return v;
+      }),
+    }));
+
     // 5. Qolgan rasmlarni attach qilish (AI topmagan rasmlar)
     questions = this.attachRemainingImages(questions, content);
 
