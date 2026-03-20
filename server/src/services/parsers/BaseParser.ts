@@ -668,10 +668,10 @@ export abstract class BaseParser {
         for (const magickPath of magickPaths) {
           try {
             await execFileAsync(magickPath, [
-              '-density', '300', tempEmfPath,
+              '-density', '600', tempEmfPath,
               '-background', 'white', '-alpha', 'remove', '-flatten',
-              '-trim', '+repage', '-bordercolor', 'white', '-border', '8x8',
-              '-resize', '800>', pngPath
+              '-trim', '+repage', '-bordercolor', 'white', '-border', '12x12',
+              pngPath
             ], { timeout: 15000 });
             if (fsSync.existsSync(pngPath) && fsSync.statSync(pngPath).size > 200) {
               converted = true;
@@ -693,10 +693,10 @@ export abstract class BaseParser {
             for (const mp of magickPaths) {
               try {
                 await execFileAsync(mp, [
-                  '-density', '300', svgPath,
+                  '-density', '600', svgPath,
                   '-background', 'white', '-alpha', 'remove', '-flatten',
-                  '-trim', '+repage', '-bordercolor', 'white', '-border', '8x8',
-                  '-resize', '800>', pngPath
+                  '-trim', '+repage', '-bordercolor', 'white', '-border', '12x12',
+                  pngPath
                 ], { timeout: 15000 });
                 if (fsSync.existsSync(pngPath) && fsSync.statSync(pngPath).size > 200) {
                   converted = true;
