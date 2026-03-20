@@ -87,12 +87,15 @@ export class ImportOrchestrator {
         // Format: ___VIMG:/uploads/test-images/uuid.png:85x49___ yoki ___VIMG:/uploads/test-images/uuid.png___
         const imgMatch = v.text.match(/___VIMG:([^:_]+(?:\.[a-z]+))(?::(\d+)x(\d+))?___/);
         if (imgMatch) {
-          const result: Record<string, unknown> = { ...v, text: '', imageUrl: imgMatch[1] };
-          if (imgMatch[2] && imgMatch[3]) {
-            result.imageWidth = parseInt(imgMatch[2]);
-            result.imageHeight = parseInt(imgMatch[3]);
-          }
-          return result;
+          return {
+            ...v,
+            text: '',
+            imageUrl: imgMatch[1],
+            ...(imgMatch[2] && imgMatch[3] ? {
+              imageWidth: parseInt(imgMatch[2]),
+              imageHeight: parseInt(imgMatch[3]),
+            } : {}),
+          };
         }
         return v;
       }),
