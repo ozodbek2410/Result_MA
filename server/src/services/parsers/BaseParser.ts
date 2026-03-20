@@ -661,38 +661,7 @@ export abstract class BaseParser {
         }
       }
       
-      // 4. FALLBACK 2: wmf2svg — save as SVG directly (vector, best quality)
-      if (!converted) {
-        const svgName = `${uuidv4()}.svg`;
-        const svgPath = path.join(uploadDir, svgName);
-        try {
-          await execFileAsync('wmf2svg', [tempEmfPath, '-o', svgPath], { timeout: 10000 });
-          if (fsSync.existsSync(svgPath) && fsSync.statSync(svgPath).size > 100) {
-            // SVG saved directly — no PNG conversion needed, browsers render SVG natively
-            try { await fs.unlink(tempEmfPath); } catch { /* ignore */ }
-            // Update dimensions from SVG viewBox
-            try {
-              const svgContent = await fs.readFile(svgPath, 'utf-8');
-              const vbMatch = svgContent.match(/viewBox="[^"]*\s([\d.]+)\s([\d.]+)"/);
-              const wMatch = svgContent.match(/width="([\d.]+)"/);
-              const hMatch = svgContent.match(/height="([\d.]+)"/);
-              if (wMatch && hMatch) {
-                const numMatch = originalName.match(/image(\d+)/);
-                if (numMatch && !this.imageDimensions.has(numMatch[1])) {
-                  const w = Math.round(parseFloat(wMatch[1]));
-                  const h = Math.round(parseFloat(hMatch[1]));
-                  if (w > 0 && h > 0) {
-                    this.imageDimensions.set(numMatch[1], { widthPx: w, heightPx: h });
-                  }
-                }
-              }
-            } catch { /* ignore */ }
-            return `/uploads/test-images/${svgName}`;
-          }
-        } catch { /* fallback below */ }
-      }
-
-      // 5. FALLBACK 3: ImageMagick direct (oxirgi imkoniyat)
+      // 4. FALLBACK 2: ImageMagick direct (PNG — browser compatible)
       if (!converted) {
         const magickPaths = ['magick', 'convert', '/usr/bin/convert', '/usr/local/bin/magick'];
         for (const magickPath of magickPaths) {
@@ -703,10 +672,35 @@ export abstract class BaseParser {
             ], { timeout: 10000 });
             if (fsSync.existsSync(pngPath)) {
               converted = true;
+              console.log(`✅ [PARSER] Converted WMF to PNG using ImageMagick`);
               break;
             }
           } catch { /* try next */ }
         }
+      }
+
+      // 5. FALLBACK 3: wmf2svg → ImageMagick PNG (SVG to'g'ridan-to'g'ri brauzerda yaxshi ko'rinmaydi)
+      if (!converted) {
+        const svgName = `${uuidv4()}.svg`;
+        const svgPath = path.join(uploadDir, svgName);
+        try {
+          await execFileAsync('wmf2svg', [tempEmfPath, '-o', svgPath], { timeout: 10000 });
+          if (fsSync.existsSync(svgPath) && fsSync.statSync(svgPath).size > 100) {
+            // SVG → PNG via ImageMagick (SVG direct render fails for math formulas)
+            try {
+              await execFileAsync('convert', [
+                svgPath, '-density', '300', '-background', 'white',
+                '-alpha', 'remove', '-flatten', pngPath
+              ], { timeout: 10000 });
+              if (fsSync.existsSync(pngPath)) {
+                converted = true;
+                console.log(`✅ [PARSER] Converted WMF→SVG→PNG via wmf2svg+ImageMagick`);
+              }
+            } catch { /* ignore */ }
+            // Cleanup SVG
+            try { await fs.unlink(svgPath); } catch { /* ignore */ }
+          }
+        } catch { /* fallback below */ }
       }
       
       // 5. Vaqtinchalik faylni o'chirish
