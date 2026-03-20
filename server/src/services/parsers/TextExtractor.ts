@@ -192,6 +192,38 @@ class ExtractionHelper extends BaseParser {
     // Konvertlanmagan markerlarni o'chirish
     text = text.replace(/\[FORMULA_\d+\]/g, '');
 
+    // VIMG rasmlarni Groq Vision orqali LaTeX ga o'girish
+    const vimgMatches = Array.from(text.matchAll(/___VIMG:([^_]+)___/g));
+    if (vimgMatches.length > 0) {
+      console.log(`[TextExtractor] VIMG→LaTeX: ${vimgMatches.length} variant images...`);
+      const uploadDir = path.join(__dirname, '..', '..', '..', 'uploads');
+
+      for (let i = 0; i < vimgMatches.length; i += 5) {
+        const batch = vimgMatches.slice(i, i + 5);
+        const results = await Promise.allSettled(batch.map(async (match) => {
+          const url = match[1]; // e.g. /uploads/test-images/uuid.png
+          const filePath2 = path.join(uploadDir, url.replace('/uploads/', ''));
+          try {
+            const buf = await fs.readFile(filePath2);
+            const base64 = buf.toString('base64');
+            const latex = await GroqService.formulaToLatex(base64);
+            if (latex) return { full: match[0], latex };
+          } catch { /* file not found */ }
+          return null;
+        }));
+
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value) {
+            text = text.replace(r.value.full, `\\(${r.value.latex}\\)`);
+          }
+        }
+      }
+
+      // Qolgan VIMG markerlarni [rasm] ga o'zgartirish
+      text = text.replace(/___VIMG:[^_]+___/g, '[rasm]');
+      console.log(`[TextExtractor] VIMG→LaTeX done`);
+    }
+
     return text;
   }
 
