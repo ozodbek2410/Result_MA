@@ -86,11 +86,11 @@ class ExtractionHelper extends BaseParser {
         const filename = rIdToFile.get(rId);
         if (!filename) return '';
 
-        // v:shape style dan o'lcham olish (pt → px, 1pt = 1.333px)
+        // v:shape style dan o'lcham olish (pt → px, 1pt = 2px — Word ~150% zoom ga teng)
         const wMatch = style.match(/width:([\d.]+)pt/);
         const hMatch = style.match(/height:([\d.]+)pt/);
-        const widthPx = wMatch ? Math.round(parseFloat(wMatch[1]) * 1.333) : 0;
-        const heightPx = hMatch ? Math.round(parseFloat(hMatch[1]) * 1.333) : 0;
+        const widthPx = wMatch ? Math.round(parseFloat(wMatch[1]) * 2) : 0;
+        const heightPx = hMatch ? Math.round(parseFloat(hMatch[1]) * 2) : 0;
 
         const url = this.extractedImages.get(filename) || '';
         const idx = ++vimgCounter;
