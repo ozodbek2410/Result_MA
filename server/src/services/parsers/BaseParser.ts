@@ -629,16 +629,16 @@ export abstract class BaseParser {
         }
       }
       
-      // 3. FALLBACK 1: LibreOffice (yaxshi sifat)
+      // 3. FALLBACK 1: LibreOffice (eng sifatli — superscriptlar to'g'ri chiqadi)
       if (!converted) {
         const libreofficePaths = [
-          'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-          'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
           '/usr/bin/libreoffice',
           '/usr/local/bin/libreoffice',
+          'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+          'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
           'soffice',
         ];
-        
+
         for (const libreOfficePath of libreofficePaths) {
           try {
             await execFileAsync(libreOfficePath, [
@@ -646,16 +646,27 @@ export abstract class BaseParser {
               '--convert-to', 'png',
               '--outdir', uploadDir,
               tempEmfPath
-            ]);
-            
+            ], { timeout: 30000 });
+
             const tempPngPath = tempEmfPath.replace(/\.(emf|wmf)$/i, '.png');
             if (fsSync.existsSync(tempPngPath)) {
-              await fs.rename(tempPngPath, pngPath);
+              // LibreOffice full-page PNG chiqaradi — trim qilish kerak
+              try {
+                await execFileAsync('convert', [
+                  tempPngPath, '-trim', '+repage',
+                  '-bordercolor', 'white', '-border', '8x8',
+                  pngPath
+                ], { timeout: 10000 });
+                await fs.unlink(tempPngPath).catch(() => {});
+              } catch {
+                // trim xato — rename bilan davom et
+                await fs.rename(tempPngPath, pngPath);
+              }
               converted = true;
-              console.log(`✅ [PARSER] Converted EMF to PNG using LibreOffice`);
+              console.log(`✅ [PARSER] Converted WMF to PNG using LibreOffice`);
               break;
             }
-          } catch (err) {
+          } catch {
             // Try next path
           }
         }
