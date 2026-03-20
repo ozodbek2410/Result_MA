@@ -499,7 +499,7 @@ export class SmartUniversalParser extends BaseParser {
 
     for (const q of questions) {
       for (const v of q.variants) {
-        if ((!v.text || v.text === '[rasm]') && v.imageUrl && !v.imageUrl.endsWith('.svg')) {
+        if ((!v.text || v.text === '[rasm]') && v.imageUrl && !v.imageUrl.endsWith('.svg') && !v.imageWidth) {
           // Only OCR raster images (PNG/JPG) — SVG is already vector, no need for OCR
           const urlPath = v.imageUrl;
           const candidates = [
