@@ -1265,7 +1265,9 @@ function convertQuestionForExport(q: any, questionNumber: number, _subjectName: 
   const variantsArr = q.variants || q.options || [];
   const options = variantsArr.map((v: any) => {
     if (typeof v === 'string') return convertVariantText(v);
-    return convertVariantText(v.text);
+    const text = convertVariantText(v.text);
+    if (v.imageUrl) return { text, imageUrl: v.imageUrl, imageWidth: v.imageWidth, imageHeight: v.imageHeight };
+    return text;
   });
 
   // Deduplicate: collect unique image URLs only

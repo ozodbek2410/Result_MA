@@ -18,7 +18,7 @@ interface Question {
   contextImage?: string;
   contextImageWidth?: number;
   contextImageHeight?: number;
-  options: string[];
+  options: (string | { text: string; imageUrl?: string; imageWidth?: number; imageHeight?: number })[];
   correctAnswer?: string;
   imageUrl?: string;
   media?: { type: string; url: string; position: string }[];
@@ -444,11 +444,14 @@ export class PDFGeneratorService {
             <div class="questions">
               ${student.questions.map(q => {
                 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim();
-                const cleanOptions = q.options.map(o => stripHtml(o));
+                const getOptText = (o: typeof q.options[0]) => typeof o === 'string' ? o : o.text;
+                const getOptImg = (o: typeof q.options[0]) => typeof o === 'string' ? undefined : o.imageUrl;
+                const cleanOptions = q.options.map(o => stripHtml(getOptText(o)));
+                const hasVariantImages = q.options.some(o => getOptImg(o));
                 const totalLength = cleanOptions.reduce((sum, opt) => sum + opt.length, 0);
                 const maxSingle = Math.max(...cleanOptions.map(o => o.length), 0);
-                // inline: qisqa bo'lsa 1 qatorda, aks holda vertikal
-                const optionsClass = totalLength < 120 && maxSingle < 50 ? 'options inline' : 'options';
+                // inline: qisqa bo'lsa 1 qatorda, aks holda vertikal (variant rasmlar bo'lsa har doim vertikal)
+                const optionsClass = !hasVariantImages && totalLength < 120 && maxSingle < 50 ? 'options inline' : 'options';
                 const cleanText = stripHtml(q.text);
                 const isLong = cleanText.length + totalLength > 600;
 
@@ -460,12 +463,17 @@ export class PDFGeneratorService {
                   </div>
                   ${this.renderQuestionImages(q)}
                   <div class="${optionsClass}">
-                    ${q.options.map((opt, idx) => `
+                    ${q.options.map((opt, idx) => {
+                      const text = getOptText(opt);
+                      const imgUrl = getOptImg(opt);
+                      const imgHtml = imgUrl ? `<img src="${this.resolveImageForPdf(imgUrl)}" style="max-height:40px;max-width:200px;vertical-align:middle;" />` : '';
+                      const textHtml = text && text !== '[rasm]' ? this.renderMath(text) : '';
+                      return `
                       <div class="option">
                         <span class="option-letter">${String.fromCharCode(65 + idx)})</span>
-                        <span class="option-text">${this.renderMath(opt)}</span>
-                      </div>
-                    `).join('')}
+                        <span class="option-text">${textHtml || imgHtml ? `${textHtml}${imgHtml}` : this.renderMath(text)}</span>
+                      </div>`;
+                    }).join('')}
                   </div>
                 </div>
               `}).join('')}
@@ -970,9 +978,12 @@ export class PDFGeneratorService {
       
       <div class="questions">
         ${testData.questions.map(q => {
-          const totalLength = q.options.reduce((sum, opt) => sum + opt.length, 0);
-          const optionsClass = totalLength < 80 ? 'options inline' : 'options';
+          const getOptText = (o: typeof q.options[0]) => typeof o === 'string' ? o : o.text;
+          const getOptImg = (o: typeof q.options[0]) => typeof o === 'string' ? undefined : o.imageUrl;
           const stripH = (s: string) => s.replace(/<[^>]*>/g, '').trim();
+          const totalLength = q.options.reduce((sum, opt) => sum + stripH(getOptText(opt)).length, 0);
+          const hasVariantImages = q.options.some(o => getOptImg(o));
+          const optionsClass = !hasVariantImages && totalLength < 80 ? 'options inline' : 'options';
           const isLong = stripH(q.text).length + totalLength > 600;
 
           return `
@@ -983,12 +994,17 @@ export class PDFGeneratorService {
             </div>
             ${this.renderQuestionImages(q)}
             <div class="${optionsClass}">
-              ${q.options.map((opt, idx) => `
+              ${q.options.map((opt, idx) => {
+                const text = getOptText(opt);
+                const imgUrl = getOptImg(opt);
+                const imgHtml = imgUrl ? `<img src="${this.resolveImageForPdf(imgUrl)}" style="max-height:40px;max-width:200px;vertical-align:middle;" />` : '';
+                const textHtml = text && text !== '[rasm]' ? this.renderMath(text) : '';
+                return `
                 <div class="option">
                   <span class="option-letter">${String.fromCharCode(65 + idx)})</span>
-                  <span class="option-text">${this.renderMath(opt)}</span>
-                </div>
-              `).join('')}
+                  <span class="option-text">${textHtml || imgHtml ? `${textHtml}${imgHtml}` : this.renderMath(text)}</span>
+                </div>`;
+              }).join('')}
             </div>
           </div>
         `}).join('')}
