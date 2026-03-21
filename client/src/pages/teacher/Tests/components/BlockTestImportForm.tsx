@@ -400,6 +400,7 @@ export function BlockTestImportForm({
 
     setSaving(true); setError('');
     try {
+      const isRegularTest = testType === 'regular';
       let savedBlockTestId = editId || '';
       for (const tab of done) {
         const qs = tab.questions.map(q => {
@@ -415,28 +416,46 @@ export function BlockTestImportForm({
           }));
           return { ...q, text, variants, imageUrl: q.imageUrl || q.image, image: undefined };
         });
-        const res = await api.post('/block-tests/import/confirm', {
-          questions: qs, classNumber: parseInt(classNumber),
-          subjectId: tab.subjectId, groupLetter: tab.groupLetter || null,
-          periodMonth, periodYear, groupId: selectedGroupId,
-          blockTestId: savedBlockTestId || undefined,
-        });
-        if (res.data?.blockTest?._id) savedBlockTestId = res.data.blockTest._id;
-      }
-      // Save subject order
-      if (savedBlockTestId && done.length > 1) {
-        try {
-          await api.put(`/block-tests/${savedBlockTestId}/reorder-subjects`, {
-            order: done.map(t => ({ subjectId: t.subjectId, groupLetter: t.groupLetter || null })),
+
+        if (isRegularTest) {
+          // Regular test — /tests/import/confirm
+          const subName = subjects.find(s => s._id === tab.subjectId)?.nameUzb || 'Test';
+          const selectedGroup = groups.find(g => g._id === selectedGroupId);
+          const groupLabel = selectedGroup ? `${selectedGroup.classNumber}-${selectedGroup.letter}` : classNumber;
+          await api.post('/tests/import/confirm', {
+            questions: qs, classNumber: parseInt(classNumber),
+            subjectId: tab.subjectId, groupId: selectedGroupId,
+            testName: `${subName} — ${groupLabel}`,
           });
-        } catch { /* optional */ }
+        } else {
+          // Block test — /block-tests/import/confirm
+          const res = await api.post('/block-tests/import/confirm', {
+            questions: qs, classNumber: parseInt(classNumber),
+            subjectId: tab.subjectId, groupLetter: tab.groupLetter || null,
+            periodMonth, periodYear, groupId: selectedGroupId,
+            blockTestId: savedBlockTestId || undefined,
+          });
+          if (res.data?.blockTest?._id) savedBlockTestId = res.data.blockTest._id;
+        }
       }
-      if (shuffleAfterImport && savedBlockTestId) {
-        try {
-          const { data: sts } = await api.get('/students', { params: { groupId: selectedGroupId } });
-          if (sts.length > 0) await api.post(`/block-tests/${savedBlockTestId}/generate-variants`, { studentIds: sts.map((s: { _id: string }) => s._id) });
-        } catch { /* optional */ }
+
+      if (!isRegularTest) {
+        // Save subject order
+        if (savedBlockTestId && done.length > 1) {
+          try {
+            await api.put(`/block-tests/${savedBlockTestId}/reorder-subjects`, {
+              order: done.map(t => ({ subjectId: t.subjectId, groupLetter: t.groupLetter || null })),
+            });
+          } catch { /* optional */ }
+        }
+        if (shuffleAfterImport && savedBlockTestId) {
+          try {
+            const { data: sts } = await api.get('/students', { params: { groupId: selectedGroupId } });
+            if (sts.length > 0) await api.post(`/block-tests/${savedBlockTestId}/generate-variants`, { studentIds: sts.map((s: { _id: string }) => s._id) });
+          } catch { /* optional */ }
+        }
       }
+
       const selectedGroup = groups.find(g => g._id === selectedGroupId);
       const groupLabel = selectedGroup ? `${selectedGroup.classNumber}-${selectedGroup.letter}` : `${classNumber}-sinf`;
       success(`${groupLabel} guruhga ${done.length} ta fan muvaffaqiyatli saqlandi`);
