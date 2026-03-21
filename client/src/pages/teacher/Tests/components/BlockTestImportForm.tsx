@@ -47,6 +47,7 @@ interface BlockTestImportFormProps {
   onCancel?: () => void;
   isProcessing?: boolean;
   standalone?: boolean;
+  testType?: 'regular' | 'block';
 }
 
 function getParserKeyFromSubject(name: string): string {
@@ -102,7 +103,9 @@ const months = [
 
 export function BlockTestImportForm({
   standalone = true, parsedQuestions, onConfirm, onCancel, isProcessing: externalProcessing,
+  testType = 'block',
 }: BlockTestImportFormProps) {
+  const backPath = testType === 'regular' ? '/teacher/tests' : '/teacher/block-tests';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('editId');
@@ -437,7 +440,7 @@ export function BlockTestImportForm({
       const selectedGroup = groups.find(g => g._id === selectedGroupId);
       const groupLabel = selectedGroup ? `${selectedGroup.classNumber}-${selectedGroup.letter}` : `${classNumber}-sinf`;
       success(`${groupLabel} guruhga ${done.length} ta fan muvaffaqiyatli saqlandi`);
-      navigate('/teacher/block-tests', { state: { refresh: true } });
+      navigate(backPath, { state: { refresh: true } });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Saqlashda xatolik';
       setError(msg);
@@ -697,7 +700,7 @@ export function BlockTestImportForm({
                 Saqlash ({tabs.filter(t => t.status === 'done').length} ta fan, {totalQ} ta savol)
               </Button>
             )}
-            <Button variant="outline" onClick={() => navigate('/teacher/block-tests')} disabled={busy}>
+            <Button variant="outline" onClick={() => navigate(backPath)} disabled={busy}>
               Bekor qilish
             </Button>
             {hasDone && (

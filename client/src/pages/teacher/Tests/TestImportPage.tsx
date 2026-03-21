@@ -37,7 +37,7 @@ export default function TestImportPage({ defaultType = 'regular' }: TestImportPa
       {/* Content — both test types use the same multi-subject import form */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
-          <BlockTestImportForm standalone={true} />
+          <BlockTestImportForm standalone={true} testType={isRegular ? 'regular' : 'block'} />
         </div>
       </div>
     </div>
