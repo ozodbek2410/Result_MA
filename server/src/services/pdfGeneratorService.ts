@@ -62,7 +62,7 @@ const _omrSheet: Record<string, number> = {
 const _omrLayout: Record<string, number> = { max_rows_per_col: 30 };
 try {
   const cfgPath = path.join(__dirname, '..', '..', 'python', 'omr', 'omr_config.json');
-  const cfg = JSON.parse(fsSync.readFileSync(cfgPath, 'utf-8'));
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
   Object.assign(_omrSheet, cfg.sheet);
   Object.assign(_omrLayout, cfg.layout);
 } catch { /* fallback qiymatlar ishlatiladi */ }
