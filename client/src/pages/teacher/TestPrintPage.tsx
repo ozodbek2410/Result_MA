@@ -1347,15 +1347,15 @@ export default function TestPrintPage() {
       {type === 'sheets' && renderSheets()}
 
       <style>{`
+        @page {
+          size: A4 portrait;
+          margin: ${type === 'sheets' ? '0' : '10mm 12mm'};
+        }
+
         @media print {
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-          }
-
-          @page {
-            size: A4 portrait;
-            margin: ${type === 'sheets' ? '0' : '10mm 12mm'};
           }
 
           .print-page {
@@ -1394,6 +1394,11 @@ export default function TestPrintPage() {
           .page-break:last-child {
             page-break-after: auto !important;
             break-after: auto !important;
+          }
+
+          .answer-sheet-v2 {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
           
           .no-print { display: none !important; }
