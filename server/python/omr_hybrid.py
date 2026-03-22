@@ -2741,14 +2741,12 @@ class HybridOMR:
         return False, darkness_pct
 
     def _detect_fills(self, grid, enhanced, bubble_w, w_proc, h_proc, color_img=None):
-        """Detect filled answers: fixed-point measurement + disambiguation scan.
-        Uses blue-pen-aware ink detection. When two adjacent letters are close
-        in darkness, scans between them to find actual ink center."""
+        """Detect filled answers using ADAPTIVE thresholds.
+        Phase 1: measure all bubbles → calculate adaptive thresholds from distribution.
+        Phase 2: detect filled bubbles using adaptive thresholds.
+        Automatically adapts to flash ON/OFF, different lighting, paper brightness."""
         detected_answers = {}
         invalid_answers = {}
-        SCORE_THRESHOLD = 8.0
-        MIN_DARKEST_ABS = 30.0
-        NOISE_CEILING = 22.0
 
         # Build blue-pen-aware image: min(R,G) detects both blue and black ink
         if color_img is not None and len(color_img.shape) == 3:
@@ -2760,6 +2758,10 @@ class HybridOMR:
         else:
             fill_img = enhanced
 
+        # ================================================================
+        # PHASE 1: Measure ALL bubbles first
+        # ================================================================
+        all_fills = {}  # q_num -> {A: val, B: val, C: val, D: val}
         for q_num in sorted(grid.keys()):
             fills = {}
             for letter in ['A', 'B', 'C', 'D']:
@@ -2774,22 +2776,68 @@ class HybridOMR:
                     continue
                 mean_val = float(np.mean(fill_img[y1:y2, x1:x2]))
                 fills[letter] = (255.0 - mean_val) / 255.0 * 100.0
+            if len(fills) >= 4:
+                all_fills[q_num] = fills
 
-            if len(fills) < 4:
-                continue
+        if not all_fills:
+            return detected_answers, invalid_answers
+
+        # ================================================================
+        # PHASE 2: Calculate ADAPTIVE thresholds from bubble distribution
+        # ================================================================
+        # Collect per-row baseline (median of 3 lightest bubbles in each row)
+        row_baselines = []
+        all_values = []
+        for q_num, fills in all_fills.items():
+            sf = sorted(fills.values())
+            row_baselines.append(float(np.median(sf[:3])))  # 3 lightest = unfilled
+            all_values.extend(fills.values())
+
+        unfilled_median = float(np.median(row_baselines))
+        unfilled_std = float(np.std(row_baselines))
+        overall_std = float(np.std(all_values))
+
+        # ================================================================
+        # ADAPTIVE THRESHOLDS — per-row relative detection
+        # ================================================================
+        # Global stats for logging only
+        self.log(f"  [ADAPTIVE] unfilled_median={unfilled_median:.1f}%, unfilled_std={unfilled_std:.1f}%, overall_std={overall_std:.1f}%")
+        # SCORE_THRESHOLD: relative score must clearly exceed unfilled noise
+        # Use percentile-based: sort all row_ranges, take 80th percentile as "noise range"
+        row_ranges = []
+        for q_num, fills in all_fills.items():
+            sf = sorted(fills.values())
+            row_ranges.append(sf[-1] - sf[0])
+        row_ranges.sort()
+        # 80th percentile of row ranges = noise level (most rows are empty)
+        p80_range = row_ranges[int(len(row_ranges) * 0.80)] if row_ranges else 5.0
+        SCORE_THRESHOLD = max(p80_range * 1.2, unfilled_std * 0.8, 4.0)
+        self.log(f"  [ADAPTIVE] p80_range={p80_range:.1f}%, SCORE_THRESHOLD={SCORE_THRESHOLD:.1f}%")
+
+        # ================================================================
+        # PHASE 3: Detect filled bubbles — PER-ROW adaptive
+        # ================================================================
+        for q_num in sorted(all_fills.keys()):
+            fills = all_fills[q_num]
 
             sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
             darkest_letter, darkest_val = sorted_f[0]
             second_letter, second_val = sorted_f[1]
 
-            # DISAMBIGUATION: if top 2 are adjacent and close (within 25%),
+            # Per-row baseline: median of 3 lightest bubbles in THIS row
+            row_baseline = float(np.median([v for _, v in sorted_f[1:]]))
+
+            # Per-row noise ceiling: if ALL 4 bubbles are within tight range = empty row
+            row_range = sorted_f[0][1] - sorted_f[-1][1]
+
+            # DISAMBIGUATION: if top 2 are adjacent and close,
             # scan between them to find actual ink center
             letter_order = ['A', 'B', 'C', 'D']
-            if darkest_val > MIN_DARKEST_ABS and second_val > darkest_val * 0.75:
+            row_min_abs = row_baseline + max(unfilled_std * 0.5, 2.0)
+            if darkest_val > row_min_abs and second_val > darkest_val * 0.75:
                 i1 = letter_order.index(darkest_letter)
                 i2 = letter_order.index(second_letter)
-                if abs(i1 - i2) == 1:  # adjacent letters
-                    # Micro-scan: sample between the two positions
+                if abs(i1 - i2) == 1:
                     cy = grid[q_num][darkest_letter]['y']
                     x1_scan = grid[q_num][letter_order[min(i1,i2)]]['x']
                     x2_scan = grid[q_num][letter_order[max(i1,i2)]]['x']
@@ -2801,22 +2849,21 @@ class HybridOMR:
                         dark_profile = (255.0 - profile) / 255.0 * 100.0
                         peak_local = int(np.argmax(dark_profile))
                         peak_x_abs = peak_local + max(0, x1_scan - 2)
-                        # Which letter is peak closest to?
                         d1 = abs(grid[q_num][darkest_letter]['x'] - peak_x_abs)
                         d2 = abs(grid[q_num][second_letter]['x'] - peak_x_abs)
                         if d2 < d1:
-                            # Peak is closer to second letter — swap
-                            self.log(f"  Q{q_num}: disambig {darkest_letter}→{second_letter} (peak closer by {d1-d2:.0f}px)")
-                            fills[second_letter] = darkest_val  # give it the higher value
+                            self.log(f"  Q{q_num}: disambig {darkest_letter}->{second_letter} (peak closer by {d1-d2:.0f}px)")
+                            fills[second_letter] = darkest_val
                             sorted_f = sorted(fills.items(), key=lambda x: x[1], reverse=True)
                             darkest_letter, darkest_val = sorted_f[0]
                             second_letter, second_val = sorted_f[1]
+                            row_baseline = float(np.median([v for _, v in sorted_f[1:]]))
 
-            baseline = float(np.median([v for _, v in sorted_f[1:]]))
-            score = darkest_val - baseline
+            score = darkest_val - row_baseline
 
-            if darkest_val < NOISE_CEILING:
-                self.log(f"  Q{q_num}: empty (all below noise ceiling, max={darkest_val:.1f}%)")
+            # EMPTY detection: all 4 bubbles are similar (range < threshold)
+            if row_range < SCORE_THRESHOLD:
+                self.log(f"  Q{q_num}: empty (range={row_range:.1f}% < {SCORE_THRESHOLD:.1f}%)")
                 continue
 
             if len(sorted_f) >= 3:
@@ -2826,33 +2873,28 @@ class HybridOMR:
             else:
                 score_1, score_2 = score, 0
 
-            min_fill = min(fills.values())
-            eff_threshold = SCORE_THRESHOLD if min_fill < 40 else max(SCORE_THRESHOLD, 12.0)
+            eff_threshold = SCORE_THRESHOLD
 
-            is_multi = (score_1 >= eff_threshold and score_2 >= 15.0
-                        and second_val >= 55.0 and second_val >= darkest_val * 0.70
-                        and darkest_val >= 60.0)
-            # Relaxed multi for ADJACENT letters with strong contrast vs others
-            letter_order = ['A', 'B', 'C', 'D']
-            if not is_multi and darkest_val >= 50.0 and second_val >= 40.0:
-                i1 = letter_order.index(darkest_letter)
-                i2 = letter_order.index(second_letter)
-                if abs(i1 - i2) == 1 and second_val >= darkest_val * 0.65:
-                    third_val = sorted_f[2][1] if len(sorted_f) >= 3 else 0
-                    fourth_val = sorted_f[3][1] if len(sorted_f) >= 4 else 0
-                    others_avg = (third_val + fourth_val) / 2 if fourth_val > 0 else third_val
-                    # Darkest 15%+ above unfilled, second 6%+ above unfilled
-                    if darkest_val - others_avg >= 15.0 and second_val - others_avg >= 6.0:
-                        is_multi = True
+            # MULTI-SELECT detection: two bubbles both significantly above others
+            is_multi = False
+            if score_1 >= eff_threshold and score_2 >= eff_threshold:
+                # Both darkest and second are above baseline by threshold
+                if second_val >= darkest_val * 0.75:
+                    is_multi = True
+            # Relaxed multi: both clearly above rest AND close to each other
+            if not is_multi and score_1 >= eff_threshold and score_2 >= eff_threshold * 0.8:
+                if second_val >= darkest_val * 0.70:
+                    is_multi = True
+
             if is_multi:
-                self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%)")
+                self.log(f"  Q{q_num}: MULTI ({darkest_letter}={darkest_val:.1f}%, {second_letter}={second_val:.1f}%, base={row_baseline:.1f}%)")
                 invalid_answers[str(q_num)] = [darkest_letter, second_letter]
-            elif score >= eff_threshold and darkest_val >= MIN_DARKEST_ABS:
+            elif score >= eff_threshold:
                 detected_answers[str(q_num)] = darkest_letter
                 fill_str = ' '.join(f"{l}={v:.0f}%" for l, v in sorted_f)
-                self.log(f"  Q{q_num}: → {darkest_letter} (score={score:.1f}, {fill_str})")
+                self.log(f"  Q{q_num}: -> {darkest_letter} (score={score:.1f}, base={row_baseline:.1f}%, {fill_str})")
             else:
-                self.log(f"  Q{q_num}: empty (score={score:.1f}, darkest={darkest_val:.1f}%)")
+                self.log(f"  Q{q_num}: empty (score={score:.1f}, range={row_range:.1f}%)")
 
         # Post-filter: detect systematic false positives (same letter in >50% of a column)
         if self.TOTAL_QUESTIONS:
@@ -2959,27 +3001,31 @@ class HybridOMR:
         # 3. Detect bubbles (always — needed for Y calibration)
         bubbles = self._detect_bubbles(enhanced)
 
-        # 4. Build grid — LAYOUT-FIRST when corners found
+        # 4. Build grid — DETECTION-FIRST, then layout validation
         grid = {}
         grid_method = "none"
-        if mode == "corner_marks" and self.TOTAL_QUESTIONS and len(bubbles) >= 16:
-            # Professional approach: mm-based exact positions
+
+        # Always try detection grid first (most accurate — uses actual bubble positions)
+        if len(bubbles) >= 16:
+            self.log("\n--- Detection grid (bubble-based) ---")
+            grid = self._build_grid(bubbles, w_proc, h_proc)
+            if len(grid) >= (self.TOTAL_QUESTIONS or 30) * 0.8:
+                grid_method = "detection"
+                self.log(f"Detection grid OK: {len(grid)} questions")
+            else:
+                self.log(f"Detection grid insufficient ({len(grid)}), trying layout")
+                grid = {}
+
+        # Fallback to layout grid if detection failed
+        if len(grid) < 4 and mode == "corner_marks" and self.TOTAL_QUESTIONS:
             self.log(f"\n--- Layout grid (mm-based, {self.TOTAL_QUESTIONS}q) ---")
             grid = self.build_grid_from_layout(resized, bubbles=bubbles)
             if len(grid) >= self.TOTAL_QUESTIONS * 0.9:
                 grid_method = "layout"
                 self.log(f"Layout grid OK: {len(grid)} questions")
             else:
-                self.log(f"Layout grid failed ({len(grid)}), falling back to detection")
+                self.log(f"Layout grid failed ({len(grid)})")
                 grid = {}
-
-        if len(grid) < 4:
-            # Fallback: detection-based (old method)
-            self.log("\n--- Detection grid (fallback) ---")
-            if len(bubbles) < 16:
-                return {"success": False, "error": f"Too few bubbles: {len(bubbles)}"}
-            grid = self._build_grid(bubbles, w_proc, h_proc)
-            grid_method = "detection"
 
         if len(grid) < 4:
             return {"success": False, "error": "Cannot build grid"}

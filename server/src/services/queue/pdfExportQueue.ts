@@ -24,6 +24,8 @@ export interface PDFExportJobData {
   userId: string;
   isBlockTest?: boolean;
   booklet?: boolean;
+  answerSheets?: boolean;
+  version?: string;
   settings?: {
     fontSize?: number;
     fontFamily?: string;
@@ -63,14 +65,113 @@ export const pdfExportQueue = new Queue<PDFExportJobData, PDFExportJobResult>('p
 });
 
 /**
+ * Process answer sheet PDF export — lighter than full test PDF
+ */
+async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDFExportJobResult> {
+  const { testId, studentIds, userId, isBlockTest, version } = job.data;
+  try {
+    await job.updateProgress(10);
+    const Model = isBlockTest ? (await import('../../models/BlockTest')).default : Test;
+    const query = (Model as any).findById(testId);
+    if (!isBlockTest) query.populate('subjectId', 'nameUzb');
+    else query.populate('subjectTests.subjectId', 'nameUzb');
+    const test: Record<string, unknown> = await query.lean();
+    if (!test) throw new Error('Test topilmadi');
+
+    await job.updateProgress(30);
+
+    // Load students
+    const Student = (await import('../../models/Student')).default;
+    const StudentGroup = (await import('../../models/StudentGroup')).default;
+    let allStudents: Array<Record<string, unknown>> = [];
+    if (test.groupId) {
+      const group = await StudentGroup.findById(test.groupId).populate('students', 'fullName').lean();
+      allStudents = ((group as Record<string, unknown>)?.students as Array<Record<string, unknown>>) || [];
+    }
+    if (allStudents.length === 0 && studentIds.length > 0) {
+      allStudents = await Student.find({ _id: { $in: studentIds } }).select('fullName').lean();
+    }
+    const selected = studentIds.length > 0
+      ? allStudents.filter(s => studentIds.includes((s._id as string).toString()))
+      : allStudents;
+
+    await job.updateProgress(50);
+
+    // Load variant codes
+    const variants = await StudentVariant.find({
+      testId: new Types.ObjectId(testId),
+      ...(isBlockTest ? { testType: 'BlockTest' } : {}),
+      studentId: { $in: selected.map(s => s._id) },
+    }).lean();
+    const variantMap = new Map<string, string>();
+    variants.forEach((v: Record<string, unknown>) => {
+      variantMap.set((v.studentId as string)?.toString() || '', (v.variantCode as string) || '');
+    });
+
+    const pdfStudents = selected.map(s => ({
+      fullName: (s.fullName as string) || '',
+      variantCode: variantMap.get((s._id as string).toString()) || '',
+    }));
+
+    // totalQuestions
+    let totalQuestions = 0;
+    if (isBlockTest) {
+      const sts = test.subjectTests as Array<Record<string, unknown>> | undefined;
+      sts?.forEach(st => { totalQuestions += ((st.questions as unknown[])?.length || 0); });
+    } else {
+      totalQuestions = (test.questions as unknown[])?.length || 0;
+    }
+
+    await job.updateProgress(70);
+
+    const classNumber = (test.classNumber as number) || 10;
+    const subjectName = isBlockTest ? '' : ((test.subjectId as Record<string, unknown>)?.nameUzb as string) || '';
+    const testType = isBlockTest ? 'block_test' : 'test';
+
+    const useV2 = version === 'v2';
+    const pdfBuffer = useV2
+      ? await PDFGeneratorService.generateAnswerSheetsPDFV2({ students: pdfStudents, test: { classNumber, groupLetter: 'A', subjectName }, totalQuestions, testType })
+      : await PDFGeneratorService.generateAnswerSheetsPDF({ students: pdfStudents, test: { classNumber, groupLetter: 'A', subjectName }, totalQuestions });
+
+    await job.updateProgress(85);
+
+    const timestamp = Date.now();
+    const fileName = `${userId}/${job.id}-${timestamp}.pdf`;
+    let fileUrl: string;
+    if (S3Service.isConfigured()) {
+      fileUrl = await S3Service.upload(pdfBuffer, fileName);
+    } else {
+      fileUrl = await LocalFileService.upload(pdfBuffer, fileName);
+    }
+
+    await job.updateProgress(100);
+    return {
+      fileUrl,
+      fileName: `javob-varaqasi-${classNumber}-sinf-${timestamp}.pdf`,
+      size: pdfBuffer.length,
+      studentsCount: pdfStudents.length,
+    };
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error(`❌ [PDF Worker ${process.pid}] Answer sheet job ${job.id} failed:`, err.message);
+    throw error;
+  }
+}
+
+/**
  * Process PDF export job
  */
 async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJobResult> {
   const { testId, studentIds, userId, isBlockTest } = job.data;
-  
+
   console.log(`🔄 [PDF Worker ${process.pid}] Processing job ${job.id} for test ${testId}`);
   console.log(`📊 [PDF Worker ${process.pid}] Students: ${studentIds.length}`);
-  
+
+  // Answer sheets branch — simpler path, no question rendering
+  if (job.data.answerSheets) {
+    return processAnswerSheetExport(job);
+  }
+
   try {
     // Step 1: Load test (10%)
     await job.updateProgress(10);

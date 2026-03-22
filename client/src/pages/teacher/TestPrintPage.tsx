@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import MathText from '@/components/MathText';
 import SubjectText from '@/components/SubjectText';
 import { Printer, ArrowLeft, FileText, Download, FileDown, X } from 'lucide-react';
-import AnswerSheet from '@/components/AnswerSheet';
+import AnswerSheetV2 from '@/components/AnswerSheetV2';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
 import { useToast } from '@/hooks/useToast';
 
@@ -120,7 +120,7 @@ export default function TestPrintPage() {
       }, 300);
 
       // Step 1: POST to generate PDF on server, get download URL
-      const { data } = await api.post(endpoint, { students: studentIdsArray });
+      const { data } = await api.post(endpoint, { students: studentIdsArray, version: 'v2' });
       clearInterval(progressTimer);
       setExportProgress(100);
 
@@ -216,6 +216,7 @@ export default function TestPrintPage() {
       // Step 1: Start export job
       const { data } = await api.post(endpoint, {
         students: selectedStudents.map(s => s._id),
+        ...(type === 'sheets' ? { version: 'v2' } : {}),
         settings: {
           fontSize,
           fontFamily,
@@ -291,7 +292,11 @@ export default function TestPrintPage() {
       // Fallback to sync version if async fails
       if (error.response?.status === 503 || error.response?.status === 404) {
         console.log('⚠️ Falling back to sync PDF export...');
-        await handleDownloadPDFSync();
+        if (type === 'sheets') {
+          await handleDownloadAnswerKeyPDF();
+        } else {
+          await handleDownloadPDFSync();
+        }
       } else {
         showError(error.response?.data?.message || 'PDF yuklashda xatolik');
         setExporting(false);
@@ -925,7 +930,7 @@ export default function TestPrintPage() {
               : (isBlockTest ? test.subjectTests?.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0) : test.questions?.length) || 0;
             return (
               <div key={`sheet-${student._id}`} className="page-break mb-8 print:mb-0" style={{ display: 'flex', justifyContent: 'center', padding: '20mm 0' }}>
-                <AnswerSheet
+                <AnswerSheetV2
                   student={{ fullName: student.fullName, variantCode, studentCode: student.studentCode }}
                   test={{
                     name: test.name || 'Test',
@@ -934,13 +939,12 @@ export default function TestPrintPage() {
                       : (test.subjectId?.nameUzb || 'Test'),
                     classNumber: test.classNumber || 10,
                     groupLetter: test.groupId?.nameUzb?.charAt(0) || 'A',
-                    groupName: test.groupId?.nameUzb,
                     periodMonth: isBlockTest ? test.periodMonth : undefined,
                     periodYear: isBlockTest ? test.periodYear : undefined
                   }}
                   questions={questionsCount}
-                  qrData={JSON.stringify({ c: variantCode, q: questionsCount })}
-                  sheetsPerPage={1}
+                  qrData={JSON.stringify({ v: 2, c: variantCode, q: questionsCount, t: isBlockTest ? 'block_test' : 'test' })}
+                  testType={isBlockTest ? 'block_test' : 'test'}
                 />
               </div>
             );
@@ -1104,7 +1108,7 @@ export default function TestPrintPage() {
                   display: 'flex',
                   justifyContent: 'center'
                 }}>
-                  <AnswerSheet
+                  <AnswerSheetV2
                     student={{
                       fullName: student.fullName,
                       variantCode: variantCode,
@@ -1117,13 +1121,12 @@ export default function TestPrintPage() {
                         : (test.subjectId?.nameUzb || 'Test'),
                       classNumber: test.classNumber || 10,
                       groupLetter: test.groupId?.nameUzb?.charAt(0) || 'A',
-                      groupName: test.groupId?.nameUzb,
                       periodMonth: isBlockTest ? test.periodMonth : undefined,
                       periodYear: isBlockTest ? test.periodYear : undefined
                     }}
                     questions={questionsToRender?.length || 0}
-                    qrData={JSON.stringify({ c: variantCode, q: questionsToRender?.length || 0 })}
-                    sheetsPerPage={sheetsPerPage}
+                    qrData={JSON.stringify({ v: 2, c: variantCode, q: questionsToRender?.length || 0, t: isBlockTest ? 'block_test' : 'test' })}
+                    testType={isBlockTest ? 'block_test' : 'test'}
                   />
                 </div>
               );

@@ -59,7 +59,7 @@ function sampleBrightness(
  * Check if a corner mark exists at the given position.
  *
  * Compares center darkness with surrounding brightness.
- * Corner mark = dark square (~8mm) surrounded by white paper.
+ * Corner mark = dark square (~10mm) surrounded by white paper.
  *
  * @param data - RGBA pixel data
  * @param imgW - Image width
@@ -143,14 +143,14 @@ function refineMark(
 export function detectCorners(imageData: ImageData): CornersResult {
   const { width: w, height: h, data } = imageData;
 
-  // Corner mark = 8mm on A4 (210mm wide)
-  // In the guide frame image, mark ~= 8/210 * w pixels
-  const markSize = Math.max(6, (8 / 210) * w);
+  // Corner mark = 10mm on A4 (210mm wide) — matches AnswerSheetV2 CM = 10mm
+  // In the guide frame image, mark ~= 10/210 * w pixels
+  const markSize = Math.max(6, (10 / 210) * w);
 
-  // Expected mark positions: ~3% inset from each corner
-  // (mark center is at 6mm from corner on 210mm page = 2.86%)
-  const insetX = w * 0.03;
-  const insetY = h * 0.02;
+  // Mark center = corner_margin (2mm) + CM/2 (5mm) = 7mm from page edge
+  // A4: 210mm wide × 297mm tall
+  const insetX = (7 / 210) * w;
+  const insetY = (7 / 297) * h;
 
   // Search radius: must stay INSIDE the blue zone (~7% of frame)
   // This ensures green mark always appears inside blue zone

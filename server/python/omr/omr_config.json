@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "sheet": {
+    "page_w_mm": 210,
+    "page_h_mm": 297,
+    "corner_mark_mm": 10,
+    "corner_margin_mm": 2,
+    "page_pad_mm": 12,
+    "bubble_size_mm": 6,
+    "bubble_gap_mm": 2,
+    "num_width_mm": 7,
+    "timing_mark_mm": 3,
+    "timing_col_w_mm": 4,
+    "header_height_mm": 55,
+    "qr_size_mm": 25
+  },
+  "scanner": {
+    "target_width_px": 1200,
+    "circularity_min": 0.3,
+    "fill_ratio_threshold": 0.38,
+    "score_threshold_min": 4.0,
+    "clahe_clip_limit": 2.0,
+    "clahe_tile_grid": 8,
+    "corner_thresholds": [40, 70, 100, 140, 180],
+    "min_marker_area_px": 80,
+    "max_marker_area_px": 2500
+  },
+  "layout": {
+    "max_rows_per_col": 30,
+    "min_columns": 2,
+    "max_columns": 4,
+    "row_margin_normal_mm": 1.0,
+    "row_margin_dense_mm": 0.5
+  }
+}

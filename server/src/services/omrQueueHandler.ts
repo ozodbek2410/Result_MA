@@ -1,144 +1,102 @@
 import { queueService, JobTypes } from './queueService';
-import { spawn } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
+import { logger } from '../config/logger';
 
-/**
- * Обработчик для OMR задач в очереди
- */
+const execAsync = promisify(exec);
+
+const SERVER_ROOT = path.join(__dirname, '..', '..');
+const SCANNER_DIR = path.join(SERVER_ROOT, 'python', 'omr');
+const PYTHON_CMD = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
 
 interface OMRJobData {
   imagePath: string;
-  correctAnswers?: string[];
   questionCount?: number;
+  variantCode?: string;
 }
 
-interface OMRResult {
+interface OMRJobResult {
   success: boolean;
-  answers?: string[];
-  score?: number;
+  version?: number;
+  detected_answers?: Record<string, string>;
+  /** backward compat alias for detected_answers */
+  answers?: Record<string, string>;
+  stats?: {
+    answered: number;
+    empty: number;
+    multi_select: number;
+    total: number;
+    detection_rate: number;
+    avg_confidence: number;
+    calibration_dx?: number;
+    calibration_dy?: number;
+  };
+  qr_code?: {
+    found: boolean;
+    variant_code?: string;
+    total_questions?: number;
+    test_type?: string;
+  };
   error?: string;
+  partial?: boolean;
 }
 
-// Определяем базовую директорию сервера
-// __dirname в скомпилированном коде: /var/www/resultMA/server/dist/services
-// Поднимаемся на 2 уровня вверх: /var/www/resultMA/server
-const SERVER_ROOT = path.join(__dirname, '..', '..');
+async function processOMRImage(data: OMRJobData): Promise<OMRJobResult> {
+  const args = [`"${data.imagePath}"`];
+  if (data.questionCount) args.push('--questions', data.questionCount.toString());
 
-/**
- * Обработка OMR изображения через Python скрипт
- */
-async function processOMRImage(data: OMRJobData): Promise<OMRResult> {
-  return new Promise((resolve, reject) => {
-    const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_final_v2.py');
-    const args = [pythonScript, data.imagePath];
+  const command = `${PYTHON_CMD} -m scanner ${args.join(' ')}`;
 
-    if (data.questionCount) {
-      args.push('--questions', data.questionCount.toString());
-    }
-    
-    const pythonProcess = spawn('python', args);
-    let outputData = '';
-    let errorData = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      outputData += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      errorData += data.toString();
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`OMR processing failed: ${errorData}`));
-        return;
-      }
-
-      try {
-        // Парсим результат из Python
-        const result = JSON.parse(outputData);
-        
-        // Если есть правильные ответы, вычисляем балл
-        if (data.correctAnswers && result.answers) {
-          let score = 0;
-          result.answers.forEach((answer: string, index: number) => {
-            if (answer === data.correctAnswers![index]) {
-              score++;
-            }
-          });
-          
-          resolve({
-            success: true,
-            answers: result.answers,
-            score: score,
-          });
-        } else {
-          resolve({
-            success: true,
-            answers: result.answers,
-          });
-        }
-      } catch (error: any) {
-        reject(new Error(`Failed to parse OMR result: ${error.message}`));
-      }
-    });
-
-    // Таймаут на случай зависания
-    setTimeout(() => {
-      pythonProcess.kill();
-      reject(new Error('OMR processing timeout'));
-    }, 60000); // 60 секунд
+  const { stdout, stderr } = await execAsync(command, {
+    timeout: 60000,
+    maxBuffer: 10 * 1024 * 1024,
+    cwd: SCANNER_DIR,
+    env: { ...process.env },
   });
+
+  if (stderr) {
+    const errLines = stderr.split('\n').filter(l =>
+      l.includes('Error') || l.includes('Traceback') || l.includes('Exception')
+    );
+    if (errLines.length) logger.warn(`[OMR Queue] Python: ${errLines.join(' | ')}`);
+  }
+
+  const trimmed = stdout.trim();
+  const jsonStart = trimmed.lastIndexOf('\n{');
+  const jsonStr = jsonStart >= 0 ? trimmed.substring(jsonStart + 1) : trimmed;
+  const result = JSON.parse(jsonStr) as OMRJobResult;
+
+  // backward compat: alias detected_answers → answers (old callers use answers[])
+  if (result.detected_answers && !result.answers) {
+    result.answers = result.detected_answers;
+  }
+
+  return result;
 }
 
-/**
- * Регистрация обработчика OMR задач
- */
-export function registerOMRHandler() {
+export function registerOMRHandler(): void {
   queueService.registerHandler(JobTypes.OMR_PROCESS, async (data: OMRJobData) => {
-    const result = await processOMRImage(data);
-    return result;
+    return await processOMRImage(data);
   });
 }
 
-/**
- * Добавление OMR задачи в очередь
- */
 export async function queueOMRProcessing(
   imagePath: string,
-  correctAnswers?: string[],
-  questionCount?: number
+  questionCount?: number,
+  variantCode?: string,
 ): Promise<string> {
-  const jobId = await queueService.addJob(JobTypes.OMR_PROCESS, {
+  return await queueService.addJob(JobTypes.OMR_PROCESS, {
     imagePath,
-    correctAnswers,
     questionCount,
+    variantCode,
   });
-
-  return jobId;
 }
 
-/**
- * Получение результата OMR обработки
- */
-export function getOMRResult(jobId: string): OMRResult | null {
+export function getOMRResult(jobId: string): OMRJobResult | null {
   const job = queueService.getJobStatus(jobId);
-  
-  if (!job) {
-    return null;
-  }
-
-  if (job.status === 'completed') {
-    return job.result;
-  }
-
-  if (job.status === 'failed') {
-    return {
-      success: false,
-      error: job.error || 'Processing failed',
-    };
-  }
-
-  // Еще обрабатывается
+  if (!job) return null;
+  if (job.status === 'completed') return job.result as OMRJobResult;
+  if (job.status === 'failed') return { success: false, error: job.error || 'Processing failed' };
   return null;
 }

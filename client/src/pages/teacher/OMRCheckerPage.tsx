@@ -15,6 +15,7 @@ interface CheckResult {
   uploaded_image?: string;
   error?: string;
   detection_rate?: number;
+  avg_confidence?: number;
   grid_method?: string;
   quality_warning?: string;
   qr_found?: boolean;
@@ -188,7 +189,7 @@ export default function OMRCheckerPage() {
     let incorrect = 0;
     let unanswered = 0;
     
-    details.forEach((detail: any) => {
+    details.forEach((detail) => {
       const currentAnswer = editedAnswers[detail.question] || detail.student_answer;
       
       if (!currentAnswer || currentAnswer === '-') {
@@ -218,7 +219,7 @@ export default function OMRCheckerPage() {
     if (!result?.qr_code?.testId || !result?.comparison) return null;
     const originalDetected = result.detected_answers || {};
     const finalComparison = updatedComparison || result.comparison;
-    const finalDetails = result.comparison.details.map((detail: any) => {
+    const finalDetails = result.comparison.details.map((detail) => {
       const currentAnswer = editedAnswers[detail.question] || detail.student_answer;
       const effectiveAnswer = (!currentAnswer || currentAnswer === '-') ? null : currentAnswer;
       return {
@@ -254,11 +255,12 @@ export default function OMRCheckerPage() {
       await api.post('/omr/save-result', data);
       toast('Saqlandi', 'success');
       setTimeout(() => resetAll(), 1500);
-    } catch (err: any) {
-      if (err?.response?.status === 409 && err?.response?.data?.error === 'duplicate') {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status: number; data: { error: string; existingResult: typeof duplicateModal.existingResult } } };
+      if (axiosErr?.response?.status === 409 && axiosErr?.response?.data?.error === 'duplicate') {
         setDuplicateModal({
           show: true,
-          existingResult: err.response.data.existingResult,
+          existingResult: axiosErr.response.data.existingResult,
           pendingSaveData: data,
         });
       } else {
@@ -575,6 +577,18 @@ export default function OMRCheckerPage() {
                 <div className="px-4 py-3 flex items-center gap-2">
                   <span className="text-orange-500 text-lg">⚠️</span>
                   <span className="text-sm text-orange-700 font-medium">{result.quality_warning}</span>
+                </div>
+              </Card>
+            )}
+
+            {/* Confidence Warning — qayta skanerlash tavsiyasi */}
+            {result.avg_confidence != null && result.avg_confidence < 0.7 && (
+              <Card className="border border-red-300 shadow-sm bg-red-50">
+                <div className="px-4 py-3 flex items-center gap-2">
+                  <span className="text-red-500 text-lg">⚠️</span>
+                  <span className="text-sm text-red-700 font-medium">
+                    Ishonchlilik past ({(result.avg_confidence * 100).toFixed(0)}%). Yaxshiroq yoritishda qayta skanerlang.
+                  </span>
                 </div>
               </Card>
             )}

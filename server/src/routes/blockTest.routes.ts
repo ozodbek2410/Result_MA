@@ -1934,8 +1934,54 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
 // ============================================================================
 
 /**
- * Export Answer Sheets (bubble sheets) as PDF for Block Test
- * GET /block-tests/:id/export-answer-sheets-pdf
+ * Export Answer Sheets (bubble sheets) as PDF for Block Test — ASYNC via BullMQ
+ * POST /block-tests/:id/export-answer-sheets-pdf-async
+ */
+router.post('/:id/export-answer-sheets-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { students, version } = req.body;
+
+    if (process.env.REDIS_ENABLED !== 'true') {
+      return res.status(503).json({ message: 'Queue service mavjud emas', error: 'redis_disabled' });
+    }
+
+    const blockTest = await BlockTest.findById(id).select('branchId name').lean();
+    if (!blockTest) return res.status(404).json({ message: 'Block test topilmadi' });
+
+    if (req.user?.branchId && blockTest.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+
+    const studentIds = Array.isArray(students) ? students : [];
+    const job = await pdfExportQueue.add('export', {
+      testId: id,
+      studentIds,
+      userId: req.user?.id || 'unknown',
+      isBlockTest: true,
+      answerSheets: true,
+      version: version || 'v2',
+    }, {
+      priority: 1,
+      jobId: `sheets-block-${id}-${Date.now()}`,
+    });
+
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'Javob varaqasi yaratilmoqda...',
+      estimatedTime: Math.ceil(studentIds.length * 0.5),
+    });
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('Error queueing block test answer sheet export:', err);
+    res.status(500).json({ message: 'Xatolik', error: err.message });
+  }
+});
+
+/**
+ * Export Answer Sheets (bubble sheets) as PDF for Block Test — SYNC
+ * POST /block-tests/:id/export-answer-sheets-pdf
  */
 router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
   try {
@@ -2044,17 +2090,31 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
       });
     });
 
-    const pdfBuffer = await PDFGeneratorService.generateAnswerSheetsPDF({
-      students: pdfStudents,
-      test: {
-        classNumber: blockTest.classNumber,
-        groupLetter,
-        subjectName: subjectNames.length > 0 ? subjectNames.join(', ') : undefined,
-        periodMonth: blockTest.periodMonth,
-        periodYear: blockTest.periodYear
-      },
-      totalQuestions
-    });
+    const useV2 = req.body?.version === 'v2' || req.query.version === 'v2';
+    const pdfBuffer = useV2
+      ? await PDFGeneratorService.generateAnswerSheetsPDFV2({
+          students: pdfStudents,
+          test: {
+            classNumber: blockTest.classNumber,
+            groupLetter,
+            subjectName: subjectNames.length > 0 ? subjectNames.join(', ') : undefined,
+            periodMonth: blockTest.periodMonth,
+            periodYear: blockTest.periodYear,
+          },
+          totalQuestions,
+          testType: 'block_test',
+        })
+      : await PDFGeneratorService.generateAnswerSheetsPDF({
+          students: pdfStudents,
+          test: {
+            classNumber: blockTest.classNumber,
+            groupLetter,
+            subjectName: subjectNames.length > 0 ? subjectNames.join(', ') : undefined,
+            periodMonth: blockTest.periodMonth,
+            periodYear: blockTest.periodYear,
+          },
+          totalQuestions,
+        });
 
     const filename = `javob-varaqasi-${blockTest.classNumber}-sinf-${Date.now()}.pdf`;
     const exportsDir = path.join(process.cwd(), 'exports');

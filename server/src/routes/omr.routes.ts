@@ -53,18 +53,32 @@ const upload = multer({
 });
 
 /**
- * Parse QR data — supports both old (plain string) and new (JSON) formats
- * Old: "9EC69645"
- * New: {"c":"9EC69645","q":90}
+ * Parse QR data — v1 (plain string), v1.5 ({c,q}), v2 ({v:2,c,q,t}) formatlarni qo'llab-quvvatlaydi.
+ * Yangi qr_scanner.py variant_code va total_questions ni to'g'ridan qaytaradi —
+ * bu funksiya faqat eski raw data uchun fallback sifatida ishlatiladi.
  */
-function parseQrData(raw: string): { variantCode: string; totalQuestions: number | null } {
+function parseQrData(raw: string): { variantCode: string; totalQuestions: number | null; testType: string | null } {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && parsed.c) {
-      return { variantCode: parsed.c, totalQuestions: parsed.q || null };
+      return { variantCode: parsed.c, totalQuestions: parsed.q || null, testType: parsed.t || null };
     }
   } catch { /* not JSON, use as plain string */ }
-  return { variantCode: raw, totalQuestions: null };
+  return { variantCode: raw, totalQuestions: null, testType: null };
+}
+
+/** qr_scanner.py natijasidan variant ma'lumotlarini olish — yangi va eski format uchun. */
+function extractQrFields(qrResult: Record<string, unknown>): { variantCode: string; totalQuestions: number | null; testType: string | null } {
+  // Yangi qr_scanner.py: variant_code va total_questions to'g'ridan qaytaradi
+  if (qrResult.variant_code) {
+    return {
+      variantCode: qrResult.variant_code as string,
+      totalQuestions: (qrResult.total_questions as number) || null,
+      testType: (qrResult.test_type as string) || null,
+    };
+  }
+  // Eski format: data maydoni bor, parseQrData bilan parse qilinadi
+  return parseQrData(String(qrResult.data || '').trim());
 }
 
 /**
@@ -140,7 +154,7 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
       const qrResult = JSON.parse(qrOutput.trim());
       if (qrResult.found) {
         qrFound = true;
-        const qrParsed = parseQrData(qrResult.data.trim());
+        const qrParsed = extractQrFields(qrResult);
         variantCode = qrParsed.variantCode;
         if (qrParsed.totalQuestions) qrTotalQuestions = qrParsed.totalQuestions;
         console.log('✅ QR-kod topildi:', variantCode, qrTotalQuestions ? `(q=${qrTotalQuestions})` : '');
@@ -232,45 +246,50 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
 
     console.log('🔍 FINAL PROFESSIONAL OMR - 2-bosqich: Javoblarni aniqlash...');
 
-    // 2. HYBRID OMR bilan javoblarni aniqlash
-    const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_hybrid.py');
     const pythonCmd = process.env.PYTHON_PATH ||
                      (process.platform === 'win32' ? 'python' : 'python3');
+    const useOMRV2 = process.env.USE_OMR_V2 === 'true';
 
-    let command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
+    let command: string;
+    let execCwd: string | undefined;
 
-    let qrDataJson = '{}';
-    if (qrFound && qrData && qrData.totalQuestions) {
-      // Sheet total = all subjects in BlockTest (for grid layout)
-      qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
-    } else if (qrTotalQuestions) {
-      // QR JSON formatdan totalQuestions (variant bazadan topilmagan bo'lsa ham)
-      qrDataJson = JSON.stringify({ totalQuestions: qrTotalQuestions }).replace(/"/g, '\\"');
-      console.log('📊 QR JSON dan totalQuestions ishlatilmoqda:', qrTotalQuestions);
-    }
-    
-    if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
-      const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
-      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
-      console.log('✅ FINAL Professional OMR: To\'g\'ri javoblar yuborildi');
+    if (useOMRV2) {
+      // Yangi layout-first scanner
+      const totalQ = qrTotalQuestions ?? (qrData as any)?.totalQuestions ?? 90;
+      execCwd = path.join(SERVER_ROOT, 'python', 'omr');
+      command = `${pythonCmd} -m scanner "${imagePath}" --questions ${totalQ}`;
+      console.log('🆕 V2 scanner:', command);
     } else {
-      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "{}" "${qrDataJson}"`;
+      // Eski omr_hybrid.py (fallback)
+      const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_hybrid.py');
+      await fs.access(pythonScript);
+      let qrDataJson = '{}';
+      if (qrFound && qrData && qrData.totalQuestions) {
+        qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
+      } else if (qrTotalQuestions) {
+        qrDataJson = JSON.stringify({ totalQuestions: qrTotalQuestions }).replace(/"/g, '\\"');
+        console.log('📊 QR JSON dan totalQuestions ishlatilmoqda:', qrTotalQuestions);
+      }
+      if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
+        const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
+        command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
+      } else {
+        command = `${pythonCmd} "${pythonScript}" "${imagePath}" "{}" "${qrDataJson}"`;
+      }
+      console.log('🐍 omr_hybrid.py:', command);
     }
-    
-    console.log('🐍 FINAL Professional OMR command:', command);
-    
-    await fs.access(pythonScript);
 
     let result: any;
     try {
-      const { stdout, stderr } = await execAsync(command, { 
+      const { stdout, stderr } = await execAsync(command, {
         timeout: 30000,
         maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env }
+        ...(execCwd ? { cwd: execCwd } : {}),
+        env: { ...process.env },
       });
 
       if (stderr) {
-        const errorLines = stderr.split('\n').filter(line => 
+        const errorLines = stderr.split('\n').filter(line =>
           line.includes('ERROR') || line.includes('Traceback') || line.includes('Exception')
         );
         if (errorLines.length > 0) {
@@ -287,6 +306,13 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
       const jsonStart = trimmed.lastIndexOf('\n{');
       const jsonStr = jsonStart >= 0 ? trimmed.substring(jsonStart + 1) : trimmed;
       result = JSON.parse(jsonStr);
+      // V2 scanner backward-compat: detected_answers → answers
+      if (!result.answers && result.detected_answers) result.answers = result.detected_answers;
+      // V2 scanner stats normalization: stats.* → top-level
+      if (result.stats && typeof result.stats === 'object') {
+        if (result.detection_rate == null) result.detection_rate = result.stats.detection_rate;
+        if (result.avg_confidence == null) result.avg_confidence = result.stats.avg_confidence;
+      }
     } catch (execError: any) {
       console.error('FINAL Professional OMR error:', execError.message);
       throw new Error(`FINAL Professional OMR failed: ${execError.message}`);
@@ -377,7 +403,7 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
       const qrResult = JSON.parse(qrOutput.trim());
       if (qrResult.found) {
         qrFound = true;
-        const qrParsed = parseQrData(qrResult.data.trim());
+        const qrParsed = extractQrFields(qrResult);
         variantCode = qrParsed.variantCode;
         if (qrParsed.totalQuestions) qrTotalQuestions = qrParsed.totalQuestions;
         console.log('✅ QR-kod topildi:', variantCode, qrTotalQuestions ? `(q=${qrTotalQuestions})` : '');
@@ -519,6 +545,11 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
       const jsonStart2 = trimmed2.lastIndexOf('\n{');
       const jsonStr2 = jsonStart2 >= 0 ? trimmed2.substring(jsonStart2 + 1) : trimmed2;
       result = JSON.parse(jsonStr2);
+      // V2 scanner stats normalization
+      if (result.stats && typeof result.stats === 'object') {
+        if (result.detection_rate == null) result.detection_rate = result.stats.detection_rate;
+        if (result.avg_confidence == null) result.avg_confidence = result.stats.avg_confidence;
+      }
     } catch (execError: any) {
       console.error('Professional OMR error:', execError.message);
       throw new Error(`Professional OMR failed: ${execError.message}`);
@@ -618,7 +649,7 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
       const qrResult = JSON.parse(qrOutput.trim());
       if (qrResult.found) {
         qrFound = true;
-        const qrParsed = parseQrData(qrResult.data.trim());
+        const qrParsed = extractQrFields(qrResult);
         variantCode = qrParsed.variantCode;
         if (qrParsed.totalQuestions) qrTotalQuestions = qrParsed.totalQuestions;
         console.log('✅ QR-kod topildi:', variantCode, qrTotalQuestions ? `(q=${qrTotalQuestions})` : '');
@@ -828,61 +859,47 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
 
     console.log('🔍 2-bosqich: Javoblarni aniqlash...');
 
-    // 2. Javoblarni aniqlash (omr_hybrid.py - 100% aniqlik)
-    const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_hybrid.py');
-    
-    // Python3 ni ishlatish (ko'p Linux serverlarida python3 bo'ladi)
-    // Allow override via environment variable for production
-    const pythonCmd = process.env.PYTHON_PATH || 
-                     (process.platform === 'win32' ? 'python' : 'python3');
-    
-    // Передаём правильные ответы в Python, если они есть
-    let command = `${pythonCmd} "${pythonScript}" "${imagePath}"`;
-    
-    // Prepare QR data JSON (with totalQuestions)
-    let qrDataJson = '{}';
-    if (qrFound && qrData && qrData.totalQuestions) {
-      // Sheet total = all subjects in BlockTest (for grid layout)
-      qrDataJson = JSON.stringify({ totalQuestions: qrData.sheetTotalQuestions || qrData.totalQuestions }).replace(/"/g, '\\"');
-    } else if (qrTotalQuestions) {
-      // QR JSON formatdan totalQuestions (variant bazadan topilmagan bo'lsa ham)
-      qrDataJson = JSON.stringify({ totalQuestions: qrTotalQuestions }).replace(/"/g, '\\"');
-      console.log('📊 QR JSON dan totalQuestions ishlatilmoqda:', qrTotalQuestions);
-    }
+    const pythonCmd = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
+    const useOMRV2 = process.env.USE_OMR_V2 === 'true';
+    let command: string;
+    let execCwd: string | undefined;
 
-    if (qrFound && qrData && qrData.correctAnswers && Object.keys(qrData.correctAnswers).length > 0) {
-      const correctAnswersJson = JSON.stringify(qrData.correctAnswers).replace(/"/g, '\\"');
-      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
-      console.log('✅ Передаём правильные ответы в Python:', Object.keys(qrData.correctAnswers).length, 'вопросов');
-      console.log('✅ Передаём QR data в Python: totalQuestions =', qrData.totalQuestions);
+    if (useOMRV2) {
+      // Yangi modulyar scanner (server/python/omr/) — layout-first, CLAHE, adaptive fill
+      const totalQ = qrTotalQuestions || (qrData as any)?.totalQuestions || 90;
+      execCwd = path.join(SERVER_ROOT, 'python', 'omr');
+      command = `${pythonCmd} -m scanner "${imagePath}" --questions ${totalQ}`;
+      console.log('🆕 [OMR v2] command:', command);
     } else {
-      command = `${pythonCmd} "${pythonScript}" "${imagePath}" "{}" "${qrDataJson}"`;
-      console.log('⚠️ Правильные ответы не найдены, Python будет только определять отмеченные ответы');
-      if (qrData && qrData.totalQuestions) {
-        console.log('✅ Передаём QR data в Python: totalQuestions =', qrData.totalQuestions);
+      // Eski scanner (omr_hybrid.py) — backward compat
+      const pythonScript = path.join(SERVER_ROOT, 'python', 'omr_hybrid.py');
+      execCwd = undefined;
+      let qrDataJson = '{}';
+      if (qrFound && qrData && (qrData as any).totalQuestions) {
+        qrDataJson = JSON.stringify({ totalQuestions: (qrData as any).sheetTotalQuestions || (qrData as any).totalQuestions }).replace(/"/g, '\\"');
+      } else if (qrTotalQuestions) {
+        qrDataJson = JSON.stringify({ totalQuestions: qrTotalQuestions }).replace(/"/g, '\\"');
       }
-    }
-    
-    console.log('🐍 Python command:', command);
-    console.log('📁 Python script path:', pythonScript);
-    console.log('📸 Image path:', imagePath);
-    console.log('🔧 Python executable:', pythonCmd);
-    
-    // Verify script exists
-    try {
-      await fs.access(pythonScript);
-      console.log('✅ Python script exists');
-    } catch (err) {
-      console.error('❌ Python script not found at:', pythonScript);
-      throw new Error(`Python script not found: ${pythonScript}`);
+      if (qrFound && qrData && (qrData as any).correctAnswers && Object.keys((qrData as any).correctAnswers).length > 0) {
+        const correctAnswersJson = JSON.stringify((qrData as any).correctAnswers).replace(/"/g, '\\"');
+        command = `${pythonCmd} "${pythonScript}" "${imagePath}" "${correctAnswersJson}" "${qrDataJson}"`;
+      } else {
+        command = `${pythonCmd} "${pythonScript}" "${imagePath}" "{}" "${qrDataJson}"`;
+      }
+      try {
+        await fs.access(pythonScript);
+      } catch {
+        throw new Error(`Python script not found: ${pythonScript}`);
+      }
     }
 
     let result: any;
     try {
-      const { stdout, stderr } = await execAsync(command, { 
+      const { stdout, stderr } = await execAsync(command, {
         timeout: 30000,
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large output
-        env: { ...process.env } // Pass environment variables
+        maxBuffer: 10 * 1024 * 1024,
+        ...(execCwd ? { cwd: execCwd } : {}),
+        env: { ...process.env },
       });
 
       // Log stderr only if it contains errors (not DEBUG messages)
@@ -914,6 +931,11 @@ router.post('/check-answers', authenticate, upload.single('image'), async (req, 
         }
         const jsonString = trimmed.substring(firstBrace, lastBrace + 1);
         result = JSON.parse(jsonString);
+        // V2 scanner stats normalization
+        if (result.stats && typeof result.stats === 'object') {
+          if (result.detection_rate == null) result.detection_rate = result.stats.detection_rate;
+          if (result.avg_confidence == null) result.avg_confidence = result.stats.avg_confidence;
+        }
       } catch (parseError: unknown) {
         const msg = parseError instanceof Error ? parseError.message : String(parseError);
         console.error('❌ Failed to parse Python output:', msg);
@@ -1555,6 +1577,157 @@ router.delete('/image/:filename', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Rasmni o\'chirishda xatolik:', error);
     res.status(500).json({ error: 'Rasmni o\'chirishda xatolik' });
+  }
+});
+
+/**
+ * POST /api/omr/scan-v2
+ * Yangi modulyar OMR scanner v2 (server/python/omr/scanner.py)
+ * - QR + corner + CLAHE + layout-first grid + adaptive fill
+ * - Rasm POST: multipart/form-data yoki base64 JSON
+ */
+router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) => {
+  const requestTimeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({ success: false, error: 'Request timeout' });
+    }
+  }, 60000);
+
+  try {
+    let imagePath: string;
+
+    if (req.file) {
+      // multipart/form-data
+      imagePath = req.file.path;
+    } else if (req.body?.imageBase64) {
+      // base64 JSON (real-time camera dan)
+      const base64 = req.body.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const buf = Buffer.from(base64, 'base64');
+      const fname = `omr-${Date.now()}.jpg`;
+      imagePath = path.join(uploadDir, fname);
+      await fs.writeFile(imagePath, buf);
+    } else {
+      clearTimeout(requestTimeout);
+      return res.status(400).json({ error: 'Rasm yuklanmadi (file yoki imageBase64 kerak)' });
+    }
+
+    const pythonCmd = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
+    const scannerDir = path.join(SERVER_ROOT, 'python', 'omr');
+    const command = `${pythonCmd} -m scanner "${imagePath}"`;
+
+    const { stdout, stderr } = await execAsync(command, {
+      timeout: 30000,
+      maxBuffer: 10 * 1024 * 1024,
+      cwd: scannerDir,
+      env: { ...process.env },
+    });
+
+    if (stderr) {
+      const errLines = stderr.split('\n').filter(l => l.includes('Error') || l.includes('Traceback'));
+      if (errLines.length) console.error('[OMR v2] Python errors:', errLines.join('\n'));
+    }
+
+    const trimmed = stdout.trim();
+    const jsonStart = trimmed.lastIndexOf('\n{');
+    const jsonStr = jsonStart >= 0 ? trimmed.substring(jsonStart + 1) : trimmed;
+    const result = JSON.parse(jsonStr);
+
+    // QR variant code bo'yicha DB lookup
+    const variantCode = result.qr_code?.variant_code;
+    if (variantCode) {
+      try {
+        const StudentVariant = require('../models/StudentVariant').default;
+        const Test = require('../models/Test').default;
+        const BlockTest = require('../models/BlockTest').default;
+
+        const variantInfo = await StudentVariant.findOne({
+          variantCode: { $regex: new RegExp(`^${variantCode.trim()}$`, 'i') }
+        }).populate('studentId');
+
+        if (variantInfo?.shuffledQuestions?.length > 0) {
+          const correctAnswers: Record<string, string> = {};
+          variantInfo.shuffledQuestions.forEach((q: { correctAnswer: string }, i: number) => {
+            correctAnswers[(i + 1).toString()] = q.correctAnswer;
+          });
+
+          let testName = 'Test';
+          let sheetTotal = 0;
+          try {
+            if (variantInfo.testType === 'BlockTest') {
+              const bt = await BlockTest.findById(variantInfo.testId).select('date subjectTests');
+              if (bt) {
+                testName = `Blok Test - ${new Date(bt.date).toLocaleDateString('uz-UZ')}`;
+                sheetTotal = (bt.subjectTests || []).reduce((s: number, st: { questions?: unknown[] }) => s + (st.questions?.length || 0), 0);
+              }
+            } else {
+              const t = await Test.findById(variantInfo.testId).select('name questions');
+              if (t) { testName = t.name; sheetTotal = t.questions?.length || 0; }
+            }
+          } catch { /* name optional */ }
+
+          const studentName = variantInfo.studentId?.fullName ||
+            `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
+            'Noma\'lum';
+
+          const detectedAnswers: Record<string, string> = result.detected_answers || {};
+          const totalQ = Object.keys(correctAnswers).length;
+          const sheetTotalQ = Math.max(sheetTotal, totalQ);
+
+          // Comparison (OMRCheckerPage format)
+          const details = Array.from({ length: sheetTotalQ }, (_, i) => {
+            const qNum = i + 1;
+            const qStr = String(qNum);
+            const studentAnswer = detectedAnswers[qStr] || null;
+            const correctAnswer = correctAnswers[qStr] || '';
+            return {
+              question: qNum,
+              student_answer: studentAnswer,
+              correct_answer: correctAnswer,
+              is_correct: !!studentAnswer && studentAnswer === correctAnswer,
+            };
+          });
+
+          const correct = details.filter(d => d.is_correct).length;
+          const unanswered = details.filter(d => !d.student_answer && d.correct_answer).length;
+          const incorrect = totalQ - correct - unanswered;
+          const scorePercent = totalQ > 0 ? (correct / totalQ) * 100 : 0;
+
+          // backward-compatible fields (OMRCheckerPage format)
+          result.qr_found = true;
+          result.qr_code = {
+            variantCode: variantCode,
+            testId: String(variantInfo.testId),
+            studentId: String(variantInfo.studentId?._id || variantInfo.studentId),
+            studentName,
+            testName,
+            totalQuestions: totalQ,
+            sheetTotalQuestions: sheetTotalQ,
+            correctAnswers,
+          };
+          result.comparison = {
+            correct,
+            incorrect,
+            unanswered,
+            total: totalQ,
+            score: scorePercent,
+            details,
+          };
+          result.total_questions = sheetTotalQ;
+        }
+      } catch (err: unknown) {
+        console.warn('[OMR v2] DB lookup error:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    result.uploaded_image = req.file?.filename || path.basename(imagePath);
+    if (result.detection_rate == null) result.detection_rate = result.stats?.detection_rate;
+    if (result.avg_confidence == null) result.avg_confidence = result.stats?.avg_confidence;
+    clearTimeout(requestTimeout);
+    res.json(result);
+  } catch (error: unknown) {
+    clearTimeout(requestTimeout);
+    console.error('[OMR v2] Error:', error);
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'OMR v2 xatolik' });
   }
 });
 

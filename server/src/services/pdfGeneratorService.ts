@@ -53,6 +53,20 @@ interface TestData {
   settings?: PDFSettings;
 }
 
+// ─── OMR Config — yagona manba (server/python/omr/omr_config.json) ──────────
+// Hardcoded fallback qiymatlar — config fayl o'qilmasa ham ishlaydi
+const _omrSheet: Record<string, number> = {
+  corner_mark_mm: 10, corner_margin_mm: 2, page_pad_mm: 12, header_height_mm: 55,
+  bubble_size_mm: 6, bubble_gap_mm: 2, num_width_mm: 7, timing_col_w_mm: 4,
+};
+const _omrLayout: Record<string, number> = { max_rows_per_col: 30 };
+try {
+  const cfgPath = path.join(__dirname, '..', '..', 'python', 'omr', 'omr_config.json');
+  const cfg = JSON.parse(fsSync.readFileSync(cfgPath, 'utf-8'));
+  Object.assign(_omrSheet, cfg.sheet);
+  Object.assign(_omrLayout, cfg.layout);
+} catch { /* fallback qiymatlar ishlatiladi */ }
+
 export class PDFGeneratorService {
   private static browserInstance: Browser | null = null;
 
@@ -1418,6 +1432,256 @@ export class PDFGeneratorService {
       return { columns: 4, bubbleSize: 5.5, bubbleGap: 2.5, rowMargin: 1.0, columnGap: 4, numberWidth: 7, fontSize: 7.5, bubbleFontSize: 6.5, borderWidth: 1.5 };
     }
     return { columns: 5, bubbleSize: 5.5, bubbleGap: 1.2, rowMargin: 0.4, columnGap: 3, numberWidth: 6, fontSize: 7, bubbleFontSize: 6, borderWidth: 1.5 };
+  }
+
+  // ─── V2 Answer Sheet — omr_config.json bilan mos ────────────────────────────
+
+  static async generateAnswerSheetsPDFV2(data: {
+    students: Array<{ fullName: string; variantCode: string; studentCode?: number }>;
+    test: {
+      name?: string;
+      classNumber: number;
+      groupLetter: string;
+      subjectName?: string;
+      periodMonth?: number;
+      periodYear?: number;
+    };
+    totalQuestions: number;
+    testType?: 'test' | 'block_test';
+  }): Promise<Buffer> {
+    let browser: Browser | null = null;
+    try {
+      browser = await this.launchBrowser();
+      const page = await browser.newPage();
+      page.setDefaultTimeout(this.PAGE_TIMEOUT_MS);
+      try {
+        const html = await this.generateAnswerSheetsHTMLV2(data);
+        await page.setContent(html, { waitUntil: 'load', timeout: this.PAGE_TIMEOUT_MS });
+        await page.waitForTimeout(300);
+        const pdfResult = await page.pdf({
+          format: 'A4', printBackground: true,
+          margin: { top: '0', right: '0', bottom: '0', left: '0' },
+        });
+        return Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult);
+      } finally {
+        await page.close();
+      }
+    } finally {
+      await this.closeBrowserSafe(browser);
+    }
+  }
+
+  private static async generateAnswerSheetsHTMLV2(data: {
+    students: Array<{ fullName: string; variantCode: string; studentCode?: number }>;
+    test: { name?: string; classNumber: number; groupLetter: string; subjectName?: string; periodMonth?: number; periodYear?: number };
+    totalQuestions: number;
+    testType?: 'test' | 'block_test';
+  }): Promise<string> {
+    // ── V2 constants — omr_config.json dan (module yuklanganda o'qiladi) ──
+    const CM = _omrSheet.corner_mark_mm, CG = _omrSheet.corner_margin_mm;
+    const PP = _omrSheet.page_pad_mm,    HH = _omrSheet.header_height_mm;
+    const BS = _omrSheet.bubble_size_mm, BG = _omrSheet.bubble_gap_mm;
+    const NW = _omrSheet.num_width_mm,   TW = _omrSheet.timing_col_w_mm;
+    const CW = TW + NW + 4 * BS + 3 * BG; // 41mm
+    const MXR = _omrLayout.max_rows_per_col;
+
+    const { students, test, totalQuestions, testType = 'test' } = data;
+    const q = Math.max(1, totalQuestions);
+    const cols = Math.max(2, Math.min(4, Math.ceil(q / MXR)));
+    const rows = Math.ceil(q / cols);
+    const rm = rows > 28 ? _omrLayout.row_margin_dense_mm ?? 0.5 : _omrLayout.row_margin_normal_mm ?? 1.0;
+    const usable = 210 - 2 * PP; // 186mm
+    const gap = cols > 1 ? Math.min(15, (usable - cols * CW) / (cols - 1)) : 0;
+
+    const months = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+    const periodText = test.periodMonth && test.periodYear
+      ? `${months[test.periodMonth - 1]} ${test.periodYear}` : '';
+
+    // Logo base64
+    let logoBase64 = '';
+    for (const lp of [
+      path.join(process.cwd(), '..', 'client', 'public', 'logo.png'),
+      path.join(process.cwd(), 'client', 'public', 'logo.png'),
+      path.join(__dirname, '../../../client/public/logo.png'),
+    ]) {
+      try {
+        if (fs.existsSync(lp)) {
+          logoBase64 = `data:image/png;base64,${fs.readFileSync(lp).toString('base64')}`;
+          break;
+        }
+      } catch { /* skip */ }
+    }
+
+    // QR v2 format
+    const qrMap = new Map<string, string>();
+    for (const student of students) {
+      if (!student.variantCode) continue;
+      const payload = JSON.stringify({ v: 2, c: student.variantCode.trim().toUpperCase(), q, t: testType });
+      const dataUrl = await QRCode.toDataURL(payload, {
+        width: 200, margin: 1, errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#FFFFFF' },
+      });
+      qrMap.set(student.variantCode, dataUrl);
+    }
+
+    const sheetsHtml = students.map((student) => {
+      const qrDataUrl = qrMap.get(student.variantCode) || '';
+      let gridHtml = '';
+
+      for (let ci = 0; ci < cols; ci++) {
+        const start = ci * rows + 1;
+        const end = Math.min(start + rows - 1, q);
+        if (start > q) continue;
+
+        let colHtml = `<div class="v2-col">`;
+        // Column header — A B C D labels
+        colHtml += `<div class="v2-row v2-header">`;
+        colHtml += `<div class="v2-timing"></div>`;
+        colHtml += `<div class="v2-num"></div>`;
+        for (const l of ['A', 'B', 'C', 'D']) {
+          colHtml += `<div class="v2-bubble v2-blabel">${l}</div>`;
+        }
+        colHtml += `</div>`;
+
+        for (let i = 0; i < end - start + 1; i++) {
+          const n = start + i;
+          colHtml += `<div class="v2-row">`;
+          // Timing mark — HAR QATORDA
+          colHtml += `<div class="v2-timing"><div class="v2-tmark"></div></div>`;
+          colHtml += `<div class="v2-num">${n}.</div>`;
+          for (let li = 0; li < 4; li++) {
+            const mr = li < 3 ? `margin-right:${BG}mm;` : '';
+            colHtml += `<div class="v2-bubble" style="${mr}"></div>`;
+          }
+          colHtml += `</div>`;
+        }
+        colHtml += `</div>`;
+        gridHtml += colHtml;
+      }
+
+      return `
+      <div class="v2-sheet">
+        <div class="v2-cm" style="top:${CG}mm;left:${CG}mm"></div>
+        <div class="v2-cm" style="top:${CG}mm;right:${CG}mm"></div>
+        <div class="v2-cm" style="bottom:${CG}mm;left:${CG}mm"></div>
+        <div class="v2-cm" style="bottom:${CG}mm;right:${CG}mm"></div>
+
+        <div class="v2-header-box">
+          <div class="v2-acad">
+            ${logoBase64 ? `<img src="${logoBase64}" class="v2-logo"/>` : '<div></div>'}
+            <div class="v2-acad-mid">
+              <div class="v2-acad-name">MATH ACADEMY</div>
+              <div class="v2-acad-sub">Xususiy maktabi</div>
+            </div>
+            <div class="v2-acad-right">
+              Sharqona ta&#39;lim-tarbiya<br/>va haqiqiy ilm maskani<br/>
+              <b style="color:#1a1a6e">&#9742; +91-333-66-22</b>
+            </div>
+          </div>
+          <div class="v2-info-row">
+            <div class="v2-info-left">
+              <div class="v2-title">JAVOB VARAQASI</div>
+              <div class="v2-line"><b>O&#39;quvchi:</b> ${student.fullName}</div>
+              ${test.subjectName ? `<div class="v2-line"><b>Fan:</b> ${test.subjectName}</div>` : ''}
+              <div class="v2-line">
+                <b>Sinf:</b> ${test.classNumber}-${test.groupLetter} &nbsp;
+                <b>ID:</b> ${student.studentCode ?? student.variantCode} &nbsp;
+                <b>Savollar:</b> ${q}
+                ${periodText ? `&nbsp; <b>Davr:</b> ${periodText}` : ''}
+              </div>
+              <div class="v2-instruct">
+                Doirachani <b>qora</b> yoki <b>ko&#39;k</b> ruchka bilan to&#39;liq to&#39;ldiring.
+                Bitta savolga — bitta javob. Tuzatish mumkin emas.
+              </div>
+            </div>
+            ${qrDataUrl ? `<div class="v2-qr"><img src="${qrDataUrl}" class="v2-qr-img"/></div>` : ''}
+          </div>
+        </div>
+
+        <div class="v2-grid" style="gap:${gap}mm">
+          ${gridHtml}
+        </div>
+      </div>`;
+    }).join('\n');
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page { size: A4 portrait; margin: 0; }
+  body { margin: 0; background: white; }
+
+  .v2-sheet {
+    width: 210mm; height: 297mm; position: relative;
+    background: white; padding: ${PP}mm;
+    font-family: Arial, sans-serif; color: black;
+    box-sizing: border-box; page-break-after: always;
+    overflow: hidden;
+  }
+  .v2-sheet:last-child { page-break-after: auto; }
+
+  .v2-cm {
+    position: absolute; width: ${CM}mm; height: ${CM}mm;
+    background: #000;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  .v2-header-box { height: ${HH}mm; box-sizing: border-box; overflow: hidden; }
+
+  .v2-acad {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 2px solid #222; padding-bottom: 2mm; margin-bottom: 2mm;
+  }
+  .v2-logo { width: 11mm; height: 11mm; object-fit: contain; }
+  .v2-acad-mid { flex: 1; text-align: center; padding: 0 3mm; }
+  .v2-acad-name { font-weight: bold; color: #1a1a6e; font-size: 14pt; }
+  .v2-acad-sub { font-size: 7pt; color: #555; }
+  .v2-acad-right { text-align: right; font-size: 6.5pt; color: #444; line-height: 1.4; }
+
+  .v2-info-row { display: flex; align-items: flex-start; gap: 3mm; }
+  .v2-info-left { flex: 1; font-size: 8.5pt; }
+  .v2-title { font-size: 13pt; font-weight: bold; margin-bottom: 1.5mm; }
+  .v2-line { margin-bottom: 0.8mm; }
+  .v2-instruct {
+    background: #f4f4f4; padding: 1mm 2mm;
+    border: 1px solid #ccc; font-size: 7pt; margin-top: 1mm;
+  }
+  .v2-qr {
+    width: 25mm; height: 25mm; border: 1.5px solid #000;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  }
+  .v2-qr-img { width: 23mm; height: 23mm; }
+
+  .v2-grid { display: flex; padding-top: 1mm; }
+  .v2-col { flex-shrink: 0; width: ${CW}mm; }
+
+  .v2-header { margin-bottom: 1.5mm; }
+  .v2-row { display: flex; align-items: center; height: ${BS}mm; margin-bottom: ${rm * 2}mm; }
+  .v2-timing {
+    width: ${TW}mm; flex-shrink: 0;
+    display: flex; align-items: center;
+  }
+  .v2-tmark {
+    width: 3mm; height: 3mm; background: #000;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .v2-num {
+    width: ${NW}mm; flex-shrink: 0;
+    font-size: 7pt; font-weight: bold;
+    text-align: right; padding-right: 0.5mm;
+    line-height: ${BS}mm;
+  }
+  .v2-bubble {
+    width: ${BS}mm; height: ${BS}mm; flex-shrink: 0;
+    border: 1.5px solid #000; border-radius: 50%;
+    background: #fff; box-sizing: border-box;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    margin-right: ${BG}mm;
+  }
+  .v2-bubble:last-child { margin-right: 0; }
+  .v2-blabel { border: none; border-radius: 0; background: transparent; text-align: center; font-size: 8pt; font-weight: bold; }
+</style>
+</head><body>${sheetsHtml}</body></html>`;
   }
 
   /**

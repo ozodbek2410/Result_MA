@@ -1094,7 +1094,53 @@ router.get('/pdf-export-status/:jobId', authenticate, async (req: AuthRequest, r
 });
 
 // ============================================================================
-// ANSWER SHEETS PDF EXPORT
+// ANSWER SHEETS PDF EXPORT (ASYNC via BullMQ)
+// ============================================================================
+
+router.post('/:id/export-answer-sheets-pdf-async', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { students, version } = req.body;
+
+    if (process.env.REDIS_ENABLED !== 'true') {
+      return res.status(503).json({ message: 'Queue service mavjud emas', error: 'redis_disabled' });
+    }
+
+    const test = await Test.findById(id).select('branchId name').lean();
+    if (!test) return res.status(404).json({ message: 'Test topilmadi' });
+
+    if (req.user?.branchId && test.branchId?.toString() !== req.user.branchId.toString()) {
+      return res.status(403).json({ message: 'Ruxsat yo\'q' });
+    }
+
+    const studentIds = Array.isArray(students) ? students : [];
+    const job = await pdfExportQueue.add('export', {
+      testId: id,
+      studentIds,
+      userId: req.user?.id || 'unknown',
+      isBlockTest: false,
+      answerSheets: true,
+      version: version || 'v2',
+    }, {
+      priority: 1,
+      jobId: `sheets-test-${id}-${Date.now()}`,
+    });
+
+    res.json({
+      jobId: job.id,
+      status: 'queued',
+      message: 'Javob varaqasi yaratilmoqda...',
+      estimatedTime: Math.ceil(studentIds.length * 0.5),
+    });
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('Error queueing answer sheet export:', err);
+    res.status(500).json({ message: 'Xatolik', error: err.message });
+  }
+});
+
+// ============================================================================
+// ANSWER SHEETS PDF EXPORT (SYNC)
 // ============================================================================
 
 router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthRequest, res) => {
@@ -1151,15 +1197,19 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
     const classNumber = (test as Record<string, unknown>).classNumber as number || 10;
     const subjectName = ((test as Record<string, unknown>).subjectId as Record<string, unknown>)?.nameUzb as string || '';
 
-    const pdfBuffer = await PDFGeneratorService.generateAnswerSheetsPDF({
-      students: pdfStudents,
-      test: {
-        classNumber,
-        groupLetter: 'A',
-        subjectName
-      },
-      totalQuestions
-    });
+    const useV2 = req.body?.version === 'v2' || req.query.version === 'v2';
+    const pdfBuffer = useV2
+      ? await PDFGeneratorService.generateAnswerSheetsPDFV2({
+          students: pdfStudents,
+          test: { classNumber, groupLetter: 'A', subjectName },
+          totalQuestions,
+          testType: 'test',
+        })
+      : await PDFGeneratorService.generateAnswerSheetsPDF({
+          students: pdfStudents,
+          test: { classNumber, groupLetter: 'A', subjectName },
+          totalQuestions,
+        });
 
     const filename = `javob-varaqasi-${classNumber}-sinf-${Date.now()}.pdf`;
     const exportsDir = path.join(process.cwd(), 'exports');

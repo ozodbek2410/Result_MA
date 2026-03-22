@@ -147,7 +147,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         if (qr.totalQuestions) formData.append('clientTotalQuestions', String(qr.totalQuestions));
       }
 
-      const response = await api.post('/omr/check-answers', formData, {
+      const response = await api.post('/omr/scan-v2', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       clearInterval(progressInterval);
