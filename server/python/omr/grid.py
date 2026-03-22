@@ -30,11 +30,10 @@ def build_grid(warped_gray: np.ndarray, total_questions: int) -> list[dict]:
     #
     # Grid content top offset (AnswerSheetV2.tsx CSS layout):
     #   PAGE_PAD (12mm) + HEADER_H (55mm)
-    #   + grid paddingTop (1mm)
-    #   + col header row height (BUBBLE = 6mm) + col header marginBottom (1.5mm)
+    #   + col header row height (BUBBLE = 6mm) + col header marginBottom (1mm)
     #   − CORNER_CENTER (7mm)
-    #   = 68.5mm  →  Q1 bubble center = 68.5 + BUBBLE/2 = 71.5mm ✓
-    _GRID_OFFSET_MM = 1.0 + BUBBLE + 1.5  # paddingTop + col_header_h + col_header_mb
+    #   = 67mm  →  Q1 bubble center = 67 + BUBBLE/2 = 70mm ✓
+    _GRID_OFFSET_MM = BUBBLE + 1.0  # col_header_h + col_header_mb (paddingTop removed)
     grid_left_px = mm_to_px(PAGE_PAD - CORNER_CENTER, w)
     grid_top_px  = mm_to_px(PAGE_PAD + HEADER_H + _GRID_OFFSET_MM - CORNER_CENTER, w)
     col_w_px = mm_to_px(layout["col_w_mm"], w)

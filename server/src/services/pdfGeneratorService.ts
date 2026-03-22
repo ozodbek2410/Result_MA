@@ -1613,7 +1613,7 @@ export class PDFGeneratorService {
 
   .v2-sheet {
     width: 210mm; height: 297mm; position: relative;
-    background: white; padding: ${PP}mm;
+    background: white; padding: ${PP}mm ${PP}mm 6mm ${PP}mm;
     font-family: Arial, sans-serif; color: black;
     box-sizing: border-box; page-break-after: always;
     overflow: hidden;
@@ -1652,10 +1652,10 @@ export class PDFGeneratorService {
   }
   .v2-qr-img { width: 23mm; height: 23mm; }
 
-  .v2-grid { display: flex; padding-top: 1mm; }
+  .v2-grid { display: flex; }
   .v2-col { flex-shrink: 0; width: ${CW}mm; }
 
-  .v2-header { margin-bottom: 1.5mm; }
+  .v2-header { margin-bottom: 1mm; }
   .v2-row { display: flex; align-items: center; height: ${BS}mm; margin-bottom: ${rm * 2}mm; }
   .v2-timing {
     width: ${TW}mm; flex-shrink: 0;

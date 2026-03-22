@@ -46,7 +46,7 @@ const MONTHS = [
 function computeLayout(q: number) {
   const cols = Math.max(2, Math.min(4, Math.ceil(q / MXR)));
   const rows = Math.ceil(q / cols);
-  const rm   = rows > 28 ? 0.5 : 1.0;
+  const rm   = rows > 28 ? 0.3 : 1.0;
   const usable = 210 - 2 * PP; // 186mm
   const gap  = cols > 1 ? Math.min(15, (usable - cols * CW) / (cols - 1)) : 0;
   return { cols, rows, rm, gap };
@@ -111,6 +111,15 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
   }, [qrPayload]);
 
   return (
+    <>
+    <style>{`
+      @media print {
+        @page { size: A4 portrait; margin: 0; }
+        html, body { margin: 0; padding: 0; }
+        .answer-sheet-v2 { page-break-after: always; }
+        .answer-sheet-v2:last-child { page-break-after: auto; }
+      }
+    `}</style>
     <div
       className="answer-sheet-v2"
       style={{
@@ -122,7 +131,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
         color: '#000',
         boxSizing: 'border-box',
         overflow: 'hidden',
-        padding: px(PP),
+        padding: `${PP}mm ${PP}mm 6mm ${PP}mm`,
         margin: '0 auto',
         fontSize: 'initial',
         lineHeight: 'initial',
@@ -213,7 +222,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
       </div>
 
       {/* ══════════ GRID — top = HH = 55mm (doim bir xil!) ══════════ */}
-      <div style={{ display: 'flex', gap: px(L.gap), paddingTop: '1mm' }}>
+      <div style={{ display: 'flex', gap: px(L.gap) }}>
         {Array.from({ length: L.cols }, (_, ci) => {
           const start = ci * L.rows + 1;
           const end   = Math.min(start + L.rows - 1, totalQ);
@@ -222,7 +231,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
           return (
             <div key={ci} style={{ flexShrink: 0, width: px(CW) }}>
               {/* Ustun boshi — A B C D yorliqlari */}
-              <div style={{ display: 'flex', alignItems: 'center', height: px(BS), marginBottom: px(1.5) }}>
+              <div style={{ display: 'flex', alignItems: 'center', height: px(BS), marginBottom: px(1) }}>
                 <div style={{ width: px(TW), flexShrink: 0 }} />
                 <div style={{ width: px(NW), flexShrink: 0 }} />
                 {['A', 'B', 'C', 'D'].map((l, i) => (
@@ -284,6 +293,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
         })}
       </div>
     </div>
+    </>
   );
 }
 
