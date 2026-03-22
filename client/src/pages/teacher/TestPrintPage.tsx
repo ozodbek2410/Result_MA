@@ -929,7 +929,7 @@ export default function TestPrintPage() {
               ? variant.shuffledQuestions.length
               : (isBlockTest ? test.subjectTests?.reduce((sum: number, st: any) => sum + (st.questions?.length || 0), 0) : test.questions?.length) || 0;
             return (
-              <div key={`sheet-${student._id}`} className="page-break mb-8 print:mb-0" style={{ display: 'flex', justifyContent: 'center', padding: '20mm 0' }}>
+              <div key={`sheet-${student._id}`} className="page-break mb-8 print:mb-0" style={{ display: 'flex', justifyContent: 'center' }}>
                 <AnswerSheetV2
                   student={{ fullName: student.fullName, variantCode, studentCode: student.studentCode }}
                   test={{

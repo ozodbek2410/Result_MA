@@ -111,15 +111,6 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
   }, [qrPayload]);
 
   return (
-    <>
-    <style>{`
-      @media print {
-        @page { size: A4 portrait; margin: 0; }
-        html, body { margin: 0; padding: 0; }
-        .answer-sheet-v2 { page-break-after: always; }
-        .answer-sheet-v2:last-child { page-break-after: auto; }
-      }
-    `}</style>
     <div
       className="answer-sheet-v2"
       style={{
@@ -293,7 +284,6 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
         })}
       </div>
     </div>
-    </>
   );
 }
 
