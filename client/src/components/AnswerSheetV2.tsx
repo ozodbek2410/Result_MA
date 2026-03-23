@@ -117,7 +117,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
       className="answer-sheet-v2"
       style={{
         width: '210mm',
-        maxHeight: '297mm',
+        height: 'auto',
         position: 'relative',
         background: '#fff',
         fontFamily: 'Arial, sans-serif',
