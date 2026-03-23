@@ -13,7 +13,8 @@
     "timing_mark_mm": 3,
     "timing_col_w_mm": 4,
     "header_height_mm": 55,
-    "qr_size_mm": 32
+    "qr_size_mm": 32,
+    "print_scale": 0.92
   },
   "scanner": {
     "target_width_px": 1200,

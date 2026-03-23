@@ -132,13 +132,13 @@ def validate_rectangle(
     if avg_h < 1:
         return False
     aspect = avg_w / avg_h
-    if not (0.4 < aspect < 1.2):
+    if not (0.55 < aspect < 0.90):  # A4=0.707, ±25% tolerance
         return False
 
-    # Parallellik
+    # Parallellik — qarama-qarshi tomonlar ±20% farq (eski 40% juda keng)
     w_ratio = min(top_w, bot_w) / max(top_w, bot_w)
     h_ratio = min(left_h, right_h) / max(left_h, right_h)
-    if w_ratio < 0.6 or h_ratio < 0.6:
+    if w_ratio < 0.75 or h_ratio < 0.75:
         return False
 
     return True
