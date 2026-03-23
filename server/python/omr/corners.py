@@ -64,6 +64,55 @@ def find_corners(gray: np.ndarray) -> np.ndarray | None:
         if result_geo is not None and validate_rectangle(result_geo, w, h):
             return sort_corners(result_geo)
 
+    # ──── STAGE 4: EvalBee-style hujjat chegarasi ────
+    # Corner marklar topilmasa — varaqning O'ZINI topish
+    # Canny Edge → findContours → eng katta 4-burchak = hujjat
+    doc = _detect_document_boundary(gray)
+    if doc is not None:
+        return sort_corners(doc)
+
+    return None
+
+
+def _detect_document_boundary(gray: np.ndarray) -> np.ndarray | None:
+    """
+    EvalBee Qadam 2-4:
+    GaussianBlur → Canny(75,200) → findContours → eng katta 4-burchakli kontur.
+
+    Bu corner marklar topilmaganda FALLBACK sifatida ishlatiladi.
+    Varaqning o'zi (oq qog'oz vs qorong'u fon) kontrast orqali topiladi.
+    """
+    h, w = gray.shape
+    img_area = h * w
+
+    # GaussianBlur — shovqin kamaytirish
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    # Multi-threshold Canny — turli yoritish sharoitlari uchun
+    for canny_low, canny_high in [(50, 150), (75, 200), (30, 100)]:
+        edges = cv2.Canny(blurred, canny_low, canny_high)
+
+        # Dilate — chiziq bo'shliqlarini yopish
+        kernel = np.ones((3, 3), np.uint8)
+        edges = cv2.dilate(edges, kernel, iterations=2)
+
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Eng katta konturlarni tekshirish
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        for cnt in contours[:5]:
+            peri = cv2.arcLength(cnt, True)
+            approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+
+            if len(approx) == 4:
+                area = cv2.contourArea(approx)
+                # Kamida 15% rasm maydoni (varaq rasmning katta qismini egallashi kerak)
+                if area > img_area * 0.15:
+                    pts = approx.reshape(4, 2).astype(np.float32)
+                    if validate_rectangle(pts, w, h):
+                        return pts
+
     return None
 
 
