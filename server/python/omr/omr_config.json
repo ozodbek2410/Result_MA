@@ -17,13 +17,18 @@
   "scanner": {
     "target_width_px": 1200,
     "circularity_min": 0.3,
-    "fill_ratio_threshold": 0.38,
+    "fill_ratio_threshold": 0.50,
+    "fill_inner_ratio": 0.7,
     "score_threshold_min": 4.0,
     "clahe_clip_limit": 2.0,
     "clahe_tile_grid": 8,
-    "corner_thresholds": [40, 70, 100, 140, 180],
-    "min_marker_area_px": 80,
-    "max_marker_area_px": 2500
+    "corner_thresholds": [30, 50, 70, 100, 130, 160, 190],
+    "corner_zone_pct": 0.30,
+    "corner_solidity_min": 0.6,
+    "corner_fill_min": 0.4,
+    "min_marker_area_px": 50,
+    "max_marker_area_px": 5000,
+    "calibration_max_offset_px": 15
   },
   "layout": {
     "max_rows_per_col": 30,

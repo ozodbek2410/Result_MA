@@ -1,20 +1,24 @@
 """
 Burchak markerlarni aniqlash va perspektiv tuzatish.
 
-EvalBee reliability sirlari:
-- Multi-threshold: 7+ threshold sinab ko'riladi, eng yaxshi 4-burchak olinadi
-- Katta markerlar (10mm): qorong'u/blur rasmlarda ham topiladi
-- Sodda kvadrat shakl: doira emas, kvadrat → Canny edge aniqroq ishlaydi
+EvalBee-level robustness:
+- 3-bosqichli pipeline: multi-threshold → 3-corner estimation → geometric fallback
+- GaussianBlur + Canny edge detection
+- Resolution-adaptive marker sizing
+- Solidity + fill ratio filtrlari
+- Deduplication across thresholds
 """
 import cv2
 import numpy as np
-from utils import multi_threshold, sort_corners
+from utils import (multi_threshold, canny_binary, gaussian_blur,
+                   sort_corners, estimate_missing_corner, validate_rectangle,
+                   deduplicate_candidates)
 from config import SCANNER, SPAN_W, SPAN_H, mm_to_px
 
 
 def find_corners(gray: np.ndarray) -> np.ndarray | None:
     """
-    4 ta burchak markerni topish.
+    4 ta burchak markerni topish — 3-bosqichli EvalBee-level pipeline.
 
     Returns:
         np.ndarray shape (4,2) — [tl, tr, br, bl] koordinatalar
@@ -22,98 +26,192 @@ def find_corners(gray: np.ndarray) -> np.ndarray | None:
     """
     h, w = gray.shape
 
-    best = None
-    best_score = 0
+    # Resolution-adaptive sizing (omr_hybrid.py dan)
+    mm_px = w / 210.0
+    expected_mark = 10.0 * mm_px  # 10mm corner mark
+    min_side = max(4, int(expected_mark * 0.3))
+    max_side = int(expected_mark * 3.0)
+    min_area = min_side ** 2
+    max_area = max_side ** 2
+
+    solidity_min = SCANNER.get("corner_solidity_min", 0.6)
+    fill_min = SCANNER.get("corner_fill_min", 0.4)
+    zone_pct = SCANNER.get("corner_zone_pct", 0.30)
+
+    # ──── STAGE 1: Multi-threshold + deduplication ────
+    all_candidates = []
 
     for binary in multi_threshold(gray):
-        result = _find_in_binary(binary, w, h)
-        if result is not None:
-            score = _corner_quality(result, w, h)
-            if score > best_score:
-                best_score = score
-                best = result
+        _extract_candidates(binary, w, h, min_area, max_area,
+                            solidity_min, fill_min, all_candidates)
 
-    return best
+    # Deduplication
+    candidates = deduplicate_candidates(all_candidates, min_dist=expected_mark * 0.8)
+
+    # ──── STAGE 2: Quadrant grouping + missing corner estimation ────
+    result = _select_from_quadrants(candidates, w, h, zone_pct)
+    if result is not None and validate_rectangle(result, w, h):
+        return sort_corners(result)
+
+    # 3 ta burchak topildimi? → 4-chisini hisoblash
+    result_3 = _estimate_fourth(candidates, w, h, zone_pct)
+    if result_3 is not None and validate_rectangle(result_3, w, h):
+        return sort_corners(result_3)
+
+    # ──── STAGE 3: Geometric fallback ────
+    if len(candidates) >= 4:
+        result_geo = _geometric_pick(candidates, w, h)
+        if result_geo is not None and validate_rectangle(result_geo, w, h):
+            return sort_corners(result_geo)
+
+    return None
 
 
-def _find_in_binary(binary: np.ndarray, w: int, h: int) -> np.ndarray | None:
-    """Bitta binary rasmda 4 ta burchak topish."""
-    # Kichik konturlarni yo'qotish (shovqin)
+def _extract_candidates(
+    binary: np.ndarray, w: int, h: int,
+    min_area: int, max_area: int,
+    solidity_min: float, fill_min: float,
+    out: list
+) -> None:
+    """Binary rasmdan marker kandidatlarini chiqarish."""
+    # Morphology close — kichik bo'shliqlarni yopish
     kernel = np.ones((3, 3), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
 
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
+    contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    min_area = SCANNER["min_marker_area_px"]
-    max_area = SCANNER["max_marker_area_px"]
-
-    # Kvadrat-ga yaqin konturlarni filtr qilish
-    squares = []
     for cnt in contours:
         area = cv2.contourArea(cnt)
         if not (min_area < area < max_area):
             continue
 
         x, y, cw, ch = cv2.boundingRect(cnt)
-        aspect = cw / ch if ch > 0 else 0
-        if not (0.5 < aspect < 2.0):  # kvadratga yaqin
+        if cw < 3 or ch < 3:
+            continue
+
+        # Aspect ratio — kvadratga yaqin
+        aspect = cw / ch
+        if not (0.45 < aspect < 2.2):
+            continue
+
+        # Solidity — konveks shakl (to'g'ri to'rtburchak = yuqori solidity)
+        hull = cv2.convexHull(cnt)
+        hull_area = cv2.contourArea(hull)
+        solidity = area / hull_area if hull_area > 0 else 0
+        if solidity < solidity_min:
+            continue
+
+        # Fill ratio — bounding rect ning qancha qismi to'ldirilgan
+        fill = area / (cw * ch)
+        if fill < fill_min:
             continue
 
         cx = x + cw / 2
         cy = y + ch / 2
-        squares.append((cx, cy, area))
-
-    if len(squares) < 4:
-        return None
-
-    # 4 ta burchakga eng yaqin marker (har burchak zonasidan 1 ta)
-    corners = _pick_four_corners(squares, w, h)
-    return corners
+        out.append((cx, cy, area, fill, solidity))
 
 
-def _pick_four_corners(
-    squares: list[tuple], w: int, h: int
+def _select_from_quadrants(
+    candidates: list, w: int, h: int, zone_pct: float
 ) -> np.ndarray | None:
-    """
-    Har bir burchak zonasidan 1 ta marker tanlash.
-    Zona: rasming 30%x30% burchak qismi.
-    """
+    """Har bir burchak zonasidan 1 ta eng yaxshi marker tanlash."""
     zones = {
-        "tl": (0, 0, w * 0.4, h * 0.4),
-        "tr": (w * 0.6, 0, w, h * 0.4),
-        "br": (w * 0.6, h * 0.6, w, h),
-        "bl": (0, h * 0.6, w * 0.4, h),
+        "tl": (0, 0, w * zone_pct, h * zone_pct),
+        "tr": (w * (1 - zone_pct), 0, w, h * zone_pct),
+        "br": (w * (1 - zone_pct), h * (1 - zone_pct), w, h),
+        "bl": (0, h * (1 - zone_pct), w * zone_pct, h),
     }
 
     selected = {}
     for zone_name, (x1, y1, x2, y2) in zones.items():
-        candidates = [
-            s for s in squares
-            if x1 <= s[0] <= x2 and y1 <= s[1] <= y2
+        zone_cands = [
+            c for c in candidates
+            if x1 <= c[0] <= x2 and y1 <= c[1] <= y2
         ]
-        if not candidates:
-            return None
-        # Eng katta markerini olish
-        best = max(candidates, key=lambda s: s[2])
-        selected[zone_name] = (best[0], best[1])
+        if zone_cands:
+            # Score: area * fill * solidity
+            best = max(zone_cands, key=lambda c: c[2] * c[3] * c[4])
+            selected[zone_name] = best
+
+    if len(selected) == 4:
+        pts = np.array([
+            selected["tl"][:2], selected["tr"][:2],
+            selected["br"][:2], selected["bl"][:2],
+        ], dtype=np.float32)
+        return pts
+
+    return None
+
+
+def _estimate_fourth(
+    candidates: list, w: int, h: int, zone_pct: float
+) -> np.ndarray | None:
+    """3 burchakdan 4-chisini parallelogram bilan hisoblash."""
+    zones = {
+        "tl": (0, 0, w * zone_pct, h * zone_pct),
+        "tr": (w * (1 - zone_pct), 0, w, h * zone_pct),
+        "br": (w * (1 - zone_pct), h * (1 - zone_pct), w, h),
+        "bl": (0, h * (1 - zone_pct), w * zone_pct, h),
+    }
+
+    selected = {}
+    for zone_name, (x1, y1, x2, y2) in zones.items():
+        zone_cands = [
+            c for c in candidates
+            if x1 <= c[0] <= x2 and y1 <= c[1] <= y2
+        ]
+        if zone_cands:
+            best = max(zone_cands, key=lambda c: c[2] * c[3] * c[4])
+            selected[zone_name] = best[:2]  # faqat (cx, cy)
+
+    if len(selected) != 3:
+        return None
+
+    missing_key = [k for k in ["tl", "tr", "br", "bl"] if k not in selected][0]
+    estimated = estimate_missing_corner(selected, missing_key)
+    selected[missing_key] = estimated
 
     pts = np.array([
-        selected["tl"],
-        selected["tr"],
-        selected["br"],
-        selected["bl"],
+        selected["tl"][:2], selected["tr"][:2],
+        selected["br"][:2], selected["bl"][:2],
     ], dtype=np.float32)
-
     return pts
 
 
+def _geometric_pick(candidates: list, w: int, h: int) -> np.ndarray | None:
+    """
+    Barcha kandidatlardan 4 burchakka eng yaqin 4 tasini tanlash.
+    Fallback — zona chegaralari ishlamaganda.
+    """
+    if len(candidates) < 4:
+        return None
+
+    # Ideal burchaklar
+    corners_ideal = [(0, 0), (w, 0), (w, h), (0, h)]  # TL, TR, BR, BL
+    selected = []
+    used = set()
+
+    for cx_i, cy_i in corners_ideal:
+        best_idx = -1
+        best_dist = float('inf')
+        for i, (cx, cy, *_) in enumerate(candidates):
+            if i in used:
+                continue
+            dist = (cx - cx_i) ** 2 + (cy - cy_i) ** 2
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = i
+        if best_idx >= 0:
+            selected.append(candidates[best_idx][:2])
+            used.add(best_idx)
+
+    if len(selected) == 4:
+        return np.array(selected, dtype=np.float32)
+    return None
+
+
 def _corner_quality(corners: np.ndarray, w: int, h: int) -> float:
-    """
-    4 burchakning sifat ballini hisoblash.
-    Kattaroq = sahifani to'liqroq qamrab olgan = yaxshiroq.
-    """
+    """4 burchakning sifat ballini hisoblash."""
     xs = corners[:, 0]
     ys = corners[:, 1]
     span_x = xs.max() - xs.min()
@@ -124,9 +222,7 @@ def _corner_quality(corners: np.ndarray, w: int, h: int) -> float:
 def warp_perspective(color: np.ndarray, corners: np.ndarray) -> np.ndarray:
     """
     4 burchak marker orqali perspektiv tuzatish.
-    Natija: A4 nisbatida to'g'rilangan rasm (SPAN_W x SPAN_H mm).
-
-    Target o'lchami: 1200px kenglik (aniqlik uchun yetarli).
+    Target: SPAN_W x SPAN_H mm nisbatida.
     """
     target_w = SCANNER["target_width_px"]
     target_h = int(target_w * SPAN_H / SPAN_W)
