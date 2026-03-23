@@ -56,7 +56,7 @@ interface TestData {
 // ─── OMR Config — yagona manba (server/python/omr/omr_config.json) ──────────
 // Hardcoded fallback qiymatlar — config fayl o'qilmasa ham ishlaydi
 const _omrSheet: Record<string, number> = {
-  corner_mark_mm: 10, corner_margin_mm: 2, page_pad_mm: 12, page_pad_top_mm: 4,
+  corner_mark_mm: 10, corner_margin_mm: 2, page_pad_mm: 12, page_pad_top_mm: 14,
   header_height_mm: 55, bubble_size_mm: 5, bubble_gap_mm: 1.5, num_width_mm: 7,
   timing_col_w_mm: 4,
 };
@@ -1480,7 +1480,8 @@ export class PDFGeneratorService {
   }): Promise<string> {
     // ── V2 constants — omr_config.json dan (module yuklanganda o'qiladi) ──
     const CM = _omrSheet.corner_mark_mm, CG = _omrSheet.corner_margin_mm;
-    const PP = _omrSheet.page_pad_mm,    HH = _omrSheet.header_height_mm;
+    const PP = _omrSheet.page_pad_mm,    PT = _omrSheet.page_pad_top_mm ?? 14;
+    const HH = _omrSheet.header_height_mm;
     const BS = _omrSheet.bubble_size_mm, BG = _omrSheet.bubble_gap_mm;
     const NW = _omrSheet.num_width_mm,   TW = _omrSheet.timing_col_w_mm;
     const CW = TW + NW + 4 * BS + 3 * BG; // 41mm
@@ -1490,7 +1491,7 @@ export class PDFGeneratorService {
     const q = Math.max(1, totalQuestions);
     const cols = Math.max(2, Math.min(4, Math.ceil(q / MXR)));
     const rows = Math.ceil(q / cols);
-    const rm = rows > 28 ? _omrLayout.row_margin_dense_mm ?? 1.0 : _omrLayout.row_margin_normal_mm ?? 1.5;
+    const rm = rows > 28 ? _omrLayout.row_margin_dense_mm ?? 0.5 : _omrLayout.row_margin_normal_mm ?? 1.5;
     const usable = 210 - 2 * PP; // 186mm
     const gap = cols > 1 ? Math.min(15, (usable - cols * CW) / (cols - 1)) : 0;
 
@@ -1614,7 +1615,7 @@ export class PDFGeneratorService {
 
   .v2-sheet {
     width: 210mm; height: 297mm; position: relative;
-    background: white; padding: 4mm ${PP}mm 2mm ${PP}mm;
+    background: white; padding: ${PT}mm ${PP}mm ${PT}mm ${PP}mm;
     font-family: Arial, sans-serif; color: black;
     box-sizing: border-box; page-break-after: always;
     overflow: hidden;
