@@ -53,7 +53,7 @@ interface LiveScannerModalProps {
 const A4_RATIO = 297 / 210;
 const FRAME_W_RATIO = 0.82;
 const ANALYSIS_W = 480;
-const STABLE_FRAMES_NEEDED = 8; // ~1.3s at 60fps (check every 5th frame)
+const STABLE_FRAMES_NEEDED = 4; // ~0.7s — EvalBee tezligida (3-5 sekund)
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -249,8 +249,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       corners = estimateMissingCorner(corners);
     }
 
-    // Validate corners form a valid quadrilateral
-    const valid = corners.stable && validateCorners(corners,
+    // Validate corners — 3/4 yetarli (4-chisi estimated)
+    // EvalBee ham 3 ta topsa qolgan 1 tani hisoblaydi
+    const valid = corners.count >= 3 && validateCorners(corners,
       Math.round(afw * 1.1), Math.round(afh * 1.1));
 
     // Store corners in ref (remap to full analysis coords for capture)
@@ -298,7 +299,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     ctx.fillRect(0, 0, ow, oh);
     ctx.clearRect(fx, fy, fw, fh);
 
-    const allGood = valid && corners.count === 4;
+    const allGood = valid && corners.count >= 3;
     // Subtle frame border — only when NOT all found (helps alignment)
     if (!allGood) {
       ctx.strokeStyle = 'rgba(255,255,255,0.15)';
@@ -398,9 +399,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         const hint = corners.count === 0
           ? 'Varoqni ramkaga moslang'
           : corners.count < 3
-          ? `${corners.count}/4 marker topildi — to'g'rilang`
+          ? `${corners.count}/4 marker — to'g'rilang`
           : !valid
           ? 'Burchaklarni tekislang'
+          : corners.count === 3
+          ? '3/4 marker — skanerlash...'
           : 'Qimirlamang...';
         ctx.fillText(hint, ow / 2, labelY + 2);
       }
@@ -478,7 +481,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
 
   if (!isOpen) return null;
 
-  const isReady = cornerCount === 4;
+  const isReady = cornerCount >= 3;
 
   return (
     <div className="fixed inset-0 z-50 bg-black">

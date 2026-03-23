@@ -152,9 +152,8 @@ export function detectCorners(imageData: ImageData): CornersResult {
   const insetX = (7 / 210) * w;
   const insetY = (7 / 297) * h;
 
-  // Search radius: must stay INSIDE the blue zone (~7% of frame)
-  // This ensures green mark always appears inside blue zone
-  const searchRadius = Math.max(markSize * 1.5, w * 0.04);
+  // Search radius: katta zona — telefon burchagidan olsa ham topishi uchun
+  const searchRadius = Math.max(markSize * 2.0, w * 0.08);
 
   const tl = refineMark(data, w, h, insetX, insetY, markSize, searchRadius);
   const tr = refineMark(data, w, h, w - insetX, insetY, markSize, searchRadius);
