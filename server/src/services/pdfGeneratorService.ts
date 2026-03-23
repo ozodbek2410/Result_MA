@@ -56,8 +56,9 @@ interface TestData {
 // ─── OMR Config — yagona manba (server/python/omr/omr_config.json) ──────────
 // Hardcoded fallback qiymatlar — config fayl o'qilmasa ham ishlaydi
 const _omrSheet: Record<string, number> = {
-  corner_mark_mm: 10, corner_margin_mm: 2, page_pad_mm: 12, header_height_mm: 50,
-  bubble_size_mm: 6, bubble_gap_mm: 2, num_width_mm: 7, timing_col_w_mm: 4,
+  corner_mark_mm: 10, corner_margin_mm: 2, page_pad_mm: 12, page_pad_top_mm: 4,
+  header_height_mm: 55, bubble_size_mm: 5, bubble_gap_mm: 1.5, num_width_mm: 7,
+  timing_col_w_mm: 4,
 };
 const _omrLayout: Record<string, number> = { max_rows_per_col: 30 };
 try {
@@ -1489,7 +1490,7 @@ export class PDFGeneratorService {
     const q = Math.max(1, totalQuestions);
     const cols = Math.max(2, Math.min(4, Math.ceil(q / MXR)));
     const rows = Math.ceil(q / cols);
-    const rm = rows > 28 ? _omrLayout.row_margin_dense_mm ?? 0.5 : _omrLayout.row_margin_normal_mm ?? 1.0;
+    const rm = rows > 28 ? _omrLayout.row_margin_dense_mm ?? 1.0 : _omrLayout.row_margin_normal_mm ?? 1.5;
     const usable = 210 - 2 * PP; // 186mm
     const gap = cols > 1 ? Math.min(15, (usable - cols * CW) / (cols - 1)) : 0;
 
@@ -1613,7 +1614,7 @@ export class PDFGeneratorService {
 
   .v2-sheet {
     width: 210mm; height: 297mm; position: relative;
-    background: white; padding: ${PP}mm ${PP}mm 6mm ${PP}mm;
+    background: white; padding: 4mm ${PP}mm 2mm ${PP}mm;
     font-family: Arial, sans-serif; color: black;
     box-sizing: border-box; page-break-after: always;
     overflow: hidden;
@@ -1673,7 +1674,7 @@ export class PDFGeneratorService {
   }
   .v2-bubble {
     width: ${BS}mm; height: ${BS}mm; flex-shrink: 0;
-    border: 1.5px solid #000; border-radius: 50%;
+    border: 1px solid #000; border-radius: 50%;
     background: #fff; box-sizing: border-box;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
     margin-right: ${BG}mm;

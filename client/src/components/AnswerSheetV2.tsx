@@ -26,16 +26,16 @@ import { useEffect, useRef, memo } from 'react';
 import QRCode from 'qrcode';
 
 // ─── O'LCHAMLAR — omr_config.json bilan aynan mos ───────────────────────────
-const CM  = 10;  // corner mark
-const CG  = 2;   // corner gap from edge
-const PP  = 12;  // page padding
-const HH  = 55;  // header height FIXED
-const BS  = 6;   // bubble size
-const BG  = 2;   // bubble gap
-const NW  = 7;   // number width
-const TW  = 4;   // timing column width
-const CW  = TW + NW + 4 * BS + 3 * BG; // 41mm — column width
-const MXR = 30;  // max rows per column
+const CM  = 10;   // corner mark
+const CG  = 2;    // corner gap from edge
+const PP  = 12;   // page padding (left/right)
+const HH  = 55;   // header height FIXED
+const BS  = 5;    // bubble size (EvalBee: ~5mm)
+const BG  = 1.5;  // bubble gap (EvalBee: ~1.5mm)
+const NW  = 7;    // number width
+const TW  = 4;    // timing column width
+const CW  = TW + NW + 4 * BS + 3 * BG; // 35.5mm — column width
+const MXR = 30;   // max rows per column
 
 const MONTHS = [
   'Yanvar','Fevral','Mart','Aprel','May','Iyun',
@@ -46,7 +46,7 @@ const MONTHS = [
 function computeLayout(q: number) {
   const cols = Math.max(2, Math.min(4, Math.ceil(q / MXR)));
   const rows = Math.ceil(q / cols);
-  const rm   = rows > 28 ? 0.5 : 1.0;
+  const rm   = rows > 28 ? 1.0 : 1.5;
   const usable = 210 - 2 * PP; // 186mm
   const gap  = cols > 1 ? Math.min(15, (usable - cols * CW) / (cols - 1)) : 0;
   return { cols, rows, rm, gap };
@@ -269,7 +269,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
                     {['A', 'B', 'C', 'D'].map((l, li) => (
                       <div key={l} style={{
                         width: px(BS), height: px(BS),
-                        border: '1.5px solid #000',
+                        border: '1px solid #000',
                         borderRadius: '50%',
                         background: '#fff',
                         boxSizing: 'border-box',

@@ -12,23 +12,24 @@ export const SHEET = {
   CORNER_MARK: 10,
   CORNER_MARGIN: 2,
   PAGE_PAD: 12,
-  BUBBLE: 6,
-  BUBBLE_GAP: 2,
+  PAGE_PAD_TOP: 4,
+  BUBBLE: 5,
+  BUBBLE_GAP: 1.5,
   NUM_W: 7,
   TIMING_W: 4,
-  HEADER_H: 50,
+  HEADER_H: 55,
   QR_SIZE: 32,
 } as const;
 
-// Bir ustun kengligi: timing(4) + num(7) + A(6)+gap(2)+B(6)+gap(2)+C(6)+gap(2)+D(6) = 41mm
+// Bir ustun kengligi: timing(4) + num(7) + A(5)+gap(1.5)+B(5)+gap(1.5)+C(5)+gap(1.5)+D(5) = 35.5mm
 export const COL_W_MM = SHEET.TIMING_W + SHEET.NUM_W + 4 * SHEET.BUBBLE + 3 * SHEET.BUBBLE_GAP;
 
 export const LAYOUT = {
   MAX_ROWS_PER_COL: 30,
   MIN_COLS: 2,
   MAX_COLS: 4,
-  ROW_MARGIN_NORMAL: 1.0,
-  ROW_MARGIN_DENSE: 0.5,
+  ROW_MARGIN_NORMAL: 1.5,
+  ROW_MARGIN_DENSE: 1.0,
 } as const;
 
 export interface SheetLayout {
