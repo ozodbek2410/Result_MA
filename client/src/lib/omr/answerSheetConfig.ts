@@ -28,7 +28,7 @@ export const LAYOUT = {
   MIN_COLS: 2,
   MAX_COLS: 4,
   ROW_MARGIN_NORMAL: 1.0,
-  ROW_MARGIN_DENSE: 0.3,
+  ROW_MARGIN_DENSE: 0.5,
 } as const;
 
 export interface SheetLayout {

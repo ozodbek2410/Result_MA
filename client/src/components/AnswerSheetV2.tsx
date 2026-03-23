@@ -46,7 +46,7 @@ const MONTHS = [
 function computeLayout(q: number) {
   const cols = Math.max(2, Math.min(4, Math.ceil(q / MXR)));
   const rows = Math.ceil(q / cols);
-  const rm   = rows > 28 ? 0.3 : 1.0;
+  const rm   = rows > 28 ? 0.5 : 1.0;
   const usable = 210 - 2 * PP; // 186mm
   const gap  = cols > 1 ? Math.min(15, (usable - cols * CW) / (cols - 1)) : 0;
   return { cols, rows, rm, gap };

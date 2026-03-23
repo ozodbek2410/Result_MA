@@ -35,6 +35,6 @@
     "min_columns": 2,
     "max_columns": 4,
     "row_margin_normal_mm": 1.0,
-    "row_margin_dense_mm": 0.3
+    "row_margin_dense_mm": 0.5
   }
 }
