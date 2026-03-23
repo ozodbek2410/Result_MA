@@ -28,7 +28,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  Loader2
+  Loader2,
+  Pencil,
+  Check
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
@@ -64,6 +66,14 @@ export default function GroupDetailPage() {
   const [allStudentsList, setAllStudentsList] = useState<any[]>([]);
   const [addStudentLoading, setAddStudentLoading] = useState(false);
   const [addingStudentId, setAddingStudentId] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentPhone, setNewStudentPhone] = useState('');
+  const [creatingStudent, setCreatingStudent] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const { success, error } = useToast();
 
   useEffect(() => {
@@ -251,6 +261,55 @@ export default function GroupDetailPage() {
     }
   };
 
+  const handleCreateStudent = async () => {
+    if (!newStudentName.trim()) return;
+    setCreatingStudent(true);
+    try {
+      const { data } = await api.post('/students', {
+        fullName: newStudentName.trim(),
+        classNumber: group?.classNumber || 9,
+        phone: newStudentPhone.trim() || undefined,
+      });
+      const student = data.student;
+      await api.post(`/teacher/groups/${id}/students/${student._id}`);
+      success(`${student.fullName} yaratildi va guruhga qo'shildi`);
+      setNewStudentName('');
+      setNewStudentPhone('');
+      setShowCreateForm(false);
+      setAllStudentsList(prev => [...prev, student]);
+      fetchStudents();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Xatolik';
+      error(msg);
+    } finally {
+      setCreatingStudent(false);
+    }
+  };
+
+  const startEditStudent = (student: { _id: string; fullName: string; phone?: string }) => {
+    setEditingStudent(student._id);
+    setEditName(student.fullName || '');
+    setEditPhone(student.phone || '');
+  };
+
+  const handleSaveEdit = async (studentId: string) => {
+    if (!editName.trim()) return;
+    setSavingEdit(true);
+    try {
+      await api.put(`/students/${studentId}`, {
+        fullName: editName.trim(),
+        phone: editPhone.trim() || undefined,
+      });
+      success('O\'quvchi ma\'lumotlari yangilandi');
+      setEditingStudent(null);
+      fetchStudents();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Xatolik';
+      error(msg);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const filteredStudents = students.filter(student =>
     student.fullName?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -642,52 +701,105 @@ export default function GroupDetailPage() {
                         className="hover:bg-gray-50 transition-colors"
                       >
                         <td className="px-6 py-4 text-sm text-gray-900">{index + 1}</td>
-                        <td 
-                          className="px-6 py-4 cursor-pointer"
-                          onClick={() => setSelectedStudentId(student._id)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold">
-                              {student.fullName?.charAt(0).toUpperCase()}
+                        <td className="px-6 py-4">
+                          {editingStudent === student._id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={editName}
+                                onChange={e => setEditName(e.target.value)}
+                                className="w-48 text-sm"
+                                autoFocus
+                                onKeyDown={e => e.key === 'Enter' && handleSaveEdit(student._id)}
+                              />
                             </div>
-                            <span className="font-medium text-gray-900">{student.fullName}</span>
-                            {student.studentCode && <span className="ml-2 text-xs text-gray-400 font-mono">ID: {student.studentCode}</span>}
-                          </div>
+                          ) : (
+                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setSelectedStudentId(student._id)}>
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold">
+                                {student.fullName?.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="font-medium text-gray-900">{student.fullName}</span>
+                              {student.studentCode && <span className="ml-2 text-xs text-gray-400 font-mono">ID: {student.studentCode}</span>}
+                            </div>
+                          )}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{student.phone || 'N/A'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {editingStudent === student._id ? (
+                            <Input
+                              value={editPhone}
+                              onChange={e => setEditPhone(e.target.value)}
+                              placeholder="Telefon"
+                              className="w-36 text-sm"
+                              onKeyDown={e => e.key === 'Enter' && handleSaveEdit(student._id)}
+                            />
+                          ) : (
+                            student.phone || 'N/A'
+                          )}
+                        </td>
                         <td className="px-6 py-4">
                           <Badge variant="success" size="sm">Faol</Badge>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setQrStudent(student);
-                              }}
-                              className="p-2 hover:bg-purple-50 rounded-lg transition-colors"
-                              title="QR kod"
-                            >
-                              <QrCode className="w-4 h-4 text-purple-600" />
-                            </button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedStudentId(student._id)}
-                            >
-                              <BarChart3 className="w-4 h-4 mr-1" />
-                              Natijalar
-                            </Button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveStudent(student._id, student.fullName);
-                              }}
-                              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Guruhdan chiqarish"
-                            >
-                              <UserMinus className="w-4 h-4 text-red-500" />
-                            </button>
+                            {editingStudent === student._id ? (
+                              <>
+                                <button
+                                  onClick={() => handleSaveEdit(student._id)}
+                                  disabled={savingEdit}
+                                  className="p-2 hover:bg-green-50 rounded-lg transition-colors"
+                                  title="Saqlash"
+                                >
+                                  <Check className="w-4 h-4 text-green-600" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingStudent(null)}
+                                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                  title="Bekor qilish"
+                                >
+                                  <X className="w-4 h-4 text-gray-500" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startEditStudent(student);
+                                  }}
+                                  className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Tahrirlash"
+                                >
+                                  <Pencil className="w-4 h-4 text-blue-600" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setQrStudent(student);
+                                  }}
+                                  className="p-2 hover:bg-purple-50 rounded-lg transition-colors"
+                                  title="QR kod"
+                                >
+                                  <QrCode className="w-4 h-4 text-purple-600" />
+                                </button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setSelectedStudentId(student._id)}
+                                >
+                                  <BarChart3 className="w-4 h-4 mr-1" />
+                                  Natijalar
+                                </Button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveStudent(student._id, student.fullName);
+                                  }}
+                                  className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Guruhdan chiqarish"
+                                >
+                                  <UserMinus className="w-4 h-4 text-red-500" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -707,48 +819,87 @@ export default function GroupDetailPage() {
                       <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0">
                         {student.fullName?.charAt(0).toUpperCase()}
                       </div>
-                      <div 
-                        className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => setSelectedStudentId(student._id)}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-semibold text-gray-500">#{index + 1}</span>
-                          <Badge variant="success" size="sm">Faol</Badge>
+                      {editingStudent === student._id ? (
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <Input
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            className="text-sm"
+                            autoFocus
+                            onKeyDown={e => e.key === 'Enter' && handleSaveEdit(student._id)}
+                          />
+                          <Input
+                            value={editPhone}
+                            onChange={e => setEditPhone(e.target.value)}
+                            placeholder="Telefon"
+                            className="text-sm"
+                            onKeyDown={e => e.key === 'Enter' && handleSaveEdit(student._id)}
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleSaveEdit(student._id)} loading={savingEdit}>
+                              <Check className="w-4 h-4 mr-1" /> Saqlash
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingStudent(null)}>
+                              Bekor
+                            </Button>
+                          </div>
                         </div>
-                        <h3 className="font-semibold text-gray-900 mb-1 truncate">{student.fullName}</h3>
-                        {student.studentCode && <p className="text-xs text-gray-400 font-mono">ID: {student.studentCode}</p>}
-                        <p className="text-sm text-gray-600">{student.phone || 'Telefon yo\'q'}</p>
-                      </div>
-                      <div className="flex flex-col gap-1 flex-shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setQrStudent(student);
-                          }}
-                          className="p-2 hover:bg-purple-50 rounded-lg transition-colors"
-                          title="QR kod"
-                        >
-                          <QrCode className="w-4 h-4 text-purple-600" />
-                        </button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="flex-shrink-0"
-                          onClick={() => setSelectedStudentId(student._id)}
-                        >
-                          <BarChart3 className="w-4 h-4" />
-                        </Button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveStudent(student._id, student.fullName);
-                          }}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Guruhdan chiqarish"
-                        >
-                          <UserMinus className="w-4 h-4 text-red-500" />
-                        </button>
-                      </div>
+                      ) : (
+                        <>
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={() => setSelectedStudentId(student._id)}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-gray-500">#{index + 1}</span>
+                              <Badge variant="success" size="sm">Faol</Badge>
+                            </div>
+                            <h3 className="font-semibold text-gray-900 mb-1 truncate">{student.fullName}</h3>
+                            {student.studentCode && <p className="text-xs text-gray-400 font-mono">ID: {student.studentCode}</p>}
+                            <p className="text-sm text-gray-600">{student.phone || 'Telefon yo\'q'}</p>
+                          </div>
+                          <div className="flex flex-col gap-1 flex-shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditStudent(student);
+                              }}
+                              className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Tahrirlash"
+                            >
+                              <Pencil className="w-4 h-4 text-blue-600" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQrStudent(student);
+                              }}
+                              className="p-2 hover:bg-purple-50 rounded-lg transition-colors"
+                              title="QR kod"
+                            >
+                              <QrCode className="w-4 h-4 text-purple-600" />
+                            </button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-shrink-0"
+                              onClick={() => setSelectedStudentId(student._id)}
+                            >
+                              <BarChart3 className="w-4 h-4" />
+                            </Button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveStudent(student._id, student.fullName);
+                              }}
+                              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Guruhdan chiqarish"
+                            >
+                              <UserMinus className="w-4 h-4 text-red-500" />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -783,7 +934,7 @@ export default function GroupDetailPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 border-b">
+            <div className="p-4 border-b space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
@@ -794,6 +945,36 @@ export default function GroupDetailPage() {
                   autoFocus
                 />
               </div>
+              <button
+                onClick={() => setShowCreateForm(!showCreateForm)}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+              >
+                <UserPlus className="w-4 h-4" />
+                {showCreateForm ? 'Yopish' : 'Yangi o\'quvchi yaratish'}
+              </button>
+              {showCreateForm && (
+                <div className="bg-blue-50 rounded-xl p-3 space-y-2">
+                  <Input
+                    placeholder="F.I.Sh *"
+                    value={newStudentName}
+                    onChange={e => setNewStudentName(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Telefon (ixtiyoriy)"
+                    value={newStudentPhone}
+                    onChange={e => setNewStudentPhone(e.target.value)}
+                  />
+                  <Button
+                    onClick={handleCreateStudent}
+                    loading={creatingStudent}
+                    disabled={!newStudentName.trim()}
+                    className="w-full"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Yaratish va guruhga qo'shish
+                  </Button>
+                </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {addStudentLoading ? (

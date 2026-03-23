@@ -68,7 +68,7 @@ export const pdfExportQueue = new Queue<PDFExportJobData, PDFExportJobResult>('p
  * Process answer sheet PDF export — lighter than full test PDF
  */
 async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDFExportJobResult> {
-  const { testId, studentIds, userId, isBlockTest, version } = job.data;
+  const { testId, studentIds, userId, isBlockTest, version, booklet } = job.data;
   try {
     await job.updateProgress(10);
     const Model = isBlockTest ? (await import('../../models/BlockTest')).default : Test;
@@ -129,11 +129,18 @@ async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDF
     const testType = isBlockTest ? 'block_test' : 'test';
 
     const useV2 = version === 'v2';
-    const pdfBuffer = useV2
+    let pdfBuffer = useV2
       ? await PDFGeneratorService.generateAnswerSheetsPDFV2({ students: pdfStudents, test: { classNumber, groupLetter: 'A', subjectName }, totalQuestions, testType })
       : await PDFGeneratorService.generateAnswerSheetsPDF({ students: pdfStudents, test: { classNumber, groupLetter: 'A', subjectName }, totalQuestions });
 
     await job.updateProgress(85);
+
+    // Booklet imposition (kitobcha format)
+    if (booklet) {
+      console.log(`📖 [PDF Worker ${process.pid}] Applying booklet imposition to answer sheets...`);
+      pdfBuffer = await PDFGeneratorService.imposeBooklet(pdfBuffer, pdfStudents.length);
+      console.log(`✅ [PDF Worker ${process.pid}] Booklet answer sheets: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
+    }
 
     const timestamp = Date.now();
     const fileName = `${userId}/${job.id}-${timestamp}.pdf`;
@@ -147,7 +154,7 @@ async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDF
     await job.updateProgress(100);
     return {
       fileUrl,
-      fileName: `javob-varaqasi-${classNumber}-sinf-${timestamp}.pdf`,
+      fileName: `${booklet ? 'kitobcha-' : ''}javob-varaqasi-${classNumber}-sinf-${timestamp}.pdf`,
       size: pdfBuffer.length,
       studentsCount: pdfStudents.length,
     };

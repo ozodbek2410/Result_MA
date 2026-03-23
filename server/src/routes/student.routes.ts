@@ -231,7 +231,6 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 const CRM_MSG = 'Bu ma\'lumot CRM orqali boshqariladi';
 
 router.post('/', authenticate, async (req: AuthRequest, res) => {
-  return res.status(403).json({ message: CRM_MSG });
   try {
     console.log('Creating student:', req.body);
     const { fullName, classNumber, phone, directionId, subjectIds, groups, isYoungStudent } = req.body;
@@ -328,7 +327,6 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 });
 
 router.put('/:id', authenticate, async (req, res) => {
-  return res.status(403).json({ message: CRM_MSG });
   try {
     const { groups, ...updateData } = req.body;
     

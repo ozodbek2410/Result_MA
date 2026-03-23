@@ -312,15 +312,31 @@ export default function TestPrintPage() {
       setExportProgress(0);
       success('Kitobcha PDF yaratilmoqda...');
 
-      const endpoint = isBlockTest
-        ? `/block-tests/${id}/export-booklet-pdf-async`
-        : `/tests/${id}/export-booklet-pdf-async`;
+      let endpoint: string;
+      let body: Record<string, unknown>;
 
-      const { data } = await api.post(endpoint, {
-        students: selectedStudents.map(s => s._id),
-        settings: { fontSize, fontFamily, lineHeight, columnsCount, backgroundOpacity,
-          backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined }
-      });
+      if (type === 'sheets') {
+        // Answer sheets booklet — async endpoint + booklet flag
+        endpoint = isBlockTest
+          ? `/block-tests/${id}/export-answer-sheets-pdf-async`
+          : `/tests/${id}/export-answer-sheets-pdf-async`;
+        body = {
+          students: selectedStudents.map(s => s._id),
+          version: 'v2',
+          booklet: true,
+        };
+      } else {
+        endpoint = isBlockTest
+          ? `/block-tests/${id}/export-booklet-pdf-async`
+          : `/tests/${id}/export-booklet-pdf-async`;
+        body = {
+          students: selectedStudents.map(s => s._id),
+          settings: { fontSize, fontFamily, lineHeight, columnsCount, backgroundOpacity,
+            backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined },
+        };
+      }
+
+      const { data } = await api.post(endpoint, body);
 
       const { jobId } = data;
       setExportJobId(jobId);
@@ -1180,7 +1196,7 @@ export default function TestPrintPage() {
                   <FileText className="w-4 h-4 mr-1" />
                   {exporting ? `${exportProgress}%` : (type === 'sheets' ? 'Titul Word' : 'Word')}
                 </Button>
-                {type === 'questions' && (
+                {(type === 'questions' || type === 'sheets') && (
                   <Button
                     size="sm"
                     variant="outline"

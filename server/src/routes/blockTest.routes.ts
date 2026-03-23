@@ -1940,7 +1940,7 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
 router.post('/:id/export-answer-sheets-pdf-async', authenticate, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { students, version } = req.body;
+    const { students, version, booklet } = req.body;
 
     if (process.env.REDIS_ENABLED !== 'true') {
       return res.status(503).json({ message: 'Queue service mavjud emas', error: 'redis_disabled' });
@@ -1961,9 +1961,10 @@ router.post('/:id/export-answer-sheets-pdf-async', authenticate, async (req: Aut
       isBlockTest: true,
       answerSheets: true,
       version: version || 'v2',
+      booklet: !!booklet,
     }, {
       priority: 1,
-      jobId: `sheets-block-${id}-${Date.now()}`,
+      jobId: `${booklet ? 'booklet-' : ''}sheets-block-${id}-${Date.now()}`,
     });
 
     res.json({
