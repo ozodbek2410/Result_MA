@@ -1077,7 +1077,7 @@ export default function TestPrintPage() {
             flexWrap: sheetsPerPage > 1 ? 'wrap' : 'nowrap',
             justifyContent: 'center',
             alignItems: 'flex-start',
-            padding: sheetsPerPage === 1 ? '20mm 0' : '5mm',
+            padding: sheetsPerPage === 1 ? '0' : '5mm',
             boxSizing: 'border-box',
             gap:
               sheetsPerPage === 6 ? '3mm' :
