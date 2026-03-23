@@ -16,7 +16,7 @@ export const SHEET = {
   BUBBLE_GAP: 2,
   NUM_W: 7,
   TIMING_W: 4,
-  HEADER_H: 55,
+  HEADER_H: 50,
   QR_SIZE: 32,
 } as const;
 

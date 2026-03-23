@@ -56,7 +56,7 @@ interface TestData {
 // ─── OMR Config — yagona manba (server/python/omr/omr_config.json) ──────────
 // Hardcoded fallback qiymatlar — config fayl o'qilmasa ham ishlaydi
 const _omrSheet: Record<string, number> = {
-  corner_mark_mm: 10, corner_margin_mm: 2, page_pad_mm: 12, header_height_mm: 55,
+  corner_mark_mm: 10, corner_margin_mm: 2, page_pad_mm: 12, header_height_mm: 50,
   bubble_size_mm: 6, bubble_gap_mm: 2, num_width_mm: 7, timing_col_w_mm: 4,
 };
 const _omrLayout: Record<string, number> = { max_rows_per_col: 30 };
