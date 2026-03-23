@@ -138,7 +138,7 @@ def validate_rectangle(
     # Parallellik — telefon burchakdan olsa tomonlar farq qiladi
     w_ratio = min(top_w, bot_w) / max(top_w, bot_w)
     h_ratio = min(left_h, right_h) / max(left_h, right_h)
-    if w_ratio < 0.60 or h_ratio < 0.60:
+    if w_ratio < 0.70 or h_ratio < 0.70:
         return False
 
     # Diagonal tekshiruv — ikkala diagonal ham ±30% farq qilmasligi kerak
