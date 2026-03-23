@@ -114,7 +114,8 @@ def _extract_candidates(
 def _select_from_quadrants(
     candidates: list, w: int, h: int, zone_pct: float
 ) -> np.ndarray | None:
-    """Har bir burchak zonasidan 1 ta eng yaxshi marker tanlash."""
+    """Har bir burchak zonasidan 1 ta eng yaxshi marker tanlash.
+    Area outlier filtri: boshqa zonalardagi median area dan 3x katta = reject."""
     zones = {
         "tl": (0, 0, w * zone_pct, h * zone_pct),
         "tr": (w * (1 - zone_pct), 0, w, h * zone_pct),
@@ -122,25 +123,41 @@ def _select_from_quadrants(
         "bl": (0, h * (1 - zone_pct), w * zone_pct, h),
     }
 
-    selected = {}
+    # 1-pass: har zonadan eng yaxshi kandidatni tanlash
+    zone_bests = {}
     for zone_name, (x1, y1, x2, y2) in zones.items():
         zone_cands = [
             c for c in candidates
             if x1 <= c[0] <= x2 and y1 <= c[1] <= y2
         ]
         if zone_cands:
-            # Score: area * fill * solidity
             best = max(zone_cands, key=lambda c: c[2] * c[3] * c[4])
-            selected[zone_name] = best
+            zone_bests[zone_name] = (best, zone_cands)
 
-    if len(selected) == 4:
-        pts = np.array([
-            selected["tl"][:2], selected["tr"][:2],
-            selected["br"][:2], selected["bl"][:2],
-        ], dtype=np.float32)
-        return pts
+    if len(zone_bests) < 4:
+        return None
 
-    return None
+    # 2-pass: area outlier filtri
+    areas = [zone_bests[z][0][2] for z in zone_bests]
+    median_area = sorted(areas)[len(areas) // 2]
+
+    selected = {}
+    for zone_name in zone_bests:
+        best, zone_cands = zone_bests[zone_name]
+        if best[2] > median_area * 3.0:
+            # Outlier — kichikroq kandidatni tanlash
+            filtered = [c for c in zone_cands if c[2] <= median_area * 3.0]
+            if filtered:
+                best = max(filtered, key=lambda c: c[2] * c[3] * c[4])
+            else:
+                return None  # bu zonada haqiqiy marker yo'q
+        selected[zone_name] = best
+
+    pts = np.array([
+        selected["tl"][:2], selected["tr"][:2],
+        selected["br"][:2], selected["bl"][:2],
+    ], dtype=np.float32)
+    return pts
 
 
 def _estimate_fourth(
