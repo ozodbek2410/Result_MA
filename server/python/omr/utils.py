@@ -132,13 +132,20 @@ def validate_rectangle(
     if avg_h < 1:
         return False
     aspect = avg_w / avg_h
-    if not (0.55 < aspect < 0.90):  # A4=0.707, ±25% tolerance
+    if not (0.50 < aspect < 0.95):  # A4=0.707, telefon perspektivi uchun keng
         return False
 
-    # Parallellik — qarama-qarshi tomonlar ±20% farq (eski 40% juda keng)
+    # Parallellik — telefon burchakdan olsa tomonlar farq qiladi
     w_ratio = min(top_w, bot_w) / max(top_w, bot_w)
     h_ratio = min(left_h, right_h) / max(left_h, right_h)
-    if w_ratio < 0.75 or h_ratio < 0.75:
+    if w_ratio < 0.60 or h_ratio < 0.60:
+        return False
+
+    # Diagonal tekshiruv — ikkala diagonal ham ±30% farq qilmasligi kerak
+    diag1 = np.linalg.norm(br - tl)
+    diag2 = np.linalg.norm(bl - tr)
+    diag_ratio = min(diag1, diag2) / max(diag1, diag2)
+    if diag_ratio < 0.70:
         return False
 
     return True
