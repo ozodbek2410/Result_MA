@@ -149,16 +149,15 @@ def validate_rectangle(
         return False
 
     # Y-alignment: tepa ikki burchak TAXMINAN bir balandlikda bo'lishi kerak
-    # Aks holda bu A4 emas — noto'g'ri kontur topilgan
-    # max 20% img height farq (perspektiv bilan ham bunday katta bo'lmaydi)
-    max_y_diff = max(img_h, img_w) * 0.20
+    # max 15% farq — haqiqiy A4 da bundan katta bo'lmaydi
+    max_y_diff = max(img_h, img_w) * 0.15
     if abs(float(tl[1]) - float(tr[1])) > max_y_diff:
         return False
     if abs(float(bl[1]) - float(br[1])) > max_y_diff:
         return False
 
     # X-alignment: chap ikki burchak taxminan bir X da
-    max_x_diff = max(img_h, img_w) * 0.20
+    max_x_diff = max(img_h, img_w) * 0.15
     if abs(float(tl[0]) - float(bl[0])) > max_x_diff:
         return False
     if abs(float(tr[0]) - float(br[0])) > max_x_diff:
