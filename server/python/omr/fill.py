@@ -99,8 +99,8 @@ def _pick_answer(q_cells: list[dict]) -> dict:
     max_adjusted = max(adjusted)
 
     # Hech biri baseline dan sezilarli farq qilmasa → empty
-    # 0.35 = qog'oz teksturasi/soya 0.30 gacha, qalam belgi 0.45+ → 0.35 xavfsiz
-    if max_adjusted < 0.35:
+    # 0.45 = qog'oz teksturasi/soya/chekka 0.40 gacha, qalam belgi 0.50+ → 0.45 xavfsiz
+    if max_adjusted < 0.45:
         return {
             "letter": None,
             "status": "empty",
