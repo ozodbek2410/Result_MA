@@ -1399,8 +1399,6 @@ export default function TestPrintPage() {
           .answer-sheet-v2 {
             page-break-inside: avoid;
             break-inside: avoid;
-            transform: scale(0.92);
-            transform-origin: top center;
           }
           
           .no-print { display: none !important; }
