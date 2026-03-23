@@ -19,8 +19,8 @@
   "scanner": {
     "target_width_px": 1200,
     "circularity_min": 0.3,
-    "fill_ratio_threshold": 0.50,
-    "fill_inner_ratio": 0.7,
+    "fill_ratio_threshold": 0.42,
+    "fill_inner_ratio": 0.78,
     "score_threshold_min": 4.0,
     "clahe_clip_limit": 2.0,
     "clahe_tile_grid": 8,

@@ -98,33 +98,38 @@ def _pick_answer(q_cells: list[dict]) -> dict:
     adjusted = [f - baseline for f in fills]
     max_adjusted = max(adjusted)
 
-    # Hech biri baseline dan sezilarli farq qilmasa → empty
-    # 0.45 = qog'oz teksturasi/soya/chekka 0.40 gacha, qalam belgi 0.50+ → 0.45 xavfsiz
+    _EMPTY = {"letter": None, "status": "empty", "confidence": 0.0, "candidates": []}
+
+    # Hech biri baseline dan sezilarli farq qilmasa → ratio fallback
+    # 0.45 = qog'oz teksturasi/soya/chekka 0.40 gacha, qalam belgi 0.50+
+    ratio_mode = False
     if max_adjusted < 0.45:
-        return {
-            "letter": None,
-            "status": "empty",
-            "confidence": 0.0,
-            "candidates": []
-        }
+        # Ratio fallback: perspective warp mukammal emas → bubble qisman sampled
+        # max_fill / avg_others >= 1.6 AND max_fill >= 0.42 → real fill
+        max_fill_val = max(fills)
+        max_fill_idx = fills.index(max_fill_val)
+        others = [fills[i] for i in range(len(fills)) if i != max_fill_idx]
+        avg_others = sum(others) / len(others) if others else 0
+        if (max_fill_val >= 0.42 and avg_others > 0.05
+                and max_fill_val / avg_others >= 1.6):
+            ratio_mode = True
+        else:
+            return _EMPTY
 
     # Absolute threshold ham tekshirish
-    abs_min = SCANNER.get("fill_ratio_threshold", 0.50)
+    abs_min = SCANNER.get("fill_ratio_threshold", 0.42)
     max_fill = max(fills)
-    if max_fill < abs_min and max_adjusted < 0.40:
-        return {
-            "letter": None,
-            "status": "empty",
-            "confidence": 0.0,
-            "candidates": []
-        }
+    if max_fill < abs_min and max_adjusted < 0.35:
+        return _EMPTY
 
     # Nisbiy threshold: eng to'ldirilganning 60% dan ortiq = candidate
-    relative_threshold = max_adjusted * 0.60
+    # ratio_mode da past threshold: adjusted qiymatlar kichikroq bo'ladi
+    rel_min_adj = 0.15 if ratio_mode else 0.20
+    relative_threshold = max(max_adjusted * 0.60, rel_min_adj)
 
     candidates = []
     for i, c in enumerate(q_cells):
-        if adjusted[i] >= relative_threshold and adjusted[i] >= 0.20:
+        if adjusted[i] >= relative_threshold and adjusted[i] >= rel_min_adj:
             candidates.append(c)
 
     if len(candidates) == 0:
