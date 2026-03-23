@@ -24,9 +24,14 @@ class OMRScanner:
     def __init__(self, debug: bool = False):
         self.debug = debug
 
-    def scan(self, image_path: str, total_questions: int = None) -> dict:
+    def scan(self, image_path: str, total_questions: int = None,
+             client_corners: list = None) -> dict:
         """
-        Asosiy skanerlash metodi — EvalBee-level fallback bilan.
+        Asosiy skanerlash metodi — EvalBee-level.
+
+        client_corners: [{x,y}, {x,y}, {x,y}, {x,y}] — TL, TR, BL, BR
+            Client (LiveScannerModal) topgan corner mark koordinatalari.
+            Agar berilsa — server qayta izlamaydi (EvalBee yondashruvi).
         """
         result = {
             "success": False,
@@ -51,8 +56,22 @@ class OMRScanner:
             if qr["found"] and qr.get("total_questions"):
                 total_q = qr["total_questions"]
 
-            # 3. Burchak markerlarni topish — 3 ta retry strategiya
-            corners, is_doc_boundary = self._find_corners_with_retry(gray, color)
+            # 3. Burchak markerlarni topish
+            is_doc_boundary = False
+            if client_corners and len(client_corners) == 4:
+                # Client (LiveScannerModal) topgan corners — qayta izlash SHART EMAS
+                # Bu EvalBee yondashruvi: client 4/4 topganda capture qiladi
+                corners = np.array([
+                    [client_corners[0]["x"] * scale, client_corners[0]["y"] * scale],  # TL
+                    [client_corners[1]["x"] * scale, client_corners[1]["y"] * scale],  # TR
+                    [client_corners[3]["x"] * scale, client_corners[3]["y"] * scale],  # BR
+                    [client_corners[2]["x"] * scale, client_corners[2]["y"] * scale],  # BL
+                ], dtype=np.float32)
+                from utils import sort_corners
+                corners = sort_corners(corners)
+            else:
+                # Fallback: server o'zi izlaydi (rasm yuklash rejimi)
+                corners, is_doc_boundary = self._find_corners_with_retry(gray, color)
 
             if corners is None:
                 result["error"] = "Burchak markerlar topilmadi"
@@ -201,9 +220,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OMR Scanner v2")
     parser.add_argument("image", help="Rasm fayl yo'li")
     parser.add_argument("--questions", "-q", type=int, help="Savol soni")
+    parser.add_argument("--corners", type=str, help="Client corners JSON: [{x,y},{x,y},{x,y},{x,y}]")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
+    cc = None
+    if args.corners:
+        cc = json.loads(args.corners)
+
     scanner = OMRScanner(debug=args.debug)
-    res = scanner.scan(args.image, total_questions=args.questions)
+    res = scanner.scan(args.image, total_questions=args.questions, client_corners=cc)
     print(json.dumps(res, ensure_ascii=False, indent=2))

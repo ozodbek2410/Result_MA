@@ -147,6 +147,34 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         if (qr.totalQuestions) formData.append('clientTotalQuestions', String(qr.totalQuestions));
       }
 
+      // Client topgan 4 corner koordinatalarini yuborish
+      // Server qayta izlamasin — client allaqachon to'g'ri topgan (EvalBee yondashruvi)
+      const cc = cornersRef.current;
+      if (cc && cc.count === 4) {
+        // Corner coords — guide frame ichidagi analysis canvas koordinatalaridan
+        // video full frame koordinatalariga o'tkazish
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const ow = overlayRef.current?.clientWidth || vw;
+        const oh = overlayRef.current?.clientHeight || vh;
+        const vAsp = vw / vh, sAsp = ow / oh;
+        let cropX: number, cropW: number, cropY: number, cropH: number;
+        if (vAsp > sAsp) {
+          cropH = vh; cropW = vh * sAsp; cropX = (vw - cropW) / 2; cropY = 0;
+        } else {
+          cropW = vw; cropH = vw / sAsp; cropX = 0; cropY = (vh - cropH) / 2;
+        }
+        // Analysis canvas → video pixel mapping
+        const sx = cropW / (overlayRef.current?.clientWidth || 1);
+        const sy = cropH / (overlayRef.current?.clientHeight || 1);
+        const corners4 = [
+          { x: cc.tl.x * sx + cropX, y: cc.tl.y * sy + cropY },
+          { x: cc.tr.x * sx + cropX, y: cc.tr.y * sy + cropY },
+          { x: cc.bl.x * sx + cropX, y: cc.bl.y * sy + cropY },
+          { x: cc.br.x * sx + cropX, y: cc.br.y * sy + cropY },
+        ];
+        formData.append('clientCorners', JSON.stringify(corners4));
+      }
+
       const response = await api.post('/omr/scan-v2', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });

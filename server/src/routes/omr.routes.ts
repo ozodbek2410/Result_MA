@@ -1613,7 +1613,20 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
 
     const pythonCmd = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
     const scannerDir = path.join(SERVER_ROOT, 'python', 'omr');
-    const command = `${pythonCmd} -m scanner "${imagePath}"`;
+
+    // Client topgan cornerlarni Python scannerga yuborish
+    const clientCorners = req.body?.clientCorners;
+    let cornersArg = '';
+    if (clientCorners) {
+      try {
+        const parsed = JSON.parse(clientCorners);
+        if (Array.isArray(parsed) && parsed.length === 4) {
+          cornersArg = ` --corners '${JSON.stringify(parsed)}'`;
+        }
+      } catch { /* ignore invalid corners */ }
+    }
+
+    const command = `${pythonCmd} -m scanner "${imagePath}"${cornersArg}`;
 
     const { stdout, stderr } = await execAsync(command, {
       timeout: 30000,
