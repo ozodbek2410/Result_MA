@@ -99,8 +99,8 @@ def _pick_answer(q_cells: list[dict]) -> dict:
     max_adjusted = max(adjusted)
 
     # Hech biri baseline dan sezilarli farq qilmasa → empty
-    # 0.25 = qog'oz teksturasi 0.20 gacha, qalam 0.40+ → 0.25 xavfsiz ajratgich
-    if max_adjusted < 0.25:
+    # 0.35 = qog'oz teksturasi/soya 0.30 gacha, qalam belgi 0.45+ → 0.35 xavfsiz
+    if max_adjusted < 0.35:
         return {
             "letter": None,
             "status": "empty",
@@ -111,7 +111,7 @@ def _pick_answer(q_cells: list[dict]) -> dict:
     # Absolute threshold ham tekshirish
     abs_min = SCANNER.get("fill_ratio_threshold", 0.50)
     max_fill = max(fills)
-    if max_fill < abs_min and max_adjusted < 0.30:
+    if max_fill < abs_min and max_adjusted < 0.40:
         return {
             "letter": None,
             "status": "empty",
