@@ -224,13 +224,14 @@ def _select_from_quadrants(
         return None
 
     # 2-pass: area outlier filtri
-    areas = [zone_bests[z][0][2] for z in zone_bests]
-    median_area = sorted(areas)[len(areas) // 2]
+    # Reference = eng kichik 2 area (odatda TL, TR — soyasiz, aniq)
+    areas = sorted([zone_bests[z][0][2] for z in zone_bests])
+    ref_area = (areas[0] + areas[1]) / 2 if len(areas) >= 2 else areas[0]
 
     selected = {}
     for zone_name in zone_bests:
         best, zone_cands = zone_bests[zone_name]
-        if best[2] > median_area * 3.0:
+        if best[2] > ref_area * 2.5:
             # Outlier — kichikroq kandidatni tanlash
             filtered = [c for c in zone_cands if c[2] <= median_area * 3.0]
             if filtered:
