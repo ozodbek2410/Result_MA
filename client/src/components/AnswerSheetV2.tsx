@@ -103,9 +103,9 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
   useEffect(() => {
     if (!qrRef.current) return;
     QRCode.toCanvas(qrRef.current, qrPayload, {
-      width: 88,
-      margin: 1,
-      errorCorrectionLevel: 'H',
+      width: 112,
+      margin: 2,
+      errorCorrectionLevel: 'M',
       color: { dark: '#000', light: '#fff' },
     }).catch(() => {/* silent */});
   }, [qrPayload]);
@@ -199,9 +199,9 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
             </div>
           </div>
 
-          {/* QR 25mm */}
+          {/* QR 32mm */}
           <div style={{
-            width: px(25), height: px(25),
+            width: px(32), height: px(32),
             border: '1.5px solid #000',
             flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',

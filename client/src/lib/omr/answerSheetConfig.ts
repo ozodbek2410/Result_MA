@@ -17,7 +17,7 @@ export const SHEET = {
   NUM_W: 7,
   TIMING_W: 4,
   HEADER_H: 55,
-  QR_SIZE: 25,
+  QR_SIZE: 32,
 } as const;
 
 // Bir ustun kengligi: timing(4) + num(7) + A(6)+gap(2)+B(6)+gap(2)+C(6)+gap(2)+D(6) = 41mm

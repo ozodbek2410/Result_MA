@@ -1518,7 +1518,7 @@ export class PDFGeneratorService {
       if (!student.variantCode) continue;
       const payload = JSON.stringify({ v: 2, c: student.variantCode.trim().toUpperCase(), q, t: testType });
       const dataUrl = await QRCode.toDataURL(payload, {
-        width: 200, margin: 1, errorCorrectionLevel: 'H',
+        width: 250, margin: 2, errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#FFFFFF' },
       });
       qrMap.set(student.variantCode, dataUrl);
@@ -1647,10 +1647,10 @@ export class PDFGeneratorService {
     border: 1px solid #ccc; font-size: 7pt; margin-top: 1mm;
   }
   .v2-qr {
-    width: 25mm; height: 25mm; border: 1.5px solid #000;
+    width: 32mm; height: 32mm; border: 1.5px solid #000;
     flex-shrink: 0; display: flex; align-items: center; justify-content: center;
   }
-  .v2-qr-img { width: 23mm; height: 23mm; }
+  .v2-qr-img { width: 30mm; height: 30mm; }
 
   .v2-grid { display: flex; }
   .v2-col { flex-shrink: 0; width: ${CW}mm; }
