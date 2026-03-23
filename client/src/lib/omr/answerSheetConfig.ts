@@ -12,7 +12,7 @@ export const SHEET = {
   CORNER_MARK: 10,
   CORNER_MARGIN: 2,
   PAGE_PAD: 12,
-  PAGE_PAD_TOP: 4,
+  PAGE_PAD_TOP: 14,
   BUBBLE: 5,
   BUBBLE_GAP: 1.5,
   NUM_W: 7,
@@ -29,7 +29,7 @@ export const LAYOUT = {
   MIN_COLS: 2,
   MAX_COLS: 4,
   ROW_MARGIN_NORMAL: 1.5,
-  ROW_MARGIN_DENSE: 1.0,
+  ROW_MARGIN_DENSE: 0.5,
 } as const;
 
 export interface SheetLayout {

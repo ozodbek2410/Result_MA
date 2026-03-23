@@ -6,7 +6,7 @@
     "corner_mark_mm": 10,
     "corner_margin_mm": 2,
     "page_pad_mm": 12,
-    "page_pad_top_mm": 4,
+    "page_pad_top_mm": 14,
     "bubble_size_mm": 5,
     "bubble_gap_mm": 1.5,
     "num_width_mm": 7,
@@ -36,6 +36,6 @@
     "min_columns": 2,
     "max_columns": 4,
     "row_margin_normal_mm": 1.5,
-    "row_margin_dense_mm": 1.0
+    "row_margin_dense_mm": 0.5
   }
 }

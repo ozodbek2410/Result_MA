@@ -29,6 +29,8 @@ import QRCode from 'qrcode';
 const CM  = 10;   // corner mark
 const CG  = 2;    // corner gap from edge
 const PP  = 12;   // page padding (left/right)
+const PT  = 14;   // page padding top (corner mark 12mm dan keyin)
+const PB  = 14;   // page padding bottom
 const HH  = 55;   // header height FIXED
 const BS  = 5;    // bubble size (EvalBee: ~5mm)
 const BG  = 1.5;  // bubble gap (EvalBee: ~1.5mm)
@@ -46,7 +48,7 @@ const MONTHS = [
 function computeLayout(q: number) {
   const cols = Math.max(2, Math.min(4, Math.ceil(q / MXR)));
   const rows = Math.ceil(q / cols);
-  const rm   = rows > 28 ? 1.0 : 1.5;
+  const rm   = rows > 28 ? 0.5 : 1.5;
   const usable = 210 - 2 * PP; // 186mm
   const gap  = cols > 1 ? Math.min(15, (usable - cols * CW) / (cols - 1)) : 0;
   return { cols, rows, rm, gap };
@@ -115,14 +117,14 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
       className="answer-sheet-v2"
       style={{
         width: '210mm',
-        height: '297mm',
+        maxHeight: '297mm',
         position: 'relative',
         background: '#fff',
         fontFamily: 'Arial, sans-serif',
         color: '#000',
         boxSizing: 'border-box',
         overflow: 'hidden',
-        padding: `4mm ${PP}mm 2mm ${PP}mm`,
+        padding: `${PT}mm ${PP}mm ${PB}mm ${PP}mm`,
         margin: '0 auto',
         fontSize: 'initial',
         lineHeight: 'initial',
