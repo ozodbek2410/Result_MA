@@ -1349,7 +1349,7 @@ export default function TestPrintPage() {
       <style>{`
         @page {
           size: A4 portrait;
-          margin: ${type === 'sheets' ? '5mm' : '10mm 12mm'};
+          margin: ${type === 'sheets' ? '0' : '10mm 12mm'};
         }
 
         @media print {
