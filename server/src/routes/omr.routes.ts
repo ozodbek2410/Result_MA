@@ -1614,7 +1614,7 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
     const pythonCmd = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
     const scannerDir = path.join(SERVER_ROOT, 'python', 'omr');
 
-    // Client topgan cornerlarni Python scannerga yuborish
+    // Client topgan cornerlarni Python scannerga yuborish (EvalBee yondashruvi)
     const clientCorners = req.body?.clientCorners;
     let cornersArg = '';
     if (clientCorners) {
@@ -1622,8 +1622,11 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
         const parsed = JSON.parse(clientCorners);
         if (Array.isArray(parsed) && parsed.length === 4) {
           cornersArg = ` --corners '${JSON.stringify(parsed)}'`;
+          console.log('[OMR v2] Client corners received:', parsed.map((p: {x: number, y: number}) => `(${Math.round(p.x)},${Math.round(p.y)})`).join(' '));
         }
       } catch { /* ignore invalid corners */ }
+    } else {
+      console.log('[OMR v2] No client corners — server will detect');
     }
 
     const command = `${pythonCmd} -m scanner "${imagePath}"${cornersArg}`;
