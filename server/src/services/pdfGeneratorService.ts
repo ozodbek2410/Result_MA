@@ -1562,7 +1562,7 @@ export class PDFGeneratorService {
       }
 
       return `
-      <div class="v2-sheet">
+      <div class="v2-page"><div class="v2-sheet">
         <div class="v2-cm" style="top:${CG}mm;left:${CG}mm"></div>
         <div class="v2-cm" style="top:${CG}mm;right:${CG}mm"></div>
         <div class="v2-cm" style="bottom:${CG}mm;left:${CG}mm"></div>
@@ -1603,7 +1603,7 @@ export class PDFGeneratorService {
         <div class="v2-grid" style="gap:${gap}mm">
           ${gridHtml}
         </div>
-      </div>`;
+      </div></div>`;
     }).join('\n');
 
     return `<!DOCTYPE html>
@@ -1613,14 +1613,21 @@ export class PDFGeneratorService {
   @page { size: A4 portrait; margin: 0; }
   body { margin: 0; background: white; }
 
-  .v2-sheet {
+  .v2-page {
     width: 210mm; height: 297mm; position: relative;
+    display: flex; justify-content: center; align-items: center;
+    page-break-after: always; overflow: hidden;
+  }
+  .v2-page:last-child { page-break-after: auto; }
+  .v2-sheet {
+    width: 210mm; position: relative;
     background: white; padding: ${PT}mm ${PP}mm ${PT}mm ${PP}mm;
     font-family: Arial, sans-serif; color: black;
-    box-sizing: border-box; page-break-after: always;
+    box-sizing: border-box;
     overflow: hidden;
+    transform: scale(0.92); transform-origin: center center;
   }
-  .v2-sheet:last-child { page-break-after: auto; }
+
 
   .v2-cm {
     position: absolute; width: ${CM}mm; height: ${CM}mm;
