@@ -14,37 +14,41 @@ from config import (compute_layout, mm_to_px, HEADER_H, PAGE_PAD, PAGE_PAD_TOP,
                     TIMING_W, NUM_W, BUBBLE, BUBBLE_GAP, CORNER_CENTER)
 
 
-def build_grid(warped_gray: np.ndarray, total_questions: int) -> list[dict]:
+def build_grid(warped_gray: np.ndarray, total_questions: int,
+               is_doc_boundary: bool = False) -> list[dict]:
     """
     Layout formulasidan bubble markazlarini hisoblash.
 
-    Returns list of:
-        {q: int, col: int, row: int, letter: 'A'|'B'|'C'|'D',
-         cx: float, cy: float, r: float}
+    is_doc_boundary=True: warped image = butun sahifa (210x297mm)
+      → CORNER_CENTER ayirilmaydi, mm_to_px PAGE_W ishlatadi
+    is_doc_boundary=False: warped image = corner marklar arasi (196x283mm)
+      → CORNER_CENTER ayiriladi, mm_to_px SPAN_W ishlatadi
     """
+    from config import PAGE_W, PAGE_H
     w = warped_gray.shape[1]
     layout = compute_layout(total_questions)
 
-    # Warped image origin = TL corner CENTER (7mm from page edge).
-    # Subtract CORNER_CENTER to convert page-edge measurements to warped-origin coordinates.
-    #
-    # Grid content top offset (AnswerSheetV2.tsx CSS layout):
-    #   PAGE_PAD_TOP (4mm) + HEADER_H (55mm)
-    #   + col header row height (BUBBLE = 6mm) + col header marginBottom (1mm)
-    #   − CORNER_CENTER (7mm)
-    #   = 59mm  →  Q1 bubble center = 59 + BUBBLE/2 = 62mm
-    _GRID_OFFSET_MM = BUBBLE + 1.0  # col_header_h + col_header_mb
-    grid_left_px = mm_to_px(PAGE_PAD - CORNER_CENTER, w)
-    grid_top_px  = mm_to_px(PAGE_PAD_TOP + HEADER_H + _GRID_OFFSET_MM - CORNER_CENTER, w)
-    col_w_px = mm_to_px(layout["col_w_mm"], w)
-    col_gap_px = mm_to_px(layout["col_gap_mm"], w)
-    row_h_px = mm_to_px(layout["row_h_mm"], w)
-    bubble_r = mm_to_px(BUBBLE, w) / 2
+    # Document boundary: origin = sahifa cheti (0,0)
+    # Corner marks: origin = TL corner CENTER (7mm from page edge)
+    cc = 0 if is_doc_boundary else CORNER_CENTER
 
-    timing_px = mm_to_px(TIMING_W, w)
-    num_px = mm_to_px(NUM_W, w)
-    bubble_px = mm_to_px(BUBBLE, w)
-    bubble_gap_px = mm_to_px(BUBBLE_GAP, w)
+    def _mm_px(mm: float) -> float:
+        if is_doc_boundary:
+            return mm * w / PAGE_W
+        return mm_to_px(mm, w)
+
+    _GRID_OFFSET_MM = BUBBLE + 1.0  # col_header_h + col_header_mb
+    grid_left_px = _mm_px(PAGE_PAD - cc)
+    grid_top_px  = _mm_px(PAGE_PAD_TOP + HEADER_H + _GRID_OFFSET_MM - cc)
+    col_w_px = _mm_px(layout["col_w_mm"])
+    col_gap_px = _mm_px(layout["col_gap_mm"])
+    row_h_px = _mm_px(layout["row_h_mm"])
+    bubble_r = _mm_px(BUBBLE) / 2
+
+    timing_px = _mm_px(TIMING_W)
+    num_px = _mm_px(NUM_W)
+    bubble_px = _mm_px(BUBBLE)
+    bubble_gap_px = _mm_px(BUBBLE_GAP)
 
     # ABCD markazlari (ustun ichida, chap chetidan)
     # Timing | Num | A | gap | B | gap | C | gap | D

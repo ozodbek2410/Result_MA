@@ -52,7 +52,7 @@ class OMRScanner:
                 total_q = qr["total_questions"]
 
             # 3. Burchak markerlarni topish — 3 ta retry strategiya
-            corners = self._find_corners_with_retry(gray, color)
+            corners, is_doc_boundary = self._find_corners_with_retry(gray, color)
 
             if corners is None:
                 result["error"] = "Burchak markerlar topilmadi"
@@ -60,8 +60,11 @@ class OMRScanner:
                 result["warnings"].append("4 ta burchak marker topilmadi — varaqni tekisroq ushlang")
                 return result
 
+            if is_doc_boundary:
+                result["warnings"].append("Hujjat chegarasi ishlatildi (corner marklar topilmadi)")
+
             # 4. Perspektiv tuzatish
-            warped_color = warp_perspective(color, corners)
+            warped_color = warp_perspective(color, corners, is_doc_boundary)
             warped_gray = cv2.cvtColor(warped_color, cv2.COLOR_BGR2GRAY)
 
             # Warped uchun ham CLAHE
@@ -90,7 +93,7 @@ class OMRScanner:
             )
 
             # 6. Grid qurish (layout-first — PRIMARY)
-            cells = build_grid(warped_gray, total_q)
+            cells = build_grid(warped_gray, total_q, is_doc_boundary)
 
             # 7. Grid calibration (±offset)
             dx, dy = calibrate_grid(cells, warped_binary)
@@ -163,36 +166,34 @@ class OMRScanner:
 
     def _find_corners_with_retry(
         self, gray: np.ndarray, color: np.ndarray
-    ) -> np.ndarray | None:
+    ) -> tuple[np.ndarray | None, bool]:
         """
         3 ta retry strategiya bilan corner detection.
-        1. Normal CLAHE (allaqachon qo'llanilgan gray)
-        2. Aggressive CLAHE (clipLimit=4.0, tileGridSize=(4,4))
-        3. Bilateral filter (edge-preserving smoothing)
+        Returns: (corners, is_doc_boundary)
         """
         # Attempt 1: Normal (CLAHE allaqachon qo'llanilgan)
-        corners = find_corners(gray)
+        corners, is_doc = find_corners(gray)
         if corners is not None:
-            return corners
+            return corners, is_doc
 
         # Attempt 2: Aggressive CLAHE
         raw_gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
         clahe_strong = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
         gray2 = clahe_strong.apply(raw_gray)
-        corners = find_corners(gray2)
+        corners, is_doc = find_corners(gray2)
         if corners is not None:
-            return corners
+            return corners, is_doc
 
         # Attempt 3: Bilateral filter (edge-preserving)
         filtered = cv2.bilateralFilter(color, 9, 75, 75)
         gray3 = cv2.cvtColor(filtered, cv2.COLOR_BGR2GRAY)
         clahe_normal = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         gray3 = clahe_normal.apply(gray3)
-        corners = find_corners(gray3)
+        corners, is_doc = find_corners(gray3)
         if corners is not None:
-            return corners
+            return corners, is_doc
 
-        return None
+        return None, False
 
 
 if __name__ == "__main__":

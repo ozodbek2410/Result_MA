@@ -16,13 +16,15 @@ from utils import (multi_threshold, canny_binary, gaussian_blur,
 from config import SCANNER, SPAN_W, SPAN_H, mm_to_px
 
 
-def find_corners(gray: np.ndarray) -> np.ndarray | None:
+def find_corners(gray: np.ndarray) -> tuple[np.ndarray | None, bool]:
     """
-    4 ta burchak markerni topish — 3-bosqichli EvalBee-level pipeline.
+    4 ta burchak markerni topish — 4-bosqichli EvalBee-level pipeline.
 
     Returns:
-        np.ndarray shape (4,2) — [tl, tr, br, bl] koordinatalar
-        None — topilmadi
+        (np.ndarray shape (4,2), is_doc_boundary: bool)
+        is_doc_boundary=True: hujjat chegarasi topildi (varaq cheti, corner mark emas)
+          → scanner PAGE_W/PAGE_H ishlatadi, SPAN_W/SPAN_H emas
+        (None, False) — topilmadi
     """
     h, w = gray.shape
 
@@ -51,36 +53,27 @@ def find_corners(gray: np.ndarray) -> np.ndarray | None:
     # ──── STAGE 2: Quadrant grouping + missing corner estimation ────
     result = _select_from_quadrants(candidates, w, h, zone_pct)
     if result is not None and validate_rectangle(result, w, h):
-        return sort_corners(result)
+        return sort_corners(result), False
 
     # 3 ta burchak topildimi? → 4-chisini hisoblash
     result_3 = _estimate_fourth(candidates, w, h, zone_pct)
     if result_3 is not None and validate_rectangle(result_3, w, h):
-        return sort_corners(result_3)
+        return sort_corners(result_3), False
 
     # ──── STAGE 3: Geometric fallback ────
     if len(candidates) >= 4:
         result_geo = _geometric_pick(candidates, w, h)
         if result_geo is not None and validate_rectangle(result_geo, w, h):
-            return sort_corners(result_geo)
+            return sort_corners(result_geo), False
 
     # ──── STAGE 4: EvalBee-style hujjat chegarasi ────
-    # Corner marklar topilmasa — varaqning O'ZINI topish
-    # Canny Edge → findContours → eng katta 4-burchak = hujjat
-    # Keyin hujjat chegarasidan CORNER MARK pozitsiyalarini hisoblash
+    # Corner marklar topilmasa — varaqning CHETINI topish
+    # is_doc_boundary=True → scanner PAGE_W ishlatadi (210mm, corner emas)
     doc = _detect_document_boundary(gray)
     if doc is not None:
-        # Hujjat chegarasi = varaq cheti. Corner mark markazi = chetdan 7mm ichkarida.
-        # CORNER_CENTER = CORNER_MARGIN + CORNER_MARK/2 = 2 + 5 = 7mm
-        # Inset: har burchakni 7mm ichkariga siljitish (proporsional)
-        from config import CORNER_CENTER, PAGE_W, PAGE_H
-        inset = _inset_to_corner_marks(sort_corners(doc), w, h, CORNER_CENTER, PAGE_W, PAGE_H)
-        if inset is not None and validate_rectangle(inset, w, h):
-            return sort_corners(inset)
-        # Inset ishlamasa — hujjat chegarasini o'zini ishlatish
-        return sort_corners(doc)
+        return sort_corners(doc), True
 
-    return None
+    return None, False
 
 
 def _inset_to_corner_marks(
@@ -329,13 +322,20 @@ def _corner_quality(corners: np.ndarray, w: int, h: int) -> float:
     return (span_x / w) * (span_y / h)
 
 
-def warp_perspective(color: np.ndarray, corners: np.ndarray) -> np.ndarray:
+def warp_perspective(color: np.ndarray, corners: np.ndarray,
+                     is_doc_boundary: bool = False) -> np.ndarray:
     """
-    4 burchak marker orqali perspektiv tuzatish.
-    Target: SPAN_W x SPAN_H mm nisbatida.
+    4 burchak orqali perspektiv tuzatish.
+
+    is_doc_boundary=False: corners = corner mark markazlari → SPAN_W x SPAN_H
+    is_doc_boundary=True:  corners = varaq cheti → PAGE_W x PAGE_H
     """
+    from config import PAGE_W, PAGE_H
     target_w = SCANNER["target_width_px"]
-    target_h = int(target_w * SPAN_H / SPAN_W)
+    if is_doc_boundary:
+        target_h = int(target_w * PAGE_H / PAGE_W)
+    else:
+        target_h = int(target_w * SPAN_H / SPAN_W)
 
     dst = np.array([
         [0, 0],
