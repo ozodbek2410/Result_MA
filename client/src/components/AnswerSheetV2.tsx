@@ -122,7 +122,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
         color: '#000',
         boxSizing: 'border-box',
         overflow: 'hidden',
-        padding: `${PP}mm ${PP}mm 6mm ${PP}mm`,
+        padding: `${PP}mm ${PP}mm 4mm ${PP}mm`,
         margin: '0 auto',
         fontSize: 'initial',
         lineHeight: 'initial',
@@ -240,11 +240,12 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
               {/* Savol qatorlari */}
               {Array.from({ length: end - start + 1 }, (_, i) => {
                 const n = start + i;
+                const isLast = i === end - start;
                 return (
                   <div key={n} style={{
                     display: 'flex', alignItems: 'center',
                     height: px(BS),
-                    marginBottom: px(L.rm * 2),
+                    marginBottom: isLast ? 0 : px(L.rm * 2),
                   }}>
                     {/* Timing mark — HAR QATORDA */}
                     <div style={{ width: px(TW), flexShrink: 0, display: 'flex', alignItems: 'center' }}>
