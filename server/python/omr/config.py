@@ -20,6 +20,7 @@ PAGE_H = SHEET["page_h_mm"]
 CORNER_MARK = SHEET["corner_mark_mm"]
 CORNER_MARGIN = SHEET["corner_margin_mm"]
 PAGE_PAD = SHEET["page_pad_mm"]
+PAGE_PAD_TOP = SHEET.get("page_pad_top_mm", PAGE_PAD)
 BUBBLE = SHEET["bubble_size_mm"]
 BUBBLE_GAP = SHEET["bubble_gap_mm"]
 NUM_W = SHEET["num_width_mm"]

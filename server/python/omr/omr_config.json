@@ -6,12 +6,13 @@
     "corner_mark_mm": 10,
     "corner_margin_mm": 2,
     "page_pad_mm": 12,
+    "page_pad_top_mm": 4,
     "bubble_size_mm": 6,
     "bubble_gap_mm": 2,
     "num_width_mm": 7,
     "timing_mark_mm": 3,
     "timing_col_w_mm": 4,
-    "header_height_mm": 50,
+    "header_height_mm": 55,
     "qr_size_mm": 32
   },
   "scanner": {

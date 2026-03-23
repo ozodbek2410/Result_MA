@@ -10,7 +10,7 @@ Detection faqat ±2px calibration uchun — asosiy grid formula asosida.
 """
 import cv2
 import numpy as np
-from config import (compute_layout, mm_to_px, HEADER_H, PAGE_PAD,
+from config import (compute_layout, mm_to_px, HEADER_H, PAGE_PAD, PAGE_PAD_TOP,
                     TIMING_W, NUM_W, BUBBLE, BUBBLE_GAP, CORNER_CENTER)
 
 
@@ -29,13 +29,13 @@ def build_grid(warped_gray: np.ndarray, total_questions: int) -> list[dict]:
     # Subtract CORNER_CENTER to convert page-edge measurements to warped-origin coordinates.
     #
     # Grid content top offset (AnswerSheetV2.tsx CSS layout):
-    #   PAGE_PAD (12mm) + HEADER_H (55mm)
+    #   PAGE_PAD_TOP (4mm) + HEADER_H (55mm)
     #   + col header row height (BUBBLE = 6mm) + col header marginBottom (1mm)
     #   − CORNER_CENTER (7mm)
-    #   = 67mm  →  Q1 bubble center = 67 + BUBBLE/2 = 70mm ✓
-    _GRID_OFFSET_MM = BUBBLE + 1.0  # col_header_h + col_header_mb (paddingTop removed)
+    #   = 59mm  →  Q1 bubble center = 59 + BUBBLE/2 = 62mm
+    _GRID_OFFSET_MM = BUBBLE + 1.0  # col_header_h + col_header_mb
     grid_left_px = mm_to_px(PAGE_PAD - CORNER_CENTER, w)
-    grid_top_px  = mm_to_px(PAGE_PAD + HEADER_H + _GRID_OFFSET_MM - CORNER_CENTER, w)
+    grid_top_px  = mm_to_px(PAGE_PAD_TOP + HEADER_H + _GRID_OFFSET_MM - CORNER_CENTER, w)
     col_w_px = mm_to_px(layout["col_w_mm"], w)
     col_gap_px = mm_to_px(layout["col_gap_mm"], w)
     row_h_px = mm_to_px(layout["row_h_mm"], w)

@@ -29,7 +29,7 @@ import QRCode from 'qrcode';
 const CM  = 10;  // corner mark
 const CG  = 2;   // corner gap from edge
 const PP  = 12;  // page padding
-const HH  = 50;  // header height FIXED
+const HH  = 55;  // header height FIXED
 const BS  = 6;   // bubble size
 const BG  = 2;   // bubble gap
 const NW  = 7;   // number width
@@ -122,7 +122,7 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
         color: '#000',
         boxSizing: 'border-box',
         overflow: 'hidden',
-        padding: `8mm ${PP}mm 2mm ${PP}mm`,
+        padding: `4mm ${PP}mm 2mm ${PP}mm`,
         margin: '0 auto',
         fontSize: 'initial',
         lineHeight: 'initial',
