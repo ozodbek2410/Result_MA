@@ -233,7 +233,7 @@ def _select_from_quadrants(
         best, zone_cands = zone_bests[zone_name]
         if best[2] > ref_area * 2.5:
             # Outlier — kichikroq kandidatni tanlash
-            filtered = [c for c in zone_cands if c[2] <= median_area * 3.0]
+            filtered = [c for c in zone_cands if c[2] <= ref_area * 2.5]
             if filtered:
                 best = max(filtered, key=lambda c: c[2] * c[3] * c[4])
             else:
