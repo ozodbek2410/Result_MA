@@ -67,11 +67,55 @@ def find_corners(gray: np.ndarray) -> np.ndarray | None:
     # ──── STAGE 4: EvalBee-style hujjat chegarasi ────
     # Corner marklar topilmasa — varaqning O'ZINI topish
     # Canny Edge → findContours → eng katta 4-burchak = hujjat
+    # Keyin hujjat chegarasidan CORNER MARK pozitsiyalarini hisoblash
     doc = _detect_document_boundary(gray)
     if doc is not None:
+        # Hujjat chegarasi = varaq cheti. Corner mark markazi = chetdan 7mm ichkarida.
+        # CORNER_CENTER = CORNER_MARGIN + CORNER_MARK/2 = 2 + 5 = 7mm
+        # Inset: har burchakni 7mm ichkariga siljitish (proporsional)
+        from config import CORNER_CENTER, PAGE_W, PAGE_H
+        inset = _inset_to_corner_marks(sort_corners(doc), w, h, CORNER_CENTER, PAGE_W, PAGE_H)
+        if inset is not None and validate_rectangle(inset, w, h):
+            return sort_corners(inset)
+        # Inset ishlamasa — hujjat chegarasini o'zini ishlatish
         return sort_corners(doc)
 
     return None
+
+
+def _inset_to_corner_marks(
+    doc_corners: np.ndarray, img_w: int, img_h: int,
+    corner_center_mm: float, page_w_mm: float, page_h_mm: float
+) -> np.ndarray | None:
+    """
+    Hujjat chegarasidan corner mark markazlariga o'tish.
+
+    doc_corners: varaq chetining 4 burchagi [tl, tr, br, bl]
+    corner_center_mm: corner mark markazi chetdan (7mm)
+
+    Har burchakni proporsional ichkariga siljitadi:
+      inset_x = corner_center_mm / page_w_mm  (3.33%)
+      inset_y = corner_center_mm / page_h_mm  (2.36%)
+    """
+    tl, tr, br, bl = doc_corners[:4]
+
+    # Proporsional inset (0-1 oralig'ida)
+    ix = corner_center_mm / page_w_mm  # ~0.0333
+    iy = corner_center_mm / page_h_mm  # ~0.0236
+
+    # Har burchakni ichkariga siljitish
+    # TL → o'ngga-pastga, TR → chapga-pastga, BR → chapga-tepaga, BL → o'ngga-tepaga
+    top_vec = tr - tl      # tepa tomon yo'nalishi
+    left_vec = bl - tl     # chap tomon yo'nalishi
+    right_vec = br - tr
+    bot_vec = br - bl
+
+    new_tl = tl + top_vec * ix + left_vec * iy
+    new_tr = tr - top_vec * ix + right_vec * iy
+    new_br = br - bot_vec * ix - right_vec * iy
+    new_bl = bl + bot_vec * ix - left_vec * iy
+
+    return np.array([new_tl, new_tr, new_br, new_bl], dtype=np.float32)
 
 
 def _detect_document_boundary(gray: np.ndarray) -> np.ndarray | None:
