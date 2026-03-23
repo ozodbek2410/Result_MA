@@ -1096,17 +1096,18 @@ export default function TestPrintPage() {
                 : (isBlockTest ? [] : test.questions);
 
               return (
-                <div key={student._id} style={{
-                  width: sheetsPerPage === 1 ? '100%' :
+                <div key={student._id} className="sheet-student-wrap" style={{
+                  width: sheetsPerPage === 1 ? '210mm' :
                          (sheetsPerPage === 2 && useVerticalLayout) ? '50%' :
                          '100%',
-                  height: '100%',
-                  overflow: 'visible',
+                  height: sheetsPerPage === 1 ? '297mm' : '100%',
+                  overflow: 'hidden',
                   pageBreakInside: 'avoid',
                   breakInside: 'avoid',
-                  margin: sheetsPerPage === 1 ? '0 auto' : (sheetsPerPage === 2 && useVerticalLayout) ? '0 auto' : '0',
+                  margin: '0 auto',
                   display: 'flex',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  alignItems: 'center',
                 }}>
                   <AnswerSheetV2
                     student={{
@@ -1399,6 +1400,11 @@ export default function TestPrintPage() {
           .answer-sheet-v2 {
             page-break-inside: avoid;
             break-inside: avoid;
+          }
+
+          .sheet-student-wrap .answer-sheet-v2 {
+            transform: scale(0.92);
+            transform-origin: center center;
           }
           
           .no-print { display: none !important; }
