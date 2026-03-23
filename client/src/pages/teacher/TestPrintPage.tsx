@@ -1349,7 +1349,7 @@ export default function TestPrintPage() {
       <style>{`
         @page {
           size: A4 portrait;
-          margin: ${type === 'sheets' ? '0' : '10mm 12mm'};
+          margin: ${type === 'sheets' ? '5mm' : '10mm 12mm'};
         }
 
         @media print {
@@ -1399,6 +1399,8 @@ export default function TestPrintPage() {
           .answer-sheet-v2 {
             page-break-inside: avoid;
             break-inside: avoid;
+            transform: scale(0.92);
+            transform-origin: top center;
           }
           
           .no-print { display: none !important; }
