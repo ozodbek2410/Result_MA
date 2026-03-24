@@ -101,17 +101,17 @@ def _pick_answer(q_cells: list[dict]) -> dict:
     _EMPTY = {"letter": None, "status": "empty", "confidence": 0.0, "candidates": []}
 
     # Hech biri baseline dan sezilarli farq qilmasa → ratio fallback
-    # 0.45 = qog'oz teksturasi/soya/chekka 0.40 gacha, qalam belgi 0.50+
+    # 0.50 = qattiqroq threshold — soxta javoblar kamayadi
     ratio_mode = False
-    if max_adjusted < 0.45:
+    if max_adjusted < 0.50:
         # Ratio fallback: perspective warp mukammal emas → bubble qisman sampled
         # max_fill / avg_others >= 1.6 AND max_fill >= 0.42 → real fill
         max_fill_val = max(fills)
         max_fill_idx = fills.index(max_fill_val)
         others = [fills[i] for i in range(len(fills)) if i != max_fill_idx]
         avg_others = sum(others) / len(others) if others else 0
-        if (max_fill_val >= 0.42 and avg_others > 0.05
-                and max_fill_val / avg_others >= 1.6):
+        if (max_fill_val >= 0.48 and avg_others > 0.05
+                and max_fill_val / avg_others >= 1.8):
             ratio_mode = True
         else:
             return _EMPTY

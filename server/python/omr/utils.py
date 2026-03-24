@@ -132,13 +132,13 @@ def validate_rectangle(
     if avg_h < 1:
         return False
     aspect = avg_w / avg_h
-    if not (0.50 < aspect < 0.95):  # A4=0.707, telefon perspektivi uchun keng
+    if not (0.58 < aspect < 0.90):  # A4=0.707, ±20% perspektiv tolerans
         return False
 
     # Parallellik — telefon burchakdan olsa tomonlar farq qiladi
     w_ratio = min(top_w, bot_w) / max(top_w, bot_w)
     h_ratio = min(left_h, right_h) / max(left_h, right_h)
-    if w_ratio < 0.70 or h_ratio < 0.70:
+    if w_ratio < 0.75 or h_ratio < 0.75:
         return False
 
     # Diagonal tekshiruv — ikkala diagonal ham ±30% farq qilmasligi kerak

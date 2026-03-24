@@ -1747,4 +1747,100 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
   }
 });
 
+/**
+ * POST /api/omr/lookup-variant
+ * Client-side OMR uchun — faqat DB lookup (rasm processing yo'q).
+ * Client detected_answers yuboradi, server comparison qaytaradi.
+ */
+router.post('/lookup-variant', authenticate, async (req, res) => {
+  try {
+    const { variantCode, detectedAnswers, totalQuestions } = req.body;
+    if (!variantCode) return res.status(400).json({ error: 'variantCode kerak' });
+
+    const StudentVariant = require('../models/StudentVariant').default;
+    const Test = require('../models/Test').default;
+    const BlockTest = require('../models/BlockTest').default;
+
+    const variantInfo = await StudentVariant.findOne({
+      variantCode: { $regex: new RegExp(`^${variantCode.trim()}$`, 'i') }
+    }).populate('studentId');
+
+    if (!variantInfo?.shuffledQuestions?.length) {
+      return res.json({ found: false });
+    }
+
+    const correctAnswers: Record<string, string> = {};
+    variantInfo.shuffledQuestions.forEach((q: { correctAnswer: string }, i: number) => {
+      correctAnswers[(i + 1).toString()] = q.correctAnswer;
+    });
+
+    let testName = 'Test';
+    let sheetTotal = 0;
+    try {
+      if (variantInfo.testType === 'BlockTest') {
+        const bt = await BlockTest.findById(variantInfo.testId).select('date subjectTests');
+        if (bt) {
+          testName = `Blok Test - ${new Date(bt.date).toLocaleDateString('uz-UZ')}`;
+          sheetTotal = (bt.subjectTests || []).reduce((s: number, st: { questions?: unknown[] }) => s + (st.questions?.length || 0), 0);
+        }
+      } else {
+        const t = await Test.findById(variantInfo.testId).select('name questions');
+        if (t) { testName = t.name; sheetTotal = t.questions?.length || 0; }
+      }
+    } catch { /* optional */ }
+
+    const studentName = variantInfo.studentId?.fullName ||
+      `${variantInfo.studentId?.firstName || ''} ${variantInfo.studentId?.lastName || ''}`.trim() ||
+      'Noma\'lum';
+
+    const detected: Record<string, string> = detectedAnswers || {};
+    const totalQ = Object.keys(correctAnswers).length;
+    const sheetTotalQ = Math.max(sheetTotal, totalQ, totalQuestions || 0);
+
+    const details = Array.from({ length: sheetTotalQ }, (_, i) => {
+      const qStr = String(i + 1);
+      const studentAnswer = detected[qStr] || null;
+      const correctAnswer = correctAnswers[qStr] || '';
+      return {
+        question: i + 1,
+        student_answer: studentAnswer,
+        correct_answer: correctAnswer,
+        is_correct: !!studentAnswer && studentAnswer === correctAnswer,
+      };
+    });
+
+    const correct = details.filter(d => d.is_correct).length;
+    const unanswered = details.filter(d => !d.student_answer && d.correct_answer).length;
+    const incorrect = totalQ - correct - unanswered;
+
+    res.json({
+      found: true,
+      qr_found: true,
+      qr_code: {
+        variantCode,
+        testId: String(variantInfo.testId),
+        studentId: String(variantInfo.studentId?._id || variantInfo.studentId),
+        studentName,
+        testName,
+        totalQuestions: totalQ,
+        sheetTotalQuestions: sheetTotalQ,
+        correctAnswers,
+      },
+      comparison: {
+        correct,
+        incorrect,
+        unanswered,
+        total: totalQ,
+        score: totalQ > 0 ? (correct / totalQ) * 100 : 0,
+        details,
+      },
+      total_questions: sheetTotalQ,
+      detected_answers: detected,
+    });
+  } catch (err: unknown) {
+    console.error('[OMR lookup] Error:', err);
+    res.status(500).json({ error: 'DB lookup xatosi' });
+  }
+});
+
 export default router;

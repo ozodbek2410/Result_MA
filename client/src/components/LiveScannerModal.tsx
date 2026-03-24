@@ -53,7 +53,7 @@ interface LiveScannerModalProps {
 const A4_RATIO = 297 / 210;
 const FRAME_W_RATIO = 0.82;
 const ANALYSIS_W = 480;
-const STABLE_FRAMES_NEEDED = 4; // ~0.7s — EvalBee tezligida (3-5 sekund)
+const STABLE_FRAMES_NEEDED = 5; // ~1s — ishonchli capture
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -69,6 +69,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   const cornersRef = useRef<CornersResult | null>(null);
   const stableCountRef = useRef(0);
   const qrDataRef = useRef<QRData | null>(null);
+  const savedOverlaySizeRef = useRef<{ w: number; h: number } | null>(null);
 
   const [state, setState] = useState<ScanState>('scanning');
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
@@ -124,6 +125,13 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     setCapturedImage(dataUrl);
 
     setState('captured');
+    // Overlay o'lchamlarini SAQLASH — stopCamera() overlay ni o'chiradi
+    if (overlayRef.current) {
+      savedOverlaySizeRef.current = {
+        w: overlayRef.current.clientWidth,
+        h: overlayRef.current.clientHeight,
+      };
+    }
     stopCamera();
     setState('processing');
     setProcessingProgress(0);
@@ -133,29 +141,13 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }, 200);
 
     try {
-      const blob = await new Promise<Blob>(resolve =>
-        canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92),
-      );
-      const file = new File([blob], `omr-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      const formData = new FormData();
-      formData.append('image', file);
-
-      // QR ma'lumotlarini yuborish (client tomonida topilgan bo'lsa)
-      const qr = qrDataRef.current;
-      if (qr) {
-        formData.append('clientQrCode', qr.variantCode);
-        if (qr.totalQuestions) formData.append('clientTotalQuestions', String(qr.totalQuestions));
-      }
-
-      // Client topgan 4 corner koordinatalarini yuborish
-      // Server qayta izlamasin — client allaqachon to'g'ri topgan (EvalBee yondashruvi)
+      // ===== ON-DEVICE SCANNING — server kerak emas =====
       const cc = cornersRef.current;
-      if (cc && cc.count === 4) {
-        // Corner coords — guide frame ichidagi analysis canvas koordinatalaridan
-        // video full frame koordinatalariga o'tkazish
+      if (cc && cc.count >= 3) {
+        // Corner coords: analysis canvas → video pixel
         const vw = video.videoWidth, vh = video.videoHeight;
-        const ow = overlayRef.current?.clientWidth || vw;
-        const oh = overlayRef.current?.clientHeight || vh;
+        const ow = savedOverlaySizeRef.current?.w || vw;
+        const oh = savedOverlaySizeRef.current?.h || vh;
         const vAsp = vw / vh, sAsp = ow / oh;
         let cropX: number, cropW: number, cropY: number, cropH: number;
         if (vAsp > sAsp) {
@@ -163,17 +155,83 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         } else {
           cropW = vw; cropH = vw / sAsp; cropX = 0; cropY = (vh - cropH) / 2;
         }
-        // Analysis canvas → video pixel mapping
-        const sx = cropW / (overlayRef.current?.clientWidth || 1);
-        const sy = cropH / (overlayRef.current?.clientHeight || 1);
-        const corners4 = [
-          { x: cc.tl.x * sx + cropX, y: cc.tl.y * sy + cropY },
-          { x: cc.tr.x * sx + cropX, y: cc.tr.y * sy + cropY },
-          { x: cc.bl.x * sx + cropX, y: cc.bl.y * sy + cropY },
-          { x: cc.br.x * sx + cropX, y: cc.br.y * sy + cropY },
-        ];
-        formData.append('clientCorners', JSON.stringify(corners4));
+        const ah = Math.round(ANALYSIS_W * oh / ow);
+        const sx = cropW / ANALYSIS_W;
+        const sy = cropH / ah;
+
+        const videoCorners = {
+          tl: { ...cc.tl, x: cc.tl.x * sx + cropX, y: cc.tl.y * sy + cropY },
+          tr: { ...cc.tr, x: cc.tr.x * sx + cropX, y: cc.tr.y * sy + cropY },
+          bl: { ...cc.bl, x: cc.bl.x * sx + cropX, y: cc.bl.y * sy + cropY },
+          br: { ...cc.br, x: cc.br.x * sx + cropX, y: cc.br.y * sy + cropY },
+        };
+
+        // On-device scan
+        const { scanOnDevice } = await import('../lib/omr/clientScanner');
+        const scanResult = scanOnDevice(canvas, videoCorners, qrDataRef.current);
+
+        clearInterval(progressInterval);
+        setProcessingProgress(100);
+
+        if (scanResult.success) {
+          // Server ga natija yuborish (rasm emas, faqat javoblar)
+          const blob = await new Promise<Blob>(resolve =>
+            canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92),
+          );
+          const file = new File([blob], `omr-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+          // Server format ga moslashtirish (OMRCheckerPage kutgan format)
+          const serverFormat = {
+            success: true,
+            detected_answers: scanResult.detectedAnswers,
+            stats: scanResult.stats,
+            qr_code: scanResult.qrCode.found ? {
+              found: true,
+              variant_code: scanResult.qrCode.variantCode,
+              total_questions: scanResult.qrCode.totalQuestions,
+            } : { found: false },
+            detection_rate: scanResult.stats.detectionRate,
+            warnings: scanResult.warnings,
+            _clientProcessed: true,
+            _processingTimeMs: scanResult.stats.processingTimeMs,
+          };
+
+          // Server ga QR variant orqali comparison olish (DB lookup)
+          if (scanResult.qrCode.found && scanResult.qrCode.variantCode) {
+            try {
+              const resp = await api.post('/omr/lookup-variant', {
+                variantCode: scanResult.qrCode.variantCode,
+                detectedAnswers: scanResult.detectedAnswers,
+                totalQuestions: scanResult.stats.total,
+              });
+              if (resp.data?.comparison) {
+                Object.assign(serverFormat, resp.data);
+              }
+            } catch {
+              // DB lookup xatosi — natija hali ham ko'rsatiladi
+            }
+          }
+
+          onResult(serverFormat as never, file);
+          setState('scanning');
+          setCapturedImage(null);
+          capturingRef.current = false;
+          stableCountRef.current = 0;
+          onClose();
+          return;
+        } else {
+          // Client scan xato — server fallback
+          console.warn('[OMR] Client scan failed, falling back to server:', scanResult.error);
+        }
       }
+
+      // ===== SERVER FALLBACK — client scan ishlamasa =====
+      const blob = await new Promise<Blob>(resolve =>
+        canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92),
+      );
+      const file = new File([blob], `omr-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      const formData = new FormData();
+      formData.append('image', file);
 
       const response = await api.post('/omr/scan-v2', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -195,7 +253,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     } catch {
       clearInterval(progressInterval);
       setState('error');
-      setCameraError('Server bilan aloqa xatosi');
+      setCameraError('Skanerlashda xatolik');
     } finally {
       capturingRef.current = false;
     }
@@ -279,14 +337,14 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     if (valid) {
       stableCountRef.current++;
     } else {
-      stableCountRef.current = Math.max(0, stableCountRef.current - 2);
+      stableCountRef.current = Math.max(0, stableCountRef.current - 1);
     }
 
     setCornerCount(corners.count);
     setAutoProgress(Math.min(stableCountRef.current / STABLE_FRAMES_NEEDED, 1));
 
-    // Auto-capture when stable enough
-    if (stableCountRef.current >= STABLE_FRAMES_NEEDED && !capturingRef.current) {
+    // Auto-capture — barcha holatda STABLE_FRAMES_NEEDED kutish
+    if (valid && stableCountRef.current >= STABLE_FRAMES_NEEDED && !capturingRef.current) {
       capturePhoto();
       return;
     }
@@ -309,21 +367,34 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       ctx.setLineDash([]);
     }
 
-    // 4 corner brackets — clean EvalBee style
-    const bracketLen = Math.max(28, fw * 0.08); // bracket arm length
-    const bracketW = 3; // line width
+    // 4 corner brackets — EvalBee style (KATTA, yorqin)
+    const bracketLen = Math.max(40, fw * 0.12);
+    const bracketW = 4;
 
-    // Corner bracket positions (at guide frame corners)
     const bracketCorners = [
-      { x: fx, y: fy, dx: 1, dy: 1, found: corners.tl.found },           // TL
-      { x: fx + fw, y: fy, dx: -1, dy: 1, found: corners.tr.found },     // TR
-      { x: fx, y: fy + fh, dx: 1, dy: -1, found: corners.bl.found },     // BL
-      { x: fx + fw, y: fy + fh, dx: -1, dy: -1, found: corners.br.found }, // BR
+      { x: fx, y: fy, dx: 1, dy: 1, found: corners.tl.found },
+      { x: fx + fw, y: fy, dx: -1, dy: 1, found: corners.tr.found },
+      { x: fx, y: fy + fh, dx: 1, dy: -1, found: corners.bl.found },
+      { x: fx + fw, y: fy + fh, dx: -1, dy: -1, found: corners.br.found },
     ];
 
     for (const bc of bracketCorners) {
-      ctx.strokeStyle = bc.found ? '#22c55e' : 'rgba(59, 130, 246, 0.85)';
-      ctx.lineWidth = bc.found ? bracketW + 1 : bracketW;
+      const found = bc.found;
+
+      // Bracket fon — topilmagan burchakda ko'k glow
+      if (!found) {
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+        const gs = bracketLen * 1.2;
+        ctx.fillRect(
+          bc.dx > 0 ? bc.x : bc.x - gs,
+          bc.dy > 0 ? bc.y : bc.y - gs,
+          gs, gs
+        );
+      }
+
+      // Bracket chiziqlari
+      ctx.strokeStyle = found ? '#22c55e' : '#3b82f6';
+      ctx.lineWidth = found ? bracketW + 2 : bracketW;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(bc.x + bc.dx * bracketLen, bc.y);
@@ -331,11 +402,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       ctx.lineTo(bc.x, bc.y + bc.dy * bracketLen);
       ctx.stroke();
 
-      // Small filled square at corner when found (actual mark indicator)
-      if (bc.found) {
-        const dotSize = 8;
+      // Topilganda — yashil to'ldirilgan kvadrat
+      if (found) {
+        const ds = 10;
         ctx.fillStyle = '#22c55e';
-        ctx.fillRect(bc.x + bc.dx * 2 - dotSize / 2, bc.y + bc.dy * 2 - dotSize / 2, dotSize, dotSize);
+        ctx.fillRect(bc.x + bc.dx * 3 - ds / 2, bc.y + bc.dy * 3 - ds / 2, ds, ds);
       }
     }
 
@@ -384,28 +455,62 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       ctx.fillText(`QR: ${label}`, ow / 2, fy + 19);
     }
 
-    // Status label
-    const labelY = fy - 16;
-    if (labelY > 25) {
+    // Status label — katta, aniq, yo'nalishli hint
+    const labelY = fy - 20;
+    if (labelY > 30) {
       ctx.textAlign = 'center';
       if (allGood) {
+        // Yashil pill — "Skanerlash..."
         ctx.fillStyle = 'rgba(34,197,94,0.9)';
-        ctx.beginPath(); ctx.roundRect(ow / 2 - 75, labelY - 12, 150, 26, 6); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui';
-        ctx.fillText('Skanerlash...', ow / 2, labelY + 2);
+        ctx.beginPath(); ctx.roundRect(ow / 2 - 85, labelY - 14, 170, 30, 8); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 14px system-ui';
+        ctx.fillText('Qimirlamang...', ow / 2, labelY + 2);
       } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.65)';
-        ctx.font = '11px system-ui';
-        const hint = corners.count === 0
-          ? 'Varoqni ramkaga moslang'
-          : corners.count < 3
-          ? `${corners.count}/4 marker — to'g'rilang`
-          : !valid
-          ? 'Burchaklarni tekislang'
-          : corners.count === 3
-          ? '3/4 marker — skanerlash...'
-          : 'Qimirlamang...';
-        ctx.fillText(hint, ow / 2, labelY + 2);
+        // Yo'nalishli hint — qaysi tomonga siljitish kerak
+        const tl = corners.tl.found, tr = corners.tr.found;
+        const bl = corners.bl.found, br = corners.br.found;
+        let hint: string;
+        let arrow = '';
+
+        if (corners.count === 0) {
+          hint = 'Varoqni ramkaga joylashtiring';
+        } else if (!tl && !tr && (bl || br)) {
+          hint = 'Tepaga suring'; arrow = '\u2191';
+        } else if (!bl && !br && (tl || tr)) {
+          hint = 'Pastga suring'; arrow = '\u2193';
+        } else if (!tl && !bl && (tr || br)) {
+          hint = 'Chapga suring'; arrow = '\u2190';
+        } else if (!tr && !br && (tl || bl)) {
+          hint = 'O\'ngga suring'; arrow = '\u2192';
+        } else if (corners.count === 3) {
+          const missing = !tl ? 'chap-tepa' : !tr ? 'o\'ng-tepa' : !bl ? 'chap-past' : 'o\'ng-past';
+          hint = `${missing} burchakni moslang`;
+        } else if (!valid) {
+          hint = 'Varoqni tekisroq tuting';
+        } else {
+          hint = `${corners.count}/4 — to'g'rilang`;
+        }
+
+        // Qora fon pill
+        const hintText = arrow ? `${arrow}  ${hint}` : hint;
+        const tw = ctx.measureText ? 200 : 200;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.beginPath(); ctx.roundRect(ow / 2 - tw / 2, labelY - 14, tw, 30, 8); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui';
+        ctx.fillText(hintText, ow / 2, labelY + 2);
+      }
+    }
+
+    // Yoqmagan burchaklarga pulsing indicator
+    if (!allGood && corners.count > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+      for (const bc of bracketCorners) {
+        if (!bc.found) {
+          ctx.fillStyle = `rgba(239, 68, 68, ${0.3 + 0.3 * pulse})`;
+          ctx.beginPath();
+          ctx.arc(bc.x, bc.y, 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }, [getFrame, getTempCanvas, capturePhoto]);

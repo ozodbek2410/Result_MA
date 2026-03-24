@@ -101,9 +101,18 @@ class OMRScanner:
                     total_q = qr["total_questions"]
 
             if not total_q:
-                result["error"] = "total_questions aniqlanmadi (QR topilmadi, savol soni berilmadi)"
-                result["warnings"].append("QR topilmadi va savol soni berilmadi")
-                return result
+                # QR topilmadi — timing marklardan savol sonini aniqlash
+                total_q = self._infer_total_questions(warped_gray, is_doc_boundary)
+                if total_q:
+                    result["warnings"].append(
+                        f"QR topilmadi — timing marklardan {total_q} savol aniqlandi"
+                    )
+                else:
+                    # Fallback: eng keng tarqalgan 90
+                    total_q = 90
+                    result["warnings"].append(
+                        "QR topilmadi — 90 savol deb taxmin qilindi"
+                    )
 
             # Warped binary (fill detection uchun)
             _, warped_binary = cv2.threshold(
@@ -145,8 +154,11 @@ class OMRScanner:
                         total_conf += f["confidence"]
                     elif f["status"] == "empty":
                         empty += 1
-                    elif f["status"] == "multi":
+                    elif f["status"] == "multi" and f.get("candidates"):
+                        # Multi: "C,D" formatda ko'rsatish
+                        detected_answers[q_str] = ",".join(f["candidates"])
                         multi_sel += 1
+                        answered += 1
                 else:
                     answers[q_str] = {"letter": None, "status": "empty",
                                       "confidence": 0.0, "candidates": []}
@@ -213,6 +225,61 @@ class OMRScanner:
             return corners, is_doc
 
         return None, False
+
+    def _infer_total_questions(
+        self, warped_gray: np.ndarray, is_doc_boundary: bool
+    ) -> int | None:
+        """
+        Timing marklardan savol sonini aniqlash.
+        Har bir common size uchun grid qurib, timing mark count tekshirish.
+        """
+        from grid import build_grid, _find_timing_marks
+        from config import compute_layout
+
+        _, warped_binary = cv2.threshold(
+            warped_gray, 0, 255,
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+
+        best_count = None
+        best_marks = 0
+
+        for total_q in [90, 30]:
+            cells = build_grid(warped_gray, total_q, is_doc_boundary)
+            layout = compute_layout(total_q)
+            rows_per_col = layout["rows_per_col"]
+            bubble_r = cells[0]["r"] if cells else 15
+
+            # Col 0 dan timing marklarni izlash
+            col0_cells = [c for c in cells if c["col"] == 0 and c["letter"] == "A"]
+            if not col0_cells:
+                continue
+
+            col_x = col0_cells[0]["cx"]
+            first_y = col0_cells[0]["cy"]
+            tm_x_right = col_x - bubble_r
+            tm_x_left = tm_x_right - 80
+
+            marks = _find_timing_marks(
+                warped_binary,
+                x1=max(0, int(tm_x_left)),
+                x2=int(tm_x_right),
+                y1=max(0, int(first_y - bubble_r * 8)),
+                y2=min(warped_binary.shape[0],
+                       int(first_y + rows_per_col * bubble_r * 2.5 * 1.5)),
+                expected_count=rows_per_col,
+                bubble_r=bubble_r,
+            )
+
+            # Eng ko'p timing mark topilgan size = to'g'ri
+            if len(marks) > best_marks:
+                best_marks = len(marks)
+                best_count = total_q
+
+        # Kamida 5 ta timing mark topilishi kerak
+        if best_marks >= 5:
+            return best_count
+        return None
 
 
 if __name__ == "__main__":
