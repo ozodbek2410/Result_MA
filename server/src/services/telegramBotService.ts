@@ -666,33 +666,22 @@ class TelegramBotServiceClass {
     const svgW = tableW + pad * 2;
     const svgH = titleH + headerH + rows.length * rowH + pad * 2 + 4;
 
-    // Row background ranglar (gradient: yashil → sariq → qizil)
-    const rowBg = (pct: number, idx: number): string => {
-      if (pct >= 85) return '#c6efce';       // yashil
-      if (pct >= 75) return '#d4edbc';       // och yashil
-      if (pct >= 65) return '#e2f0b6';       // sariq-yashil
-      if (pct >= 55) return '#fff2cc';       // sariq
-      if (pct >= 45) return '#fce4d6';       // och qizil
-      if (pct >= 30) return '#f8cbad';       // qizil
-      if (pct > 0) return '#f4b084';         // to'q qizil
-      return idx % 2 === 0 ? '#f2f2f2' : '#ffffff';
-    };
-
-    // Cell rang (fan natijasi uchun)
-    const cellBg = (correct: number, total: number): string => {
-      if (total === 0) return 'transparent';
-      const pct = (correct / total) * 100;
-      if (pct >= 80) return '#c6efce';
-      if (pct >= 60) return '#e2f0b6';
-      if (pct >= 40) return '#fff2cc';
-      if (pct >= 20) return '#fce4d6';
-      return '#f4b084';
+    // Oddiy oq/kulrang qatorlar
+    const rowBg = (_pct: number, idx: number): string => {
+      return idx % 2 === 0 ? '#f7f8fa' : '#ffffff';
     };
 
     const textColor = (pct: number): string => {
       if (pct >= 80) return '#006100';
       if (pct >= 50) return '#9c5700';
       return '#9c0006';
+    };
+
+    // Foiz ustun uchun fon rang
+    const pctBg = (pct: number): string => {
+      if (pct >= 80) return '#c6efce';
+      if (pct >= 50) return '#fff2cc';
+      return '#fce4d6';
     };
 
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}">
@@ -754,16 +743,11 @@ class TelegramBotServiceClass {
       svg += `<text x="${cx + 8}" y="${ry + 20}" class="c">${this.escSvg(dn)}</text>`;
       cx += nameW;
 
-      // Subjects
+      // Subjects — faqat raqam, rangsiz fon
       for (const sc of r.subjectScores) {
         svg += `<line x1="${cx}" y1="${ry}" x2="${cx}" y2="${ry + rowH}" stroke="#d0d0d0" stroke-width="0.5"/>`;
-        const cb = cellBg(sc.correct, sc.total);
-        if (cb !== 'transparent') {
-          svg += `<rect x="${cx + 1}" y="${ry + 1}" width="${colW - 2}" height="${rowH - 2}" fill="${cb}" rx="2"/>`;
-        }
         const val = sc.total > 0 ? String(sc.correct) : '0';
-        const clr = sc.total > 0 ? textColor((sc.correct / sc.total) * 100) : '#999';
-        svg += `<text x="${cx + colW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="${clr}">${val}</text>`;
+        svg += `<text x="${cx + colW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="#333">${val}</text>`;
         cx += colW;
       }
 
@@ -772,8 +756,9 @@ class TelegramBotServiceClass {
       svg += `<text x="${cx + totalW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="#1f3864">${r.totalCorrect}/${r.totalQuestions}</text>`;
       cx += totalW;
 
-      // Percentage
+      // Percentage — rang faqat shu ustunda
       svg += `<line x1="${cx}" y1="${ry}" x2="${cx}" y2="${ry + rowH}" stroke="#d0d0d0" stroke-width="0.5"/>`;
+      svg += `<rect x="${cx + 1}" y="${ry + 1}" width="${pctW - 2}" height="${rowH - 2}" fill="${pctBg(r.percentage)}" rx="2"/>`;
       svg += `<text x="${cx + pctW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="${textColor(r.percentage)}">${r.percentage}%</text>`;
     }
 
