@@ -84,6 +84,20 @@ TestResultSchema.post('save', async function (doc) {
       correct,
       incorrect,
     });
+
+    // Blok test tugaganligini tekshirish — barcha studentlar skanerlangan bo'lsa jadval yuborish
+    if (doc.blockTestId) {
+      const bt = await BlockTest.findById(doc.blockTestId).select('studentConfigs').lean();
+      if (bt?.studentConfigs?.length) {
+        const totalStudents = bt.studentConfigs.length;
+        const TestResultModel = (await import('./TestResult')).default;
+        const scannedCount = await TestResultModel.countDocuments({ blockTestId: doc.blockTestId });
+        if (scannedCount >= totalStudents) {
+          // Barcha studentlar skanerlangan — jadval yuborish (async, kutmaymiz)
+          TelegramBotService.sendBlockTestSummary(doc.blockTestId.toString()).catch(() => {});
+        }
+      }
+    }
   } catch {
     // Silent fail — notification should not block result saving
   }

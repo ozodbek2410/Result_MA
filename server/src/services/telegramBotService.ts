@@ -501,6 +501,221 @@ class TelegramBotServiceClass {
     }
   }
 
+  /**
+   * Blok test tugaganda barcha o'quvchilarga natija jadvalini rasm sifatida yuborish.
+   * SVG → PNG (sharp) → Telegram sendPhoto
+   */
+  async sendBlockTestSummary(blockTestId: string): Promise<void> {
+    if (!this.bot) return;
+
+    try {
+      const Subject = (await import('../models/Subject')).default;
+
+      const bt = await BlockTest.findById(blockTestId).lean();
+      if (!bt) return;
+
+      // Fanlar ro'yxati
+      const subjectIds = [...new Set(bt.subjectTests.map((s: { subjectId: { toString: () => string } }) => s.subjectId.toString()))];
+      const subjects = await Subject.find({ _id: { $in: subjectIds } }).select('nameUzb').lean();
+      const subjectMap = new Map(subjects.map(s => [s._id.toString(), s.nameUzb]));
+      const subjectNames = subjectIds.map(id => subjectMap.get(id) || 'Fan');
+
+      // Barcha natijalar
+      const results = await TestResult.find({ blockTestId }).populate('studentId', 'fullName telegramChatId').lean();
+      if (results.length === 0) return;
+
+      // StudentConfigs — har student uchun fan bo'yicha savol soni
+      const configMap = new Map<string, Map<string, number>>();
+      for (const sc of bt.studentConfigs || []) {
+        const subjMap = new Map<string, number>();
+        for (const subj of sc.subjects) {
+          subjMap.set(subj.subjectId.toString(), subj.questionCount);
+        }
+        configMap.set(sc.studentId.toString(), subjMap);
+      }
+
+      // Natijalarni jadval formatiga
+      interface RowData {
+        name: string;
+        chatId?: number;
+        subjectScores: { correct: number; total: number }[];
+        totalCorrect: number;
+        totalQuestions: number;
+        percentage: number;
+      }
+
+      const rows: RowData[] = [];
+      for (const r of results) {
+        const student = r.studentId as unknown as { _id: { toString: () => string }; fullName: string; telegramChatId?: number };
+        if (!student?.fullName) continue;
+
+        const studentId = student._id.toString();
+        const sConfig = configMap.get(studentId);
+
+        // Fan bo'yicha natijalarni hisoblash
+        let qIdx = 0;
+        const subjectScores: { correct: number; total: number }[] = [];
+        let totalCorr = 0;
+        let totalQ = 0;
+
+        for (const sid of subjectIds) {
+          const qCount = sConfig?.get(sid) || 0;
+          let correct = 0;
+          for (let i = 0; i < qCount; i++) {
+            const ans = r.answers[qIdx + i];
+            if (ans?.isCorrect) correct++;
+          }
+          subjectScores.push({ correct, total: qCount });
+          totalCorr += correct;
+          totalQ += qCount;
+          qIdx += qCount;
+        }
+
+        rows.push({
+          name: student.fullName,
+          chatId: student.telegramChatId,
+          subjectScores,
+          totalCorrect: totalCorr,
+          totalQuestions: totalQ,
+          percentage: totalQ > 0 ? Math.round((totalCorr / totalQ) * 100) : 0,
+        });
+      }
+
+      // Percentge bo'yicha tartiblash (yuqoridan pastga)
+      rows.sort((a, b) => b.percentage - a.percentage);
+
+      // SVG jadval yaratish
+      const title = `Blok test — ${MONTHS[(bt.periodMonth || 1) - 1]} ${bt.periodYear} (${bt.classNumber}-sinf)`;
+      const svgBuffer = this.generateResultsSVG(title, subjectNames, rows);
+
+      // Sharp bilan PNG ga aylantirish
+      const sharp = (await import('sharp')).default;
+      const pngBuffer = await sharp(svgBuffer).png().toBuffer();
+
+      // Har bir o'quvchiga yuborish
+      let sent = 0;
+      for (const row of rows) {
+        if (!row.chatId) continue;
+        try {
+          const caption = `📊 ${title}\n\n` +
+            `${row.name}\n` +
+            `✅ ${row.totalCorrect}/${row.totalQuestions} (${row.percentage}%)\n` +
+            `📍 O'rin: ${rows.indexOf(row) + 1}/${rows.length}`;
+
+          await this.bot.sendPhoto(row.chatId, pngBuffer, { caption });
+          sent++;
+
+          // Rate limit — 30 msg/sec Telegram limit
+          if (sent % 25 === 0) await new Promise(r => setTimeout(r, 1100));
+        } catch {
+          // Individual send failure — davom et
+        }
+      }
+
+      logger.info(`Block test summary sent to ${sent}/${rows.length} students`, 'TELEGRAM');
+    } catch (error) {
+      logger.error('Block test summary error', error instanceof Error ? error : new Error(String(error)), 'TELEGRAM');
+    }
+  }
+
+  /** SVG jadval — Excel ko'rinishida */
+  private generateResultsSVG(
+    title: string,
+    subjectNames: string[],
+    rows: { name: string; subjectScores: { correct: number; total: number }[]; totalCorrect: number; totalQuestions: number; percentage: number }[]
+  ): Buffer {
+    const colW = 55; // fan ustun kengligi
+    const nameW = 160;
+    const numW = 30; // # ustun
+    const totalW = 50;
+    const pctW = 50;
+    const rowH = 28;
+    const headerH = 50;
+
+    const tableW = numW + nameW + subjectNames.length * colW + totalW + pctW;
+    const tableH = headerH + rows.length * rowH;
+    const padding = 20;
+    const titleH = 40;
+    const svgW = tableW + padding * 2;
+    const svgH = titleH + tableH + padding * 2;
+
+    // Truncate long subject names
+    const shortNames = subjectNames.map(n => n.length > 7 ? n.substring(0, 6) + '.' : n);
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
+  <style>
+    text { font-family: Arial, sans-serif; }
+    .title { font-size: 14px; font-weight: bold; fill: #1a1a2e; }
+    .header { font-size: 10px; font-weight: bold; fill: #ffffff; }
+    .cell { font-size: 10px; fill: #333; }
+    .cell-bold { font-size: 10px; font-weight: bold; fill: #1a1a2e; }
+    .rank { font-size: 10px; fill: #666; }
+  </style>
+  <rect width="${svgW}" height="${svgH}" fill="#ffffff" rx="8"/>
+  <text x="${svgW / 2}" y="${padding + 14}" text-anchor="middle" class="title">${this.escSvg(title)}</text>`;
+
+    const tX = padding;
+    const tY = titleH + padding;
+
+    // Header row
+    svg += `<rect x="${tX}" y="${tY}" width="${tableW}" height="${headerH}" fill="#2d3a8c" rx="4"/>`;
+
+    let hx = tX;
+    svg += `<text x="${hx + numW / 2}" y="${tY + 30}" text-anchor="middle" class="header">#</text>`;
+    hx += numW;
+    svg += `<text x="${hx + 8}" y="${tY + 30}" class="header">Ism</text>`;
+    hx += nameW;
+    for (const sn of shortNames) {
+      svg += `<text x="${hx + colW / 2}" y="${tY + 20}" text-anchor="middle" class="header" font-size="9">${this.escSvg(sn)}</text>`;
+      hx += colW;
+    }
+    svg += `<text x="${hx + totalW / 2}" y="${tY + 30}" text-anchor="middle" class="header">Jami</text>`;
+    hx += totalW;
+    svg += `<text x="${hx + pctW / 2}" y="${tY + 30}" text-anchor="middle" class="header">%</text>`;
+
+    // Data rows
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const ry = tY + headerH + i * rowH;
+      const bg = i % 2 === 0 ? '#f8f9fa' : '#ffffff';
+      const pctColor = r.percentage >= 80 ? '#27ae60' : r.percentage >= 50 ? '#f39c12' : '#e74c3c';
+
+      svg += `<rect x="${tX}" y="${ry}" width="${tableW}" height="${rowH}" fill="${bg}"/>`;
+      // Border bottom
+      svg += `<line x1="${tX}" y1="${ry + rowH}" x2="${tX + tableW}" y2="${ry + rowH}" stroke="#e0e0e0" stroke-width="0.5"/>`;
+
+      let cx = tX;
+      // #
+      svg += `<text x="${cx + numW / 2}" y="${ry + 18}" text-anchor="middle" class="rank">${i + 1}</text>`;
+      cx += numW;
+      // Name (truncate)
+      const displayName = r.name.length > 22 ? r.name.substring(0, 21) + '.' : r.name;
+      svg += `<text x="${cx + 6}" y="${ry + 18}" class="cell">${this.escSvg(displayName)}</text>`;
+      cx += nameW;
+      // Subject scores
+      for (const sc of r.subjectScores) {
+        const scColor = sc.total > 0 && sc.correct / sc.total >= 0.8 ? '#27ae60' : sc.total > 0 && sc.correct / sc.total >= 0.5 ? '#f39c12' : '#e74c3c';
+        svg += `<text x="${cx + colW / 2}" y="${ry + 18}" text-anchor="middle" class="cell" fill="${sc.total > 0 ? scColor : '#999'}">${sc.correct}/${sc.total}</text>`;
+        cx += colW;
+      }
+      // Total
+      svg += `<text x="${cx + totalW / 2}" y="${ry + 18}" text-anchor="middle" class="cell-bold">${r.totalCorrect}/${r.totalQuestions}</text>`;
+      cx += totalW;
+      // Percentage
+      svg += `<text x="${cx + pctW / 2}" y="${ry + 18}" text-anchor="middle" class="cell-bold" fill="${pctColor}">${r.percentage}%</text>`;
+    }
+
+    // Table border
+    svg += `<rect x="${tX}" y="${tY}" width="${tableW}" height="${headerH + rows.length * rowH}" fill="none" stroke="#2d3a8c" stroke-width="1.5" rx="4"/>`;
+
+    svg += '</svg>';
+    return Buffer.from(svg, 'utf-8');
+  }
+
+  private escSvg(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   stop(): void {
     if (this.bot) {
       this.bot.stopPolling();
