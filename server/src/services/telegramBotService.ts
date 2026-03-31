@@ -514,11 +514,23 @@ class TelegramBotServiceClass {
       const bt = await BlockTest.findById(blockTestId).lean();
       if (!bt) return;
 
-      // Fanlar ro'yxati
+      // Fanlar ro'yxati + savol soni
       const subjectIds = [...new Set(bt.subjectTests.map((s: { subjectId: { toString: () => string } }) => s.subjectId.toString()))];
       const subjects = await Subject.find({ _id: { $in: subjectIds } }).select('nameUzb').lean();
       const subjectMap = new Map(subjects.map(s => [s._id.toString(), s.nameUzb]));
       const subjectNames = subjectIds.map(id => subjectMap.get(id) || 'Fan');
+
+      // Har fan uchun savol sonini aniqlash (birinchi studentdan)
+      const firstConfig = bt.studentConfigs?.[0];
+      const subjectQCounts = subjectIds.map(sid => {
+        const sc = firstConfig?.subjects?.find((s: { subjectId: { toString: () => string }; questionCount: number }) => s.subjectId.toString() === sid);
+        return sc?.questionCount || 0;
+      });
+
+      // Guruh nomi
+      const Group = (await import('../models/Group')).default;
+      const group = bt.groupId ? await Group.findById(bt.groupId).select('name letter').lean() : null;
+      const groupName = group?.name || `${bt.classNumber}-sinf`;
 
       // Barcha natijalar
       const results = await TestResult.find({ blockTestId }).populate('studentId', 'fullName telegramChatId').lean();
@@ -585,8 +597,8 @@ class TelegramBotServiceClass {
       rows.sort((a, b) => b.percentage - a.percentage);
 
       // SVG jadval yaratish
-      const title = `Blok test — ${MONTHS[(bt.periodMonth || 1) - 1]} ${bt.periodYear} (${bt.classNumber}-sinf)`;
-      const svgBuffer = this.generateResultsSVG(title, subjectNames, rows);
+      const title = `Blok test natijalar — ${bt.classNumber}-sinf | ${groupName} | ${(bt.periodMonth || 1)}/${bt.periodYear}`;
+      const svgBuffer = this.generateResultsSVG(title, subjectNames, subjectQCounts, rows);
 
       // Sharp bilan PNG ga aylantirish
       const sharp = (await import('sharp')).default;
@@ -632,95 +644,143 @@ class TelegramBotServiceClass {
     }
   }
 
-  /** SVG jadval — Excel ko'rinishida */
-  private generateResultsSVG(
+  /** SVG jadval — Real Excel ko'rinishida (rang gradient, savol soni) */
+  generateResultsSVG(
     title: string,
     subjectNames: string[],
+    subjectQCounts: number[],
     rows: { name: string; subjectScores: { correct: number; total: number }[]; totalCorrect: number; totalQuestions: number; percentage: number }[]
   ): Buffer {
-    const colW = 55; // fan ustun kengligi
-    const nameW = 160;
-    const numW = 30; // # ustun
-    const totalW = 50;
-    const pctW = 50;
-    const rowH = 28;
-    const headerH = 50;
+    const nSubj = subjectNames.length;
+    const numW = 32;
+    const nameW = 200;
+    const colW = Math.max(80, Math.floor(600 / nSubj));
+    const totalW = 70;
+    const pctW = 55;
+    const rowH = 32;
+    const headerH = 48;
 
-    const tableW = numW + nameW + subjectNames.length * colW + totalW + pctW;
-    const tableH = headerH + rows.length * rowH;
-    const padding = 20;
-    const titleH = 40;
-    const svgW = tableW + padding * 2;
-    const svgH = titleH + tableH + padding * 2;
+    const tableW = numW + nameW + nSubj * colW + totalW + pctW;
+    const pad = 16;
+    const titleH = 44;
+    const svgW = tableW + pad * 2;
+    const svgH = titleH + headerH + rows.length * rowH + pad * 2 + 4;
 
-    // Truncate long subject names
-    const shortNames = subjectNames.map(n => n.length > 7 ? n.substring(0, 6) + '.' : n);
+    // Row background ranglar (gradient: yashil → sariq → qizil)
+    const rowBg = (pct: number, idx: number): string => {
+      if (pct >= 85) return '#c6efce';       // yashil
+      if (pct >= 75) return '#d4edbc';       // och yashil
+      if (pct >= 65) return '#e2f0b6';       // sariq-yashil
+      if (pct >= 55) return '#fff2cc';       // sariq
+      if (pct >= 45) return '#fce4d6';       // och qizil
+      if (pct >= 30) return '#f8cbad';       // qizil
+      if (pct > 0) return '#f4b084';         // to'q qizil
+      return idx % 2 === 0 ? '#f2f2f2' : '#ffffff';
+    };
 
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
-  <style>
-    text { font-family: Arial, sans-serif; }
-    .title { font-size: 14px; font-weight: bold; fill: #1a1a2e; }
-    .header { font-size: 10px; font-weight: bold; fill: #ffffff; }
-    .cell { font-size: 10px; fill: #333; }
-    .cell-bold { font-size: 10px; font-weight: bold; fill: #1a1a2e; }
-    .rank { font-size: 10px; fill: #666; }
-  </style>
-  <rect width="${svgW}" height="${svgH}" fill="#ffffff" rx="8"/>
-  <text x="${svgW / 2}" y="${padding + 14}" text-anchor="middle" class="title">${this.escSvg(title)}</text>`;
+    // Cell rang (fan natijasi uchun)
+    const cellBg = (correct: number, total: number): string => {
+      if (total === 0) return 'transparent';
+      const pct = (correct / total) * 100;
+      if (pct >= 80) return '#c6efce';
+      if (pct >= 60) return '#e2f0b6';
+      if (pct >= 40) return '#fff2cc';
+      if (pct >= 20) return '#fce4d6';
+      return '#f4b084';
+    };
 
-    const tX = padding;
-    const tY = titleH + padding;
+    const textColor = (pct: number): string => {
+      if (pct >= 80) return '#006100';
+      if (pct >= 50) return '#9c5700';
+      return '#9c0006';
+    };
 
-    // Header row
-    svg += `<rect x="${tX}" y="${tY}" width="${tableW}" height="${headerH}" fill="#2d3a8c" rx="4"/>`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}">
+<style>
+  text{font-family:Segoe UI,Arial,sans-serif}
+  .t{font-size:15px;font-weight:700;fill:#1f3864}
+  .h{font-size:11px;font-weight:700;fill:#fff}
+  .hs{font-size:9px;fill:#d0d8ff}
+  .c{font-size:11px;fill:#333}
+  .cb{font-size:12px;font-weight:700}
+  .n{font-size:11px;fill:#555}
+</style>
+<rect width="${svgW}" height="${svgH}" fill="#fff" rx="6"/>
+<text x="${svgW / 2}" y="${pad + 18}" text-anchor="middle" class="t">${this.escSvg(title)}</text>`;
 
+    const tX = pad, tY = titleH + pad;
+
+    // ═══ HEADER ═══
+    svg += `<rect x="${tX}" y="${tY}" width="${tableW}" height="${headerH}" fill="#1f3864"/>`;
     let hx = tX;
-    svg += `<text x="${hx + numW / 2}" y="${tY + 30}" text-anchor="middle" class="header">#</text>`;
+    svg += `<text x="${hx + numW / 2}" y="${tY + 20}" text-anchor="middle" class="h">\u2116</text>`;
     hx += numW;
-    svg += `<text x="${hx + 8}" y="${tY + 30}" class="header">Ism</text>`;
+    svg += `<line x1="${hx}" y1="${tY + 4}" x2="${hx}" y2="${tY + headerH - 4}" stroke="#3a5090" stroke-width="1"/>`;
+    svg += `<text x="${hx + nameW / 2}" y="${tY + 20}" text-anchor="middle" class="h">F.I.O</text>`;
     hx += nameW;
-    for (const sn of shortNames) {
-      svg += `<text x="${hx + colW / 2}" y="${tY + 20}" text-anchor="middle" class="header" font-size="9">${this.escSvg(sn)}</text>`;
+
+    for (let si = 0; si < nSubj; si++) {
+      svg += `<line x1="${hx}" y1="${tY + 4}" x2="${hx}" y2="${tY + headerH - 4}" stroke="#3a5090" stroke-width="1"/>`;
+      const sn = subjectNames[si].length > 12 ? subjectNames[si].substring(0, 11) + '.' : subjectNames[si];
+      svg += `<text x="${hx + colW / 2}" y="${tY + 18}" text-anchor="middle" class="h">${this.escSvg(sn)}</text>`;
+      if (subjectQCounts[si] > 0) {
+        svg += `<text x="${hx + colW / 2}" y="${tY + 34}" text-anchor="middle" class="hs">(${subjectQCounts[si]} ta)</text>`;
+      }
       hx += colW;
     }
-    svg += `<text x="${hx + totalW / 2}" y="${tY + 30}" text-anchor="middle" class="header">Jami</text>`;
+    svg += `<line x1="${hx}" y1="${tY + 4}" x2="${hx}" y2="${tY + headerH - 4}" stroke="#3a5090" stroke-width="1"/>`;
+    svg += `<text x="${hx + totalW / 2}" y="${tY + 20}" text-anchor="middle" class="h">Jami ball</text>`;
     hx += totalW;
-    svg += `<text x="${hx + pctW / 2}" y="${tY + 30}" text-anchor="middle" class="header">%</text>`;
+    svg += `<line x1="${hx}" y1="${tY + 4}" x2="${hx}" y2="${tY + headerH - 4}" stroke="#3a5090" stroke-width="1"/>`;
+    svg += `<text x="${hx + pctW / 2}" y="${tY + 20}" text-anchor="middle" class="h">Foiz (%)</text>`;
 
-    // Data rows
+    // ═══ DATA ROWS ═══
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const ry = tY + headerH + i * rowH;
-      const bg = i % 2 === 0 ? '#f8f9fa' : '#ffffff';
-      const pctColor = r.percentage >= 80 ? '#27ae60' : r.percentage >= 50 ? '#f39c12' : '#e74c3c';
+      const bg = rowBg(r.percentage, i);
 
       svg += `<rect x="${tX}" y="${ry}" width="${tableW}" height="${rowH}" fill="${bg}"/>`;
-      // Border bottom
-      svg += `<line x1="${tX}" y1="${ry + rowH}" x2="${tX + tableW}" y2="${ry + rowH}" stroke="#e0e0e0" stroke-width="0.5"/>`;
+      svg += `<line x1="${tX}" y1="${ry + rowH}" x2="${tX + tableW}" y2="${ry + rowH}" stroke="#c0c0c0" stroke-width="0.5"/>`;
 
       let cx = tX;
       // #
-      svg += `<text x="${cx + numW / 2}" y="${ry + 18}" text-anchor="middle" class="rank">${i + 1}</text>`;
+      svg += `<text x="${cx + numW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="#1f3864">${i + 1}</text>`;
       cx += numW;
-      // Name (truncate)
-      const displayName = r.name.length > 22 ? r.name.substring(0, 21) + '.' : r.name;
-      svg += `<text x="${cx + 6}" y="${ry + 18}" class="cell">${this.escSvg(displayName)}</text>`;
+      svg += `<line x1="${cx}" y1="${ry}" x2="${cx}" y2="${ry + rowH}" stroke="#d0d0d0" stroke-width="0.5"/>`;
+
+      // Name
+      const dn = r.name.length > 28 ? r.name.substring(0, 27) + '.' : r.name;
+      svg += `<text x="${cx + 8}" y="${ry + 20}" class="c">${this.escSvg(dn)}</text>`;
       cx += nameW;
-      // Subject scores
+
+      // Subjects
       for (const sc of r.subjectScores) {
-        const scColor = sc.total > 0 && sc.correct / sc.total >= 0.8 ? '#27ae60' : sc.total > 0 && sc.correct / sc.total >= 0.5 ? '#f39c12' : '#e74c3c';
-        svg += `<text x="${cx + colW / 2}" y="${ry + 18}" text-anchor="middle" class="cell" fill="${sc.total > 0 ? scColor : '#999'}">${sc.correct}/${sc.total}</text>`;
+        svg += `<line x1="${cx}" y1="${ry}" x2="${cx}" y2="${ry + rowH}" stroke="#d0d0d0" stroke-width="0.5"/>`;
+        const cb = cellBg(sc.correct, sc.total);
+        if (cb !== 'transparent') {
+          svg += `<rect x="${cx + 1}" y="${ry + 1}" width="${colW - 2}" height="${rowH - 2}" fill="${cb}" rx="2"/>`;
+        }
+        const val = sc.total > 0 ? String(sc.correct) : '0';
+        const clr = sc.total > 0 ? textColor((sc.correct / sc.total) * 100) : '#999';
+        svg += `<text x="${cx + colW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="${clr}">${val}</text>`;
         cx += colW;
       }
+
       // Total
-      svg += `<text x="${cx + totalW / 2}" y="${ry + 18}" text-anchor="middle" class="cell-bold">${r.totalCorrect}/${r.totalQuestions}</text>`;
+      svg += `<line x1="${cx}" y1="${ry}" x2="${cx}" y2="${ry + rowH}" stroke="#d0d0d0" stroke-width="0.5"/>`;
+      svg += `<text x="${cx + totalW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="#1f3864">${r.totalCorrect}/${r.totalQuestions}</text>`;
       cx += totalW;
+
       // Percentage
-      svg += `<text x="${cx + pctW / 2}" y="${ry + 18}" text-anchor="middle" class="cell-bold" fill="${pctColor}">${r.percentage}%</text>`;
+      svg += `<line x1="${cx}" y1="${ry}" x2="${cx}" y2="${ry + rowH}" stroke="#d0d0d0" stroke-width="0.5"/>`;
+      svg += `<text x="${cx + pctW / 2}" y="${ry + 20}" text-anchor="middle" class="cb" fill="${textColor(r.percentage)}">${r.percentage}%</text>`;
     }
 
     // Table border
-    svg += `<rect x="${tX}" y="${tY}" width="${tableW}" height="${headerH + rows.length * rowH}" fill="none" stroke="#2d3a8c" stroke-width="1.5" rx="4"/>`;
+    const totalH = headerH + rows.length * rowH;
+    svg += `<rect x="${tX}" y="${tY}" width="${tableW}" height="${totalH}" fill="none" stroke="#1f3864" stroke-width="2" rx="4"/>`;
+    svg += `<line x1="${tX}" y1="${tY + headerH}" x2="${tX + tableW}" y2="${tY + headerH}" stroke="#1f3864" stroke-width="2"/>`;
 
     svg += '</svg>';
     return Buffer.from(svg, 'utf-8');
