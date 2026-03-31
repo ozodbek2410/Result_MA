@@ -594,13 +594,27 @@ class TelegramBotServiceClass {
 
       // Har bir o'quvchiga yuborish
       let sent = 0;
-      for (const row of rows) {
+      for (let ri = 0; ri < rows.length; ri++) {
+        const row = rows[ri];
         if (!row.chatId) continue;
         try {
+          const rank = ri + 1;
+          const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`;
+          const emoji = row.percentage >= 80 ? '🟢' : row.percentage >= 50 ? '🟡' : '🔴';
+
+          // Fan bo'yicha natijalar
+          const subjectLines = subjectNames.map((sn, si) => {
+            const sc = row.subjectScores[si];
+            const pct = sc.total > 0 ? Math.round((sc.correct / sc.total) * 100) : 0;
+            const se = pct >= 80 ? '✅' : pct >= 50 ? '🔸' : '❌';
+            return `  ${se} ${sn}: ${sc.correct}/${sc.total} (${pct}%)`;
+          }).join('\n');
+
           const caption = `📊 ${title}\n\n` +
-            `${row.name}\n` +
-            `✅ ${row.totalCorrect}/${row.totalQuestions} (${row.percentage}%)\n` +
-            `📍 O'rin: ${rows.indexOf(row) + 1}/${rows.length}`;
+            `👤 ${row.name}\n` +
+            `${emoji} Jami: ${row.totalCorrect}/${row.totalQuestions} (${row.percentage}%)\n` +
+            `🏆 O'rin: ${medal}/${rows.length}\n\n` +
+            `📚 Fan bo'yicha:\n${subjectLines}`;
 
           await this.bot.sendPhoto(row.chatId, pngBuffer, { caption });
           sent++;
