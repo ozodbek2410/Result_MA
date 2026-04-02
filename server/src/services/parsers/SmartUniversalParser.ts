@@ -215,7 +215,8 @@ export class SmartUniversalParser extends BaseParser {
 
     // 0. Remove pandoc trailing backslash line breaks (hard line breaks)
     // "gulukogen\" → "gulukogen", "a-1,4,6; b-2,3,5\" → "a-1,4,6; b-2,3,5"
-    cleaned = cleaned.replace(/\\$/gm, '');
+    // Preserve \\ (LaTeX line break in formulas like \begin{array}...\\ )
+    cleaned = cleaned.replace(/(?<!\\)\\$/gm, '');
     cleaned = cleaned.replace(/\\\*\*/g, '**'); // "b-2,3,5\**" → "b-2,3,5**"
 
     // 0.1. Pandoc {.mark} span — Word highlight → bold (BEFORE math protection!)
