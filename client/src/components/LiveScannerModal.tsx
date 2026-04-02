@@ -51,7 +51,7 @@ interface LiveScannerModalProps {
 
 // ---- Constants ----
 const A4_RATIO = 297 / 210;
-const FRAME_W_RATIO = 0.82;
+const FRAME_W_RATIO = 0.88;
 const ANALYSIS_W = 480;
 const STABLE_FRAMES_NEEDED = 5; // ~1s — ishonchli capture
 
@@ -367,32 +367,36 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       ctx.setLineDash([]);
     }
 
-    // 4 corner brackets — EvalBee style (KATTA, yorqin)
-    const bracketLen = Math.max(40, fw * 0.12);
-    const bracketW = 4;
+    // 4 corner brackets — EvalBee style
+    // Corner marklar A4 chetidan 7mm ichkarida (corner_margin + corner_mark/2)
+    // Frame = A4 chegarasi, brackets = corner mark joylari (7/210 = 3.3% inset)
+    const insetX = fw * 0.033; // 7mm / 210mm
+    const insetY = fh * 0.024; // 7mm / 297mm
+    const bracketLen = Math.max(50, fw * 0.15);
+    const bracketW = 5;
 
     const bracketCorners = [
-      { x: fx, y: fy, dx: 1, dy: 1, found: corners.tl.found },
-      { x: fx + fw, y: fy, dx: -1, dy: 1, found: corners.tr.found },
-      { x: fx, y: fy + fh, dx: 1, dy: -1, found: corners.bl.found },
-      { x: fx + fw, y: fy + fh, dx: -1, dy: -1, found: corners.br.found },
+      { x: fx + insetX, y: fy + insetY, dx: 1, dy: 1, found: corners.tl.found },
+      { x: fx + fw - insetX, y: fy + insetY, dx: -1, dy: 1, found: corners.tr.found },
+      { x: fx + insetX, y: fy + fh - insetY, dx: 1, dy: -1, found: corners.bl.found },
+      { x: fx + fw - insetX, y: fy + fh - insetY, dx: -1, dy: -1, found: corners.br.found },
     ];
 
     for (const bc of bracketCorners) {
       const found = bc.found;
 
-      // Bracket fon — topilmagan burchakda ko'k glow
+      // Bracket fon glow
       if (!found) {
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
-        const gs = bracketLen * 1.2;
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.12)';
+        const gs = bracketLen * 1.3;
         ctx.fillRect(
-          bc.dx > 0 ? bc.x : bc.x - gs,
-          bc.dy > 0 ? bc.y : bc.y - gs,
+          bc.dx > 0 ? bc.x - 5 : bc.x - gs + 5,
+          bc.dy > 0 ? bc.y - 5 : bc.y - gs + 5,
           gs, gs
         );
       }
 
-      // Bracket chiziqlari
+      // Bracket chiziqlari — qalinroq, aniqroq
       ctx.strokeStyle = found ? '#22c55e' : '#3b82f6';
       ctx.lineWidth = found ? bracketW + 2 : bracketW;
       ctx.lineCap = 'round';
@@ -402,11 +406,12 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       ctx.lineTo(bc.x, bc.y + bc.dy * bracketLen);
       ctx.stroke();
 
-      // Topilganda — yashil to'ldirilgan kvadrat
+      // Topilganda — yashil to'ldirilgan doira
       if (found) {
-        const ds = 10;
         ctx.fillStyle = '#22c55e';
-        ctx.fillRect(bc.x + bc.dx * 3 - ds / 2, bc.y + bc.dy * 3 - ds / 2, ds, ds);
+        ctx.beginPath();
+        ctx.arc(bc.x, bc.y, 8, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 

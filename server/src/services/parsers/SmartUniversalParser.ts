@@ -335,7 +335,8 @@ export class SmartUniversalParser extends BaseParser {
     // [^\S\n]* instead of \s* — preserves newlines between questions
     cleaned = cleaned.replace(/(^|\n)([^\S\n]*)(\*\*|__)?(\d+)(\*\*|__)?\.(?!\d)[^\S\n]*/gm, '$1$2$3$4$5) ');
     // 10b. "24 Why" (number + space + uppercase, no dot/paren) → "24) Why"
-    cleaned = cleaned.replace(/(\n)(\d{1,3})\s+(?=[A-Z])/g, '$1$2) ');
+    // Require uppercase letter followed by another letter (word start) — prevents "7 A" from becoming "7) A"
+    cleaned = cleaned.replace(/(\n)(\d{1,3})\s+(?=[A-Z][a-zA-Z\u0400-\u04FF])/g, '$1$2) ');
     cleaned = cleaned.replace(/([^\s\n])(\*\*|__)?([A-D])(\*\*|__)?\)/g, '$1 $2$3$4)');
     cleaned = cleaned.replace(/(\d+|[A-D])(\*\*|__)?\)([^\s\n])/g, '$1$2) $3');
 
@@ -566,7 +567,7 @@ export class SmartUniversalParser extends BaseParser {
    * Only sends the problematic questions' raw text to AI, not the entire document
    */
   private async validateWithAI(questions: ParsedQuestion[], rawText: string): Promise<ParsedQuestion[]> {
-    const failed = questions.filter(q => q.variants.length < 4 && q.variants.length > 0);
+    const failed = questions.filter(q => q.variants.length < 4);
     if (failed.length === 0) return questions;
 
     console.log(`🤖 [AI] ${failed.length} ta muammoli savol topildi, AI bilan tuzatilmoqda...`);

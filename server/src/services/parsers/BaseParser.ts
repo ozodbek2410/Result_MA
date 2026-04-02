@@ -1378,7 +1378,12 @@ export abstract class BaseParser {
     const result = strategies.reduce((best, cur) => cur.length >= best.length ? cur : best);
 
     if (result.length < matches.length) {
+      const kept = new Set(result.map(m => m.index));
+      const dropped = matches.filter(m => !kept.has(m.index)).map(m => `${m[1]}@${m.index}`);
       console.log(`📊 [PARSER] Sequential filter: ${matches.length} → ${result.length} (skipped ${matches.length - result.length} sub-items)`);
+      console.log(`  Kept: [${result.map(m => m[1]).join(', ')}]`);
+      console.log(`  Dropped: [${dropped.join(', ')}]`);
+      console.log(`  S1=${s1.length}, S2=${s2.length}, S3=${s3.length}`);
     }
 
     return result;
@@ -1752,10 +1757,34 @@ export abstract class BaseParser {
       }
     }
     
+    // Image-variant recovery: if question has text and some variants but < 2,
+    // check for image markers that could be variant images
+    if (questionText && variants.length >= 1 && variants.length < 2) {
+      const imgMarkers = block.match(/___IMAGE_(\d+)___/g) || [];
+      const letters = ['A', 'B', 'C', 'D'];
+      for (const marker of imgMarkers) {
+        const numMatch = marker.match(/___IMAGE_(\d+)___/);
+        if (!numMatch) continue;
+        const imgNum = numMatch[1];
+        if (this.extractedFormulas.has(imgNum)) continue;
+        const imgUrl = this.findImageByNumber(imgNum);
+        if (!imgUrl || variants.some(v => (v as Record<string, unknown>).imageUrl === imgUrl)) continue;
+        const nextLetter = letters.find(l => !variants.some(v => v.letter === l));
+        if (!nextLetter) break;
+        const dims = this.imageDimensions.get(imgNum);
+        variants.push({
+          letter: nextLetter,
+          text: '[rasm]',
+          ...(imgUrl ? { imageUrl: imgUrl } : {}),
+          ...(dims ? { imageWidth: dims.widthPx, imageHeight: dims.heightPx } : {}),
+        } as { letter: string; text: string });
+      }
+    }
+
     if (!questionText || variants.length < 2) {
       return null;
     }
-    
+
     questionText = this.restoreMath(questionText, mathBlocks);
     questionText = this.finalCleanText(questionText, mathBlocks);
     

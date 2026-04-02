@@ -24,10 +24,12 @@ function convertV2(t: string): string | ReturnType<typeof convertLatexToTiptapJs
  * V1 Pipeline: fan-specific converter (legacy).
  * Server raw text qaytaradi, client formula detect qilishi kerak.
  */
-function convertV1(t: string, parserKey: string): string | ReturnType<typeof convertLatexToTiptapJson> {
+function convertV1(t: string, parserKey: string, detectedType?: string): string | ReturnType<typeof convertLatexToTiptapJson> {
   const hasFormula = typeof t === 'string' && (t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\['));
   if (!hasFormula) return t;
-  if (parserKey === 'physics') return convertPhysicsToTiptapJson(t);
+  const effectiveType = detectedType || parserKey;
+  if (effectiveType === 'physics') return convertPhysicsToTiptapJson(t);
+  if (effectiveType === 'chemistry') return convertChemistryToTiptapJson(t);
   if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
   return convertLatexToTiptapJson(t);
 }
@@ -287,7 +289,8 @@ export function BlockTestImportForm({
         if (data.questions?.length > 0) {
           // V2 parser formulalarni \(...\) bilan qaytaradi — fan bilish kerak emas
           const isV2 = data.parserUsed === 'ai' || data.parserUsed === 'regex' || data.parserUsed === 'ai+regex';
-          const convert = (t: string) => isV2 ? convertV2(t) : convertV1(t, pk);
+          const dt = data.detectedType as string | undefined;
+          const convert = (t: string) => isV2 ? convertV2(t) : convertV1(t, pk, dt);
           const converted = (data.questions as ParsedQuestion[]).map((q: ParsedQuestion) => ({
             ...q,
             text: convert(q.text),
@@ -331,11 +334,10 @@ export function BlockTestImportForm({
       }
 
       const isV2 = data.parserUsed === 'ai' || data.parserUsed === 'regex' || data.parserUsed === 'ai+regex';
+      const dt = data.detectedType as string | undefined;
       const convert = (t: string) => {
         if (isV2) return convertV2(t);
-        if (typeof t !== 'string' || (!t.includes('^') && !t.includes('_') && !t.includes('\\(') && !t.includes('\\['))) return t;
-        if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
-        return convertLatexToTiptapJson(t);
+        return convertV1(t, 'math', dt);
       };
 
       if (data.groups && data.groups.length > 1) {
