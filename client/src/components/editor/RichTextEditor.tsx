@@ -20,8 +20,11 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
   const formulaConvertedRef = useRef(false);
 
   // Мемоизируем расширения чтобы они не пересоздавались
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+
   // Rasm upload va editorga qo'shish
-  const uploadAndInsertImage = async (file: File, ed: ReturnType<typeof useEditor> | null) => {
+  const uploadAndInsertImage = async (file: File) => {
+    const ed = editorRef.current;
     if (!ed) return;
     try {
       const fd = new FormData();
@@ -66,10 +69,10 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
         const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
         if (imageFiles.length === 0) return false;
         event.preventDefault();
-        imageFiles.forEach(file => uploadAndInsertImage(file, editor));
+        imageFiles.forEach(file => uploadAndInsertImage(file));
         return true;
       },
-      handlePaste: (view, event) => {
+      handlePaste: (_view, event) => {
         const clipboardData = event.clipboardData;
         if (!clipboardData) return false;
 
@@ -77,7 +80,7 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
         const imageFiles = Array.from(clipboardData.files).filter(f => f.type.startsWith('image/'));
         if (imageFiles.length > 0) {
           event.preventDefault();
-          imageFiles.forEach(file => uploadAndInsertImage(file, editor));
+          imageFiles.forEach(file => uploadAndInsertImage(file));
           return true;
         }
 
@@ -121,6 +124,11 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
     immediatelyRender: false,
     editable: true,
   }, [editorKey]); // Используем ключ для предотвращения пересоздания
+
+  // editorRef ni yangilash
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // Уничтожаем редактор при размонтировании
   useEffect(() => {
