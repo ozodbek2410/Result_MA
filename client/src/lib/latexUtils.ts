@@ -240,7 +240,8 @@ export function convertChemistryToTiptapJson(text: string): any {
   }
 
   // Pre-process: add braces to bare charge superscripts: E^+ → E^{+}, E^- → E^{-}
-  text = text.replace(/([A-Za-z0-9)_])\^(\d+[+-])/g, '$1^{$2}');
+  // Lookahead: only group digit+sign as charge when NOT followed by letter/digit (prevents x^2+x → x^{2+}x)
+  text = text.replace(/([A-Za-z0-9)_])\^(\d+[+-])(?![a-zA-Z0-9(])/g, '$1^{$2}');
   text = text.replace(/([A-Za-z0-9)_])\^([+-]\d+)/g, '$1^{$2}');
   text = text.replace(/([A-Za-z0-9)_])\^([+-])(?![0-9{])/g, '$1^{$2}');
 

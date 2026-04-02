@@ -29,7 +29,9 @@ function convertV1(t: string, parserKey: string, detectedType?: string): string 
   if (!hasFormula) return t;
   const effectiveType = detectedType || parserKey;
   if (effectiveType === 'physics') return convertPhysicsToTiptapJson(t);
-  if (effectiveType === 'chemistry') return convertChemistryToTiptapJson(t);
+  // Bare ^/_ (subscript/superscript) → chemistry converter handles inline formula detection
+  // Charge regex fixed in latexUtils.ts — no longer groups x^2+ as x^{2+}
+  if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
   return convertLatexToTiptapJson(t);
 }
 
