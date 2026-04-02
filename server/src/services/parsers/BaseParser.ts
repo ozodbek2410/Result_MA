@@ -394,6 +394,15 @@ export abstract class BaseParser {
     cleaned = cleaned.replace(/^#{1,6}\s+/gm, '');
     cleaned = cleaned.replace(/\s+#{1,6}\s+/g, ' ');
 
+    // Zero-width space va boshqa ko'rinmas belgilarni tozalash
+    cleaned = cleaned.replace(/[\u200b\u200c\u200d\uFEFF]/g, '');
+
+    // Inline variantlarni ajratish: "textB)" → "text\nB)", "textC)" → "text\nC)", "textD)" → "text\nD)"
+    // Faqat kichik harf + B/C/D pattern (A ni skipqilamiz chunki savol matni ichida bo'lishi mumkin)
+    cleaned = cleaned.replace(/([a-z])([BCD]\s*\))/g, '$1\n$2');
+    // "text  A) variant  B) variant" — 2+ bo'shliq bilan ajratilgan inline variantlar
+    cleaned = cleaned.replace(/([^\n])\s{2,}([A-D]\s*[.)])/g, '$1\n$2');
+
     return { cleanText: cleaned, mathBlocks };
   }
 

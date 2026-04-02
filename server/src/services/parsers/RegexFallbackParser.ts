@@ -103,6 +103,14 @@ function cleanText(text: string): string {
   cleaned = cleaned.replace(/\\\r?\n/g, '\n'); // escaped newlines
   cleaned = cleaned.replace(/`[^`]*`\{=[a-z]+\}/g, ''); // raw inline
 
+  // Zero-width space va boshqa ko'rinmas belgilarni tozalash
+  cleaned = cleaned.replace(/[\u200b\u200c\u200d\uFEFF]/g, '');
+
+  // Inline variantlarni alohida qatorlarga ajratish: "A) text  B) text" → "A) text\nB) text"
+  cleaned = cleaned.replace(/([^\n])(\s{2,})([A-Da-d]\s*[.)])/g, '$1\n$3');
+  // "drankD)" kabi bo'sh joysiz yopishib qolganlarni ajratish (faqat variant harflari B, C, D)
+  cleaned = cleaned.replace(/([a-z])([BCD]\s*\))/g, '$1\n$2');
+
   // Ortiqcha bo'sh qatorlarni tozalash
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
 
