@@ -198,6 +198,14 @@ export class SmartUniversalParser extends BaseParser {
   protected preCleanText(text: string): { cleanText: string; mathBlocks: string[] } {
     let cleaned = text;
 
+    // 0. Zero-width space va boshqa ko'rinmas belgilarni tozalash (BIRINCHI!)
+    cleaned = cleaned.replace(/[\u200b\u200c\u200d\uFEFF]/g, '');
+
+    // 0. Inline variantlarni ajratish: "drankD)" → "drank\nD)"
+    cleaned = cleaned.replace(/([a-z])([BCD]\s*\))/g, '$1\n$2');
+    // "text  A) variant  B) variant" — 2+ bo'shliq bilan ajratilgan inline variantlar
+    cleaned = cleaned.replace(/([^\n])\s{2,}([A-D]\s*[.)])/g, '$1\n$2');
+
     // 0. Fix Pandoc wrapping question numbers in math: \(28.\ \) → 28.
     // Pandoc sometimes treats "28." as a numbered list and wraps in \(...\)
     cleaned = cleaned.replace(/\\\((\d{1,3})\.\s*\\?\s*\\\)/g, '$1.');
