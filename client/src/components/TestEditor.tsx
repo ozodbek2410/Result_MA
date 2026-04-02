@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from './ui/Button';
 import { Plus, Trash2, Image as ImageIcon, X, FileText, GripVertical } from 'lucide-react';
 import 'katex/dist/katex.min.css';
@@ -37,7 +37,7 @@ interface TestEditorProps {
 export default function TestEditor({ questions, onChange }: TestEditorProps) {
   const [expandedQuestion, setExpandedQuestion] = useState<number | null>(null);
 
-  const addQuestion = () => {
+  const addQuestion = (afterIndex?: number) => {
     const newQuestion: Question = {
       text: '',
       variants: [
@@ -46,11 +46,18 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
         { letter: 'C', text: '' },
         { letter: 'D', text: '' }
       ],
-      correctAnswer: '', // Bo'sh qoldirish - foydalanuvchi o'zi tanlaydi
+      correctAnswer: '',
       points: 1
     };
-    onChange([...questions, newQuestion]);
-    setExpandedQuestion(questions.length);
+    if (afterIndex !== undefined) {
+      const updated = [...questions];
+      updated.splice(afterIndex + 1, 0, newQuestion);
+      onChange(updated);
+      setExpandedQuestion(afterIndex + 1);
+    } else {
+      onChange([...questions, newQuestion]);
+      setExpandedQuestion(questions.length);
+    }
   };
 
   const removeQuestion = (index: number) => {
@@ -204,7 +211,7 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
         <h3 className="text-sm font-medium text-gray-900">
           Savollar ({questions.length})
         </h3>
-        <Button type="button" size="sm" onClick={addQuestion} className="w-full sm:w-auto">
+        <Button type="button" size="sm" onClick={() => addQuestion()} className="w-full sm:w-auto">
           <Plus className="w-4 h-4 mr-1" />
           Savol qo'shish
         </Button>
@@ -213,14 +220,15 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
       {questions.length === 0 ? (
         <div className="text-center py-6 sm:py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
           <p className="text-xs sm:text-sm text-gray-600 mb-2">Hali savollar yo'q</p>
-          <Button type="button" variant="outline" size="sm" onClick={addQuestion} className="w-full sm:w-auto">
+          <Button type="button" variant="outline" size="sm" onClick={() => addQuestion()} className="w-full sm:w-auto">
             Birinchi savolni qo'shing
           </Button>
         </div>
       ) : (
         <div className="space-y-2">
           {questions.map((question, qIndex) => (
-            <div key={qIndex} className="border border-gray-200 rounded-lg overflow-hidden">
+            <React.Fragment key={qIndex}>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
               {/* Header */}
               <div 
                 className="bg-gray-50 p-2 sm:p-2.5 flex items-center justify-between cursor-pointer hover:bg-gray-100 active:bg-gray-200 transition-colors"
@@ -455,6 +463,18 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                 </div>
               )}
             </div>
+            {/* Savol orasiga qo'shish tugmasi */}
+            <div className="flex justify-center -mb-1 -mt-1">
+              <button
+                type="button"
+                onClick={() => addQuestion(qIndex)}
+                className="p-1 text-gray-300 hover:text-blue-500 transition-colors"
+                title={`${qIndex + 2}-savol qo'shish`}
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </React.Fragment>
           ))}
         </div>
       )}
