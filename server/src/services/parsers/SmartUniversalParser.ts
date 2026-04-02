@@ -294,10 +294,14 @@ export class SmartUniversalParser extends BaseParser {
 
     // 5. Extract variant letters from inside formulas (safe — no match if absent)
     // ___MATHBOLD_X___ marker from AST serializer indicates bold variant (correct answer)
+    // Only extract when >= 3 matches found (ABCD variants), not 1-2 (likely math expressions like (P - D))
     cleaned = cleaned.replace(/\\\([\s\S]*?\\\)(___MATHBOLD_([A-D])___)?/g, (fullMatch, _marker, boldLetter) => {
       const mathBlock = fullMatch.replace(/___MATHBOLD_[A-D]___$/, '');
+      const variantPattern = /([0-9}\s(])(\*\*|__)?([A-D])(\*\*|__)?(?:\\?\)|\\?\.)/g;
+      const matchCount = (mathBlock.match(variantPattern) || []).length;
+      if (matchCount < 3) return fullMatch;
       return mathBlock.replace(
-        /([0-9}\s(])(\*\*|__)?([A-D])(\*\*|__)?(?:\\?\)|\\?\.)/g,
+        variantPattern,
         (_, pre, b1, letter, b2) => {
           const isBold = (boldLetter && letter === boldLetter) || !!b1 || !!b2;
           return `${pre} \\) ${isBold ? '**' : ''}${letter}) \\( `;
