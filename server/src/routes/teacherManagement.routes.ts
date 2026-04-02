@@ -30,16 +30,19 @@ router.get('/my-groups', authenticate, async (req: AuthRequest, res) => {
       .sort({ name: 1 })
       .lean();
 
-    // Har bir guruh uchun o'quvchilar sonini hisoblash
-    const groupsWithCount = await Promise.all(
-      groups.map(async (group) => {
-        const studentsCount = await StudentGroup.countDocuments({ groupId: group._id });
-        return {
-          ...group,
-          studentsCount
-        };
-      })
-    );
+    // Har bir guruh uchun unique o'quvchilar sonini hisoblash
+    const groupIds = groups.map(g => g._id);
+    const studentCounts = await StudentGroup.aggregate([
+      { $match: { groupId: { $in: groupIds } } },
+      { $group: { _id: { g: '$groupId', s: '$studentId' } } },
+      { $group: { _id: '$_id.g', count: { $sum: 1 } } }
+    ]);
+    const countMap = new Map(studentCounts.map(sc => [sc._id.toString(), sc.count]));
+
+    const groupsWithCount = groups.map(group => ({
+      ...group,
+      studentsCount: countMap.get(group._id.toString()) || 0
+    }));
 
     res.json(groupsWithCount);
   } catch (error: any) {
