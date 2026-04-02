@@ -35,9 +35,8 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     // Получаем количество учеников одним запросом
     const groupIds = filteredGroups.map(g => g._id);
     const studentCounts = await StudentGroup.aggregate([
-      { $match: { groupId: { $in: groupIds } } },
-      { $group: { _id: { groupId: '$groupId', studentId: '$studentId' } } },
-      { $group: { _id: '$_id.groupId', count: { $sum: 1 } } }
+      { $match: { groupId: { $in: groupIds }, subjectId: { $exists: false } } },
+      { $group: { _id: '$groupId', count: { $sum: 1 } } }
     ]);
     
     const countMap = new Map(studentCounts.map(sc => [sc._id.toString(), sc.count]));
