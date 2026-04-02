@@ -470,9 +470,14 @@ export class SmartUniversalParser extends BaseParser {
       const exprBlocks: string[] = [];
       cleaned = cleaned.replace(/\\\([\s\S]*?\\\)/g, (m) => { exprBlocks.push(m); return `\x00E${exprBlocks.length - 1}\x00`; });
 
-      // Wrap bare superscript/subscript: 120^9, 10^{23}, 2^{x+1}, n! etc.
-      // Match: digits/letters followed by ^ and digit or {braced content}, optionally with more terms
+      // Wrap bare superscript/subscript: 120^9, 10^{23}, 2^{x+1}, x^2, n^3 etc.
+      // Match: digits followed by ^ and digit or {braced content}
       cleaned = cleaned.replace(/(\d[\d.]*)\^(\{[^}]+\}|\d+)/g, '\\($1^$2\\)');
+      // Wrap letter^digit expressions with optional continuation: x^2-x-30, y^3+2y
+      // Captures: letter ^ digit/braced, then optional chain of [+-]term(s)
+      cleaned = cleaned.replace(/([a-zA-Z])\^(\{[^}]+\}|\d+)((?:[+\-][a-zA-Z0-9^{}]+)*)/g, '\\($1^$2$3\\)');
+      // Wrap letter_digit subscripts: x_1, x_2, a_{n+1}
+      cleaned = cleaned.replace(/([a-zA-Z])_(\{[^}]+\}|\d+)/g, '\\($1_$2\\)');
 
       // Restore protected blocks
       cleaned = cleaned.replace(/\x00E(\d+)\x00/g, (_, i) => exprBlocks[parseInt(i)]);
