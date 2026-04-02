@@ -443,6 +443,23 @@ export function BlockTestImportForm({
       }
 
       if (!isRegularTest) {
+        // Edit mode: o'chirilgan fanlarni DB dan ham o'chirish
+        if (editId && savedBlockTestId) {
+          try {
+            const { data: currentBt } = await api.get(`/block-tests/${savedBlockTestId}`);
+            const keepKeys = new Set(done.map(t => `${t.subjectId}_${t.groupLetter || ''}`));
+            const filteredSubjectTests = (currentBt.subjectTests || []).filter((st: { subjectId: { _id?: string } | string; groupLetter?: string }) => {
+              const sid = typeof st.subjectId === 'object' ? st.subjectId?._id : st.subjectId;
+              return keepKeys.has(`${sid}_${st.groupLetter || ''}`);
+            }).map((st: { subjectId: { _id?: string } | string; [key: string]: unknown }) => ({
+              ...st,
+              subjectId: typeof st.subjectId === 'object' ? st.subjectId?._id : st.subjectId,
+            }));
+            if (filteredSubjectTests.length < (currentBt.subjectTests || []).length) {
+              await api.put(`/block-tests/${savedBlockTestId}`, { subjectTests: filteredSubjectTests });
+            }
+          } catch { /* non-critical */ }
+        }
         // Save subject order
         if (savedBlockTestId && done.length > 1) {
           try {
