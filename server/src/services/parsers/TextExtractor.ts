@@ -26,8 +26,10 @@ class ExtractionHelper extends BaseParser {
     await this.extractTablesFromDocx(filePath);
 
     let rawText = '';
+    let usedPandoc = false;
     try {
       rawText = await this.extractTextWithPandoc(filePath);
+      usedPandoc = true;
     } catch {
       // Pandoc yo'q — OMML parsing (Office Math) → Groq LaTeX
       console.warn('[TextExtractor] Pandoc failed, trying OMML extraction...');
@@ -39,6 +41,12 @@ class ExtractionHelper extends BaseParser {
       }
     }
 
+    // Pandoc AST da bold bor. OMML/mammoth raw text da bold yo'q.
+    // Mammoth HTML dan bold variantlarni aniqlash va rawText ga ** marker qo'shish.
+    if (!usedPandoc && !rawText.includes('**')) {
+      rawText = await this.injectBoldMarkers(filePath, rawText);
+    }
+
     return {
       rawText,
       images: new Map(this.extractedImages),
@@ -46,6 +54,66 @@ class ExtractionHelper extends BaseParser {
       tables: new Map(this.extractedTables),
       formulas: new Map(this.extractedFormulas),
     };
+  }
+
+  /**
+   * Mammoth HTML dan bold variant harflarini aniqlash va rawText ga ** marker qo'shish.
+   * Bu OMML/mammoth fallback da correctAnswer aniqlanishi uchun kerak.
+   */
+  private async injectBoldMarkers(filePath: string, rawText: string): Promise<string> {
+    try {
+      const mammoth = await import('mammoth');
+      const result = await mammoth.convertToHtml({ path: filePath });
+      const html = result.value;
+
+      // HTML dan savol raqamlarini va bold variantlarni ketma-ket topish
+      // Tokenlar: savol raqami yoki bold variant harfi
+      const questionBolds = new Map<number, string>();
+      let currentQ = 0;
+
+      // HTML ni teglarsiz text ga aylantirib, savol raqamlari va bold harflarni topish
+      // Regex: savol raqami YOKI <strong> ichidagi variant harfi
+      const tokenPattern = /(?:(?:^|<p>|<\/p>|>)\s*\u200b?\s*(\d+)\s*[.)])|(?:<strong>\s*([A-D])\s*\))/g;
+      let m;
+      while ((m = tokenPattern.exec(html)) !== null) {
+        if (m[1]) {
+          // Savol raqami topildi
+          currentQ = parseInt(m[1]);
+        } else if (m[2] && currentQ > 0 && !questionBolds.has(currentQ)) {
+          // Bold variant topildi
+          questionBolds.set(currentQ, m[2]);
+        }
+      }
+
+      if (questionBolds.size === 0) return rawText;
+
+      console.log(`[TextExtractor] Bold markers: ${questionBolds.size} correct answers found via mammoth HTML`);
+
+      // rawText dagi variantlarga ** marker qo'shish
+      let currentQuestion = 0;
+      const lines = rawText.split('\n');
+      const output: string[] = [];
+
+      for (const line of lines) {
+        const qNum = line.match(/^\s*\u200b?\s*(\d+)\s*[.)]/);
+        if (qNum) currentQuestion = parseInt(qNum[1]);
+
+        const boldLetter = questionBolds.get(currentQuestion);
+        if (boldLetter) {
+          const varRegex = new RegExp(`(^|\\s)(${boldLetter}\\s*\\))`);
+          if (varRegex.test(line)) {
+            output.push(line.replace(varRegex, `$1**$2**`));
+            continue;
+          }
+        }
+        output.push(line);
+      }
+
+      return output.join('\n');
+    } catch (err) {
+      console.warn('[TextExtractor] Bold marker injection failed:', (err as Error).message);
+      return rawText;
+    }
   }
 
   /**
