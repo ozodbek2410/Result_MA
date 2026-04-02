@@ -443,30 +443,39 @@ export function BlockTestImportForm({
       }
 
       if (!isRegularTest) {
-        // Edit mode: o'chirilgan fanlarni DB dan ham o'chirish
-        if (editId && savedBlockTestId) {
+        // Edit mode: o'chirilgan fanlarni o'chirish + tab tartibini saqlash
+        if (savedBlockTestId) {
           try {
             const { data: currentBt } = await api.get(`/block-tests/${savedBlockTestId}`);
-            const keepKeys = new Set(done.map(t => `${t.subjectId}_${t.groupLetter || ''}`));
-            const filteredSubjectTests = (currentBt.subjectTests || []).filter((st: { subjectId: { _id?: string } | string; groupLetter?: string }) => {
+            const dbTests = currentBt.subjectTests || [];
+            // Tab tartibiga mos ravishda DB dagi subjectTests ni qayta tartiblash
+            const orderedSubjectTests: typeof dbTests = [];
+            for (const tab of done) {
+              const key = `${tab.subjectId}_${tab.groupLetter || ''}`;
+              const found = dbTests.find((st: { subjectId: { _id?: string } | string; groupLetter?: string }) => {
+                const sid = typeof st.subjectId === 'object' ? st.subjectId?._id : st.subjectId;
+                return `${sid}_${st.groupLetter || ''}` === key;
+              });
+              if (found) {
+                orderedSubjectTests.push({
+                  ...found,
+                  subjectId: typeof found.subjectId === 'object' ? found.subjectId?._id : found.subjectId,
+                });
+              }
+            }
+            // Agar tartib yoki soni o'zgargan bo'lsa — PUT yuborish
+            const dbKeys = dbTests.map((st: { subjectId: { _id?: string } | string; groupLetter?: string }) => {
               const sid = typeof st.subjectId === 'object' ? st.subjectId?._id : st.subjectId;
-              return keepKeys.has(`${sid}_${st.groupLetter || ''}`);
-            }).map((st: { subjectId: { _id?: string } | string; [key: string]: unknown }) => ({
-              ...st,
-              subjectId: typeof st.subjectId === 'object' ? st.subjectId?._id : st.subjectId,
-            }));
-            if (filteredSubjectTests.length < (currentBt.subjectTests || []).length) {
-              await api.put(`/block-tests/${savedBlockTestId}`, { subjectTests: filteredSubjectTests });
+              return `${sid}_${st.groupLetter || ''}`;
+            }).join(',');
+            const newKeys = orderedSubjectTests.map((st: { subjectId: { _id?: string } | string; groupLetter?: string }) => {
+              const sid = typeof st.subjectId === 'object' ? st.subjectId?._id : st.subjectId;
+              return `${sid}_${st.groupLetter || ''}`;
+            }).join(',');
+            if (dbKeys !== newKeys) {
+              await api.put(`/block-tests/${savedBlockTestId}`, { subjectTests: orderedSubjectTests });
             }
           } catch { /* non-critical */ }
-        }
-        // Save subject order
-        if (savedBlockTestId && done.length > 1) {
-          try {
-            await api.put(`/block-tests/${savedBlockTestId}/reorder-subjects`, {
-              order: done.map(t => ({ subjectId: t.subjectId, groupLetter: t.groupLetter || null })),
-            });
-          } catch { /* optional */ }
         }
         if (shuffleAfterImport && savedBlockTestId) {
           try {
