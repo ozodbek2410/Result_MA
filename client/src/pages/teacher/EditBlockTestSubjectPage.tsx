@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { ArrowLeft, Save, Trash2, Plus, ImagePlus, Pin } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Plus, ImagePlus, Pin, GripVertical } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import { convertTiptapJsonToText } from '@/lib/latexUtils';
@@ -230,8 +230,63 @@ export default function EditBlockTestSubjectPage() {
     const updated = [...questions];
     if (updated[questionIndex].variants.length > 0) {
       updated[questionIndex].variants.splice(variantIndex, 1);
+      // Re-assign letters
+      const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      updated[questionIndex].variants = updated[questionIndex].variants.map((v: any, i: number) => ({
+        ...v,
+        letter: letters[i]
+      }));
       setQuestions(updated);
     }
+  };
+
+  // Drag-and-drop for variants
+  const dragVariant = useRef<{ qIdx: number; vIdx: number } | null>(null);
+  const dragOverVariant = useRef<{ qIdx: number; vIdx: number } | null>(null);
+
+  const handleVariantDragStart = (qIdx: number, vIdx: number) => {
+    dragVariant.current = { qIdx, vIdx };
+  };
+
+  const handleVariantDragOver = (e: React.DragEvent, qIdx: number, vIdx: number) => {
+    e.preventDefault();
+    dragOverVariant.current = { qIdx, vIdx };
+  };
+
+  const handleVariantDrop = (qIdx: number) => {
+    if (!dragVariant.current || !dragOverVariant.current) return;
+    if (dragVariant.current.qIdx !== qIdx || dragOverVariant.current.qIdx !== qIdx) return;
+
+    const fromIdx = dragVariant.current.vIdx;
+    const toIdx = dragOverVariant.current.vIdx;
+    if (fromIdx === toIdx) return;
+
+    const updated = [...questions];
+    const variants = [...updated[qIdx].variants];
+    const correctLetter = updated[qIdx].correctAnswer;
+    const correctIdx = variants.findIndex((v: any) => v.letter === correctLetter);
+
+    const [moved] = variants.splice(fromIdx, 1);
+    variants.splice(toIdx, 0, moved);
+
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    updated[qIdx].variants = variants.map((v: any, i: number) => ({ ...v, letter: letters[i] }));
+
+    if (correctIdx !== -1) {
+      let newCorrectIdx = correctIdx;
+      if (correctIdx === fromIdx) {
+        newCorrectIdx = toIdx;
+      } else if (fromIdx < correctIdx && toIdx >= correctIdx) {
+        newCorrectIdx = correctIdx - 1;
+      } else if (fromIdx > correctIdx && toIdx <= correctIdx) {
+        newCorrectIdx = correctIdx + 1;
+      }
+      updated[qIdx].correctAnswer = letters[newCorrectIdx];
+    }
+
+    setQuestions(updated);
+    dragVariant.current = null;
+    dragOverVariant.current = null;
   };
 
   const handleRemoveQuestion = (index: number) => {
@@ -418,7 +473,16 @@ export default function EditBlockTestSubjectPage() {
               {q.variants && q.variants.length > 0 ? (
                 <div className="space-y-3 ml-8 mt-4">
                   {q.variants.map((v: any, vIdx: number) => (
-                    <div key={vIdx} className="flex items-center gap-3">
+                    <div
+                      key={`${v.letter}-${vIdx}`}
+                      draggable
+                      onDragStart={() => handleVariantDragStart(idx, vIdx)}
+                      onDragOver={(e) => handleVariantDragOver(e, idx, vIdx)}
+                      onDrop={() => handleVariantDrop(idx)}
+                      onDragEnd={() => { dragVariant.current = null; dragOverVariant.current = null; }}
+                      className="flex items-center gap-3 cursor-grab active:cursor-grabbing"
+                    >
+                      <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <button
                         type="button"
                         onClick={() => handleQuestionChange(idx, 'correctAnswer', v.letter)}

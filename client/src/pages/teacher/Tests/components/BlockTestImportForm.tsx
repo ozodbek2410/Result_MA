@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import {
   Plus, X, Upload, CheckCircle, AlertCircle, Loader2,
-  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight, FileUp,
+  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight, FileUp, GripVertical,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
@@ -518,12 +518,65 @@ export function BlockTestImportForm({
   };
 
   const removeVariant = (tabId: string, qi: number, vi: number) => {
+    const ls = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     setTabs(prev => prev.map(t => {
       if (t.id !== tabId) return t;
       const qs = [...t.questions];
-      qs[qi] = { ...qs[qi], variants: qs[qi].variants.filter((_, i) => i !== vi) };
+      const filtered = qs[qi].variants.filter((_: unknown, i: number) => i !== vi);
+      qs[qi] = { ...qs[qi], variants: filtered.map((v: { letter: string; text: string }, i: number) => ({ ...v, letter: ls[i] })) };
       return { ...t, questions: qs };
     }));
+  };
+
+  // Drag-and-drop for variants
+  const dragVar = useRef<{ tabId: string; qi: number; vi: number } | null>(null);
+  const dragOverVar = useRef<{ tabId: string; qi: number; vi: number } | null>(null);
+
+  const varDragStart = (tabId: string, qi: number, vi: number) => {
+    dragVar.current = { tabId, qi, vi };
+  };
+
+  const varDragOver = (e: React.DragEvent, tabId: string, qi: number, vi: number) => {
+    e.preventDefault();
+    dragOverVar.current = { tabId, qi, vi };
+  };
+
+  const varDrop = (tabId: string, qi: number) => {
+    if (!dragVar.current || !dragOverVar.current) return;
+    if (dragVar.current.tabId !== tabId || dragVar.current.qi !== qi) return;
+    if (dragOverVar.current.tabId !== tabId || dragOverVar.current.qi !== qi) return;
+
+    const from = dragVar.current.vi;
+    const to = dragOverVar.current.vi;
+    if (from === to) return;
+
+    const ls = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    setTabs(prev => prev.map(t => {
+      if (t.id !== tabId) return t;
+      const qs = [...t.questions];
+      const vars = [...qs[qi].variants];
+      const correctLetter = qs[qi].correctAnswer;
+      const correctIdx = vars.findIndex(v => v.letter === correctLetter);
+
+      const [moved] = vars.splice(from, 1);
+      vars.splice(to, 0, moved);
+
+      const newVars = vars.map((v, i) => ({ ...v, letter: ls[i] }));
+      let newCorrect = correctLetter;
+      if (correctIdx !== -1) {
+        let newIdx = correctIdx;
+        if (correctIdx === from) newIdx = to;
+        else if (from < correctIdx && to >= correctIdx) newIdx = correctIdx - 1;
+        else if (from > correctIdx && to <= correctIdx) newIdx = correctIdx + 1;
+        newCorrect = ls[newIdx];
+      }
+
+      qs[qi] = { ...qs[qi], variants: newVars, correctAnswer: newCorrect };
+      return { ...t, questions: qs };
+    }));
+
+    dragVar.current = null;
+    dragOverVar.current = null;
   };
 
   const imgUpload = async (tabId: string, qi: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -830,7 +883,16 @@ export function BlockTestImportForm({
                     {/* Variants */}
                     <div className="space-y-3 ml-8">
                       {q.variants.map((v, vi) => (
-                        <div key={vi} className="flex items-center gap-3">
+                        <div
+                          key={`${v.letter}-${vi}`}
+                          draggable
+                          onDragStart={() => varDragStart(active.id, idx, vi)}
+                          onDragOver={(e) => varDragOver(e, active.id, idx, vi)}
+                          onDrop={() => varDrop(active.id, idx)}
+                          onDragEnd={() => { dragVar.current = null; dragOverVar.current = null; }}
+                          className="flex items-center gap-3 cursor-grab active:cursor-grabbing"
+                        >
+                          <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
                           <button type="button"
                             onClick={() => qUpd(active.id, idx, { correctAnswer: v.letter })}
                             className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
