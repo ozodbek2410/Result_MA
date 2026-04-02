@@ -30,7 +30,6 @@ function convertV1(t: string, parserKey: string, detectedType?: string): string 
   const effectiveType = detectedType || parserKey;
   if (effectiveType === 'physics') return convertPhysicsToTiptapJson(t);
   if (effectiveType === 'chemistry') return convertChemistryToTiptapJson(t);
-  if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
   return convertLatexToTiptapJson(t);
 }
 
