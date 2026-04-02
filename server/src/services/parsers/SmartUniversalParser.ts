@@ -342,7 +342,8 @@ export class SmartUniversalParser extends BaseParser {
 
     // 11. Split inline questions AFTER normalizing (for N) format too)
     // "D) variant_text 18) New question" → newline before 18)
-    cleaned = cleaned.replace(/(D\)[^\n]*?[a-z0-9,;)\]'"*_}])\s+(\d{1,3})\)\s+/g, '$1\n$2) ');
+    // Lookahead: next content must start with uppercase/bold/(, not digit — prevents "(-4; 4)\n8)" false split
+    cleaned = cleaned.replace(/(D\)[^\n]*?[a-z0-9,;)\]'"*_}])\s+(\d{1,3})\)\s+(?=[A-Z\u0400-\u04FF*_(«"'])/g, '$1\n$2) ');
 
     // 12. Normalize lowercase variant letters with dot: "a. text" → "A) text", "**b. text**" → "**B) text**"
     // Only at line start or after whitespace: "a. His dad" → "A) His dad"
