@@ -841,9 +841,10 @@ export abstract class BaseParser {
     const pandocPaths = [
       'pandoc',
       'C:\\Program Files\\Pandoc\\pandoc.exe',
+      process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Pandoc\\pandoc.exe` : '',
       '/usr/local/bin/pandoc',
       '/usr/bin/pandoc',
-    ];
+    ].filter(Boolean);
 
     const tempMediaDir = path.join(path.dirname(filePath), `media_${Date.now()}`);
     let lastError: unknown;
