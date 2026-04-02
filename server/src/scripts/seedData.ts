@@ -37,6 +37,7 @@ async function seedData() {
         { nameUzb: 'Biologiya', isMandatory: false, isActive: true },
         { nameUzb: 'Ingliz tili', isMandatory: false, isActive: true },
         { nameUzb: 'Rus tili', isMandatory: false, isActive: true },
+        { nameUzb: 'Tabiiy fan', isMandatory: false, isActive: true },
       ]);
       console.log('✅ Default subjects created');
     }

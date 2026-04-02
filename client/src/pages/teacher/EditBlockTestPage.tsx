@@ -12,7 +12,7 @@ function getParserKeyFromSubject(subjectName: string): string {
   if (lower.includes('matematika') || lower.includes('algebra') || lower.includes('geometriya')) return 'math';
   if (lower.includes('fizika')) return 'physics';
   if (lower.includes('kimyo')) return 'chemistry';
-  if (lower.includes('biologiya') || lower.includes('tibbiyot')) return 'biology';
+  if (lower.includes('biologiya') || lower.includes('tibbiyot') || lower.includes('tabiiy')) return 'biology';
   if (lower.includes('ona tili') || lower.includes('adabiyot')) return 'literature';
   return 'math';
 }
@@ -196,9 +196,12 @@ export default function EditBlockTestPage() {
         await api.delete(`/block-tests/${testId}`);
         alert(`${subjectName} fani va uning testi muvaffaqiyatli o'chirildi`);
       } else {
-        const updatedSubjectTests = testData.subjectTests.filter((_: any, idx: number) =>
-          idx !== originalSubjectIndex
-        );
+        const updatedSubjectTests = testData.subjectTests
+          .filter((_: any, idx: number) => idx !== originalSubjectIndex)
+          .map((st: any) => ({
+            ...st,
+            subjectId: st.subjectId?._id || st.subjectId,
+          }));
 
         await api.put(`/block-tests/${testId}`, {
           subjectTests: updatedSubjectTests

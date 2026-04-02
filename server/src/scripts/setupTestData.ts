@@ -48,6 +48,7 @@ async function setupTestData() {
       { nameUzb: 'Kimyo', isMandatory: false, isActive: true },
       { nameUzb: 'Biologiya', isMandatory: false, isActive: true },
       { nameUzb: 'Ingliz tili', isMandatory: false, isActive: true },
+      { nameUzb: 'Tabiiy fan', isMandatory: false, isActive: true },
     ]);
     console.log(`✅ Created ${subjects.length} subjects\n`);
 

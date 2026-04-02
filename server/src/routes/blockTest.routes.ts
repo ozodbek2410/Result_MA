@@ -354,8 +354,14 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     if (periodMonth) blockTest.periodMonth = periodMonth;
     if (periodYear) blockTest.periodYear = periodYear;
     if (groupId) blockTest.groupId = groupId;
-    if (subjectTests) blockTest.subjectTests = subjectTests;
-    
+    if (subjectTests) {
+      blockTest.subjectTests = subjectTests.map((st: any) => ({
+        ...st,
+        subjectId: st.subjectId?._id || st.subjectId,
+      }));
+      blockTest.markModified('subjectTests');
+    }
+
     await blockTest.save();
     
     console.log(`Updated block test ${blockTest._id}`);

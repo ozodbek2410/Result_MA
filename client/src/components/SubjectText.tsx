@@ -25,7 +25,7 @@ export default function SubjectText({ text, subject = 'math', className = '' }: 
     return <PhysicsText text={text} className={className} />;
   }
 
-  if (s === 'biology' || s === 'biologiya' || s.includes('biologiya') || s.includes('biolog')) {
+  if (s === 'biology' || s === 'biologiya' || s.includes('biologiya') || s.includes('biolog') || s.includes('tabiiy')) {
     return <BiologyText text={text} className={className} />;
   }
 

@@ -17,9 +17,9 @@ class HybridOMR:
     def __init__(self, debug=False, total_questions=None):
         self.debug = debug
         self.TOTAL_QUESTIONS = total_questions  # None bo'lsa avtomatik aniqlanadi
-        self.FILL_THRESHOLD_WITH_CORNERS = 30.0  # Phone photos: baseline ~18-25%, filled ~30%+
-        self.FILL_THRESHOLD_WITHOUT_CORNERS = 30.0  # Marker-free
-        self.current_threshold = 30.0  # Default
+        self.FILL_THRESHOLD_WITH_CORNERS = 25.0  # Phone photos: baseline ~18-25%, filled ~25%+
+        self.FILL_THRESHOLD_WITHOUT_CORNERS = 25.0  # Marker-free
+        self.current_threshold = 25.0  # Default
     
     def log(self, message):
         if self.debug:
@@ -36,9 +36,9 @@ class HybridOMR:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         img_h, img_w = gray.shape[:2]
 
-        # Resolution-adaptive sizing: corner mark = 8mm square (updated from 5mm)
+        # Resolution-adaptive sizing: V2 corner mark = 10mm square
         mm_px = img_w / 210.0
-        expected_mark_px = 8.0 * mm_px
+        expected_mark_px = 10.0 * mm_px
         min_mark = max(8, int(expected_mark_px * 0.35))
         max_mark = int(expected_mark_px * 2.5)
         min_area = min_mark * min_mark
@@ -122,9 +122,13 @@ class HybridOMR:
             for i, c in enumerate(corners[:16]):
                 self.log(f"    #{i+1}: ({c['x']},{c['y']}) {c['w']}x{c['h']} fill={c['fill']:.2f} q={c['quadrant']}")
 
-        if len(corners) < 3:
-            self.log(f"Faqat {len(corners)} ta corner mark topildi (min 3 kerak)")
+        if len(corners) < 2:
+            self.log(f"Faqat {len(corners)} ta corner mark topildi (min 2 kerak)")
+            self._last_partial_corners = corners
             return None
+
+        # Save partial corners for later use with paper contour
+        self._last_partial_corners = corners
 
         # Group by quadrant
         quadrants = {'TL': [], 'TR': [], 'BL': [], 'BR': []}
@@ -142,9 +146,98 @@ class HybridOMR:
             # 1 corner missing — estimate from other 3
             self.log(f"  Missing {missing[0]}, estimating from other 3")
             return self._estimate_missing_corner(quadrants, missing[0], img_w, img_h)
+        elif len(missing) == 2:
+            # 2 corners found — try to estimate missing 2 using A4 aspect ratio
+            found = [q for q, lst in quadrants.items() if len(lst) > 0]
+            self.log(f"  Found: {found}, Missing: {missing}, trying A4 estimation")
+            estimated = self._estimate_from_two_corners(quadrants, found, missing, img_w, img_h)
+            if estimated:
+                return estimated
+            self.log(f"  A4 estimation failed, trying geometric fallback")
+            return self._select_corners_geometric(corners, img_w, img_h)
         else:
             self.log(f"Missing corners: {missing}, trying geometric fallback")
             return self._select_corners_geometric(corners, img_w, img_h)
+
+    def _estimate_from_two_corners(self, quadrants, found, missing, img_w, img_h):
+        """2 ta corner mark bilan A4 nisbatidan qolgan 2 tasini hisoblash.
+        V2: corner_mark=10mm at margin=2mm → center at 7mm from edge
+        Corner marks span: (210-2*7) x (297-2*7) = 196mm x 283mm"""
+        found_corners = {}
+        for q in found:
+            found_corners[q] = quadrants[q][0]
+
+        SPAN_ASPECT = 196.0 / 283.0  # width / height ratio of corner mark span
+
+        # Case: TL and TR found (most common — bottom corners hidden by angle)
+        if set(found) == {'TL', 'TR'}:
+            tl = found_corners['TL']
+            tr = found_corners['TR']
+            # Width between top corners
+            top_w = abs(tr['x'] - tl['x'])
+            # Expected height from aspect ratio
+            expected_h = top_w / SPAN_ASPECT
+            # Bottom corners: same X as top, Y shifted by expected height
+            bl = {**tl, 'x': tl['x'], 'y': int(tl['y'] + expected_h), 'quadrant': 'BL'}
+            br = {**tr, 'x': tr['x'], 'y': int(tr['y'] + expected_h), 'quadrant': 'BR'}
+            self.log(f"  TL+TR: top_w={top_w}, expected_h={expected_h:.0f}")
+            self.log(f"  Estimated BL=({bl['x']},{bl['y']}), BR=({br['x']},{br['y']})")
+
+            # Validate: bottom corners must be within image (with tolerance)
+            if bl['y'] > img_h * 1.1 or br['y'] > img_h * 1.1:
+                self.log(f"  Bottom corners outside image, estimation failed")
+                return None
+
+            corner_marks = {
+                'top_left': tl, 'top_right': tr,
+                'bottom_left': bl, 'bottom_right': br
+            }
+            return corner_marks
+
+        # Case: TL and BL found
+        elif set(found) == {'TL', 'BL'}:
+            tl = found_corners['TL']
+            bl = found_corners['BL']
+            left_h = abs(bl['y'] - tl['y'])
+            expected_w = left_h * SPAN_ASPECT
+            tr = {**tl, 'x': int(tl['x'] + expected_w), 'y': tl['y'], 'quadrant': 'TR'}
+            br = {**bl, 'x': int(bl['x'] + expected_w), 'y': bl['y'], 'quadrant': 'BR'}
+            corner_marks = {
+                'top_left': tl, 'top_right': tr,
+                'bottom_left': bl, 'bottom_right': br
+            }
+            return corner_marks
+
+        # Case: TR and BR found
+        elif set(found) == {'TR', 'BR'}:
+            tr = found_corners['TR']
+            br = found_corners['BR']
+            right_h = abs(br['y'] - tr['y'])
+            expected_w = right_h * SPAN_ASPECT
+            tl = {**tr, 'x': int(tr['x'] - expected_w), 'y': tr['y'], 'quadrant': 'TL'}
+            bl = {**br, 'x': int(br['x'] - expected_w), 'y': br['y'], 'quadrant': 'BL'}
+            corner_marks = {
+                'top_left': tl, 'top_right': tr,
+                'bottom_left': bl, 'bottom_right': br
+            }
+            return corner_marks
+
+        # Case: BL and BR found
+        elif set(found) == {'BL', 'BR'}:
+            bl = found_corners['BL']
+            br = found_corners['BR']
+            bot_w = abs(br['x'] - bl['x'])
+            expected_h = bot_w / SPAN_ASPECT
+            tl = {**bl, 'x': bl['x'], 'y': int(bl['y'] - expected_h), 'quadrant': 'TL'}
+            tr = {**br, 'x': br['x'], 'y': int(br['y'] - expected_h), 'quadrant': 'TR'}
+            corner_marks = {
+                'top_left': tl, 'top_right': tr,
+                'bottom_left': bl, 'bottom_right': br
+            }
+            return corner_marks
+
+        self.log(f"  Unsupported corner combination: {found}")
+        return None
 
     def _pick_best_corners(self, quadrants, img_w, img_h):
         """Pick best candidate per quadrant, with parallelism validation"""
@@ -347,10 +440,10 @@ class HybridOMR:
         heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
         maxHeight = max(int(heightA), int(heightB))
 
-        # Force A4 aspect ratio: corner marks span 198mm x 285mm
-        # (8mm marks at 2mm from edge, centers at 6mm from edge)
-        SPAN_W_MM = 198.0
-        SPAN_H_MM = 285.0
+        # Force A4 aspect ratio: V2 corner marks span 196mm x 283mm
+        # (10mm marks at 2mm from edge, centers at 7mm from edge)
+        SPAN_W_MM = 196.0
+        SPAN_H_MM = 283.0
         target_aspect = SPAN_W_MM / SPAN_H_MM
         current_aspect = maxWidth / maxHeight if maxHeight > 0 else 1.0
 
@@ -374,6 +467,106 @@ class HybridOMR:
         self.log(f"✅ Perspective transform: {maxWidth}x{maxHeight}")
         return warped
     
+    def _find_paper_bottom_edge(self, image):
+        """Paper konturining pastki chegarasini topish"""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        img_h, img_w = gray.shape[:2]
+
+        blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+        edged = cv2.Canny(blurred, 30, 100)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        edged = cv2.dilate(edged, kernel, iterations=2)
+
+        cnts, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        min_area = img_w * img_h * 0.25
+
+        for c in sorted(cnts, key=cv2.contourArea, reverse=True)[:5]:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            area = cv2.contourArea(approx)
+            if len(approx) == 4 and area > min_area:
+                pts = approx.reshape(4, 2)
+                # Pastki 2 nuqtani topish (eng katta Y)
+                sorted_by_y = sorted(pts, key=lambda p: p[1], reverse=True)
+                bottom_y = int(np.mean([sorted_by_y[0][1], sorted_by_y[1][1]]))
+                self.log(f"  Paper bottom edge: {bottom_y}px")
+                return bottom_y
+
+        return None
+
+    def _detect_paper_contour(self, image):
+        """Corner marks topilmaganda qog'oz konturini topib perspective correction"""
+        self.log("Paper contour detection...")
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        img_h, img_w = gray.shape[:2]
+
+        # Blur va edge detection
+        blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+        edged = cv2.Canny(blurred, 30, 100)
+
+        # Dilate to close gaps
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        edged = cv2.dilate(edged, kernel, iterations=2)
+
+        cnts, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Eng katta to'rtburchak konturni topish
+        best = None
+        best_area = 0
+        min_area = img_w * img_h * 0.25  # Kamida 25% bo'lishi kerak
+
+        for c in sorted(cnts, key=cv2.contourArea, reverse=True)[:10]:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            area = cv2.contourArea(approx)
+
+            if len(approx) == 4 and area > min_area and area > best_area:
+                best = approx
+                best_area = area
+
+        if best is None:
+            self.log("  Paper contour topilmadi")
+            return None
+
+        # 4 nuqtani tartiblash: TL, TR, BR, BL
+        pts = best.reshape(4, 2).astype(np.float32)
+        s = pts.sum(axis=1)
+        d = np.diff(pts, axis=1).flatten()
+        tl = pts[np.argmin(s)]
+        br = pts[np.argmax(s)]
+        tr = pts[np.argmin(d)]
+        bl = pts[np.argmax(d)]
+
+        ordered = np.array([tl, tr, br, bl], dtype=np.float32)
+
+        # A4 aspect ratio
+        maxWidth = max(
+            int(np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))),
+            int(np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2)))
+        )
+        maxHeight = max(
+            int(np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))),
+            int(np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2)))
+        )
+
+        # A4 nisbati: 210/297
+        target_aspect = 210.0 / 297.0
+        current_aspect = maxWidth / maxHeight if maxHeight > 0 else 1.0
+        if current_aspect > target_aspect:
+            maxHeight = int(maxWidth / target_aspect)
+        else:
+            maxWidth = int(maxHeight * target_aspect)
+
+        dst = np.array([
+            [0, 0], [maxWidth - 1, 0],
+            [maxWidth - 1, maxHeight - 1], [0, maxHeight - 1]
+        ], dtype=np.float32)
+
+        M = cv2.getPerspectiveTransform(ordered, dst)
+        warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
+        self.log(f"  Paper contour: {maxWidth}x{maxHeight}, area={best_area:.0f}")
+        return warped
+
     # ===== Detection-first approach (v2) =====
 
     def _preprocess(self, image):
@@ -393,10 +586,10 @@ class HybridOMR:
     def _detect_bubbles(self, gray):
         """Detect all circle-like contours in preprocessed grayscale image"""
         h_img, w_img = gray.shape[:2]
-        px_mm = w_img / 198.0
-        expected = 5.5 * px_mm
-        min_s = max(10, int(expected * 0.65))
-        max_s = int(expected * 2.0)
+        px_mm = w_img / 196.0  # V2: corner span = 196mm
+        expected = 5.0 * px_mm  # V2: bubble_size = 5mm
+        min_s = max(8, int(expected * 0.45))
+        max_s = int(expected * 2.2)
         y_min = int(h_img * 0.28)
         y_max = int(h_img * 0.97)
 
@@ -437,11 +630,11 @@ class HybridOMR:
                 if circ < 0.4:
                     continue
                 # Filter out solid timing marks by fill ratio
-                # Timing marks are solid (fill>0.80), bubbles are hollow rings
-                # Even filled-in bubbles rarely exceed 0.75 fill ratio
+                # Timing marks are solid (fill>0.93), bubbles are hollow or filled by pen
+                # Filled-in bubbles can reach 0.85-0.92 fill ratio
                 roi = thresh[y:y+h, x:x+w]
                 fill_ratio = cv2.countNonZero(roi) / float(w * h) if w * h > 0 else 0
-                if fill_ratio > 0.80:
+                if fill_ratio > 0.93:
                     continue  # solid mark, not a bubble
                 key = (round(cx / dedup_d) * dedup_d, round(cy / dedup_d) * dedup_d)
                 if key not in all_b:
@@ -1469,16 +1662,16 @@ class HybridOMR:
         self.log(f"  Template grid yaratildi: {len(grid)} ta savol")
         return grid
 
-    def build_grid_from_layout(self, image, bubbles=None):
+    def build_grid_from_layout(self, image, bubbles=None, mode="corner_marks"):
         """Layout-based grid - EXACT mm calculations matching answer sheet CSS.
         After perspective transform, warped image maps corner-to-corner.
         Corner marks at 2mm from page edge."""
         h_img, w_img = image.shape[:2]
-        self.log(f"Layout-based grid: {w_img}x{h_img}")
+        self.log(f"Layout-based grid: {w_img}x{h_img}, mode={mode}")
 
         total = self.TOTAL_QUESTIONS or 45
 
-        # Answer sheet layout parameters (must match AnswerSheet.tsx / pdfGeneratorService.ts)
+        # Answer sheet layout parameters (pdfGeneratorService.ts V1 — legacy sheets)
         if total <= 44:
             n_cols, bubble_mm, gap_mm, row_margin_mm, col_gap_mm, num_w_mm = 2, 7.5, 2.5, 1.2, 8, 8
         elif total <= 60:
@@ -1490,21 +1683,22 @@ class HybridOMR:
         else:
             n_cols, bubble_mm, gap_mm, row_margin_mm, col_gap_mm, num_w_mm = 5, 5.5, 1.2, 0.4, 3, 6
 
-        timing_mark_area_mm = 4.0  # 3mm mark + 1mm gap
+        timing_mark_area_mm = 0.0  # V1 has no timing marks (row-mark is invisible div)
         rows_per_col = (total + n_cols - 1) // n_cols
+        col_width_fixed_mm = None  # Will use calculated col_width
 
-        # Page: A4 210x297mm — must match AnswerSheet.tsx layout
+        # Page: A4 210x297mm — V1 layout
         page_w_mm = 210.0
         page_h_mm = 297.0
-        page_left_pad_mm = 10.0   # AnswerSheet.tsx CONTAINER_PADDING: 10mm
-        page_right_pad_mm = 10.0  # same as left
-        grid_pad_mm = 5.0     # answer-grid padding: 0 5mm
-        header_row_mm = 4.0   # Column header row (A B C D)
+        page_left_pad_mm = 10.0   # V1 CONTAINER_PADDING: 10mm
+        page_right_pad_mm = 10.0
+        grid_pad_mm = 5.0         # V1 answer-grid padding: 0 5mm
+        header_row_mm = 4.0       # Column header row (A B C D)
 
         # Physical grid dimensions (from page layout, independent of image)
-        grid_left_page_mm = page_left_pad_mm + grid_pad_mm  # 17mm from page left
-        grid_right_page_mm = page_w_mm - page_right_pad_mm - grid_pad_mm  # 193mm
-        grid_width_mm = grid_right_page_mm - grid_left_page_mm  # 176mm
+        grid_left_page_mm = page_left_pad_mm + grid_pad_mm
+        grid_right_page_mm = page_w_mm - page_right_pad_mm - grid_pad_mm
+        grid_width_mm = grid_right_page_mm - grid_left_page_mm
 
         # Column layout in mm
         total_gaps_mm = (n_cols - 1) * col_gap_mm
@@ -1512,32 +1706,32 @@ class HybridOMR:
         # Row height in mm
         row_height_mm = bubble_mm + 2 * row_margin_mm
 
-        # Corner marks: 8mm squares at 2mm from edge, center at 6mm
-        corner_offset_mm = 6.0
-        warped_w_mm = page_w_mm - 2 * corner_offset_mm  # 198mm
-        warped_h_mm = page_h_mm - 2 * corner_offset_mm  # 285mm
+        # px/mm depends on mode:
+        # corner_marks: image spans corner-to-corner
+        # paper_contour/marker_free: image spans full page (210mm × 297mm)
+        # V2: corner_mark=10mm at 2mm from edge → center at 7mm
+        corner_offset_mm = 7.0
+        if mode == "corner_marks":
+            warped_w_mm = page_w_mm - 2 * corner_offset_mm  # 196mm (V2)
+            warped_h_mm = page_h_mm - 2 * corner_offset_mm  # 283mm (V2)
+            grid_left_mm = grid_left_page_mm - corner_offset_mm
+        else:
+            # paper_contour or marker_free: image = full page
+            warped_w_mm = page_w_mm  # 210mm
+            warped_h_mm = page_h_mm  # 297mm
+            grid_left_mm = grid_left_page_mm  # no offset needed
+
         px_per_mm_x = w_img / warped_w_mm
         px_per_mm_y = h_img / warped_h_mm
-        self.log(f"  px/mm: x={px_per_mm_x:.2f}, y={px_per_mm_y:.2f}")
+        self.log(f"  px/mm: x={px_per_mm_x:.2f}, y={px_per_mm_y:.2f}, warped={warped_w_mm:.0f}x{warped_h_mm:.0f}mm")
 
-        grid_left_mm = grid_left_page_mm - corner_offset_mm
-
-        # Try calibration from detected bubbles first (more accurate than CSS math)
-        # The actual printed/rendered spacing is ~0.2mm less than CSS spec
-        bubble_centers_mm = None
-        if bubbles and len(bubbles) >= 16:
-            bubble_centers_mm = self._calibrate_bubble_x_from_detections(
-                bubbles, w_img, h_img, n_cols, col_width_mm, col_gap_mm,
-                grid_left_mm, px_per_mm_x, bubble_mm, gap_mm
-            )
-
-        if bubble_centers_mm is None:
-            # Fallback: CSS layout math
-            bubble_offset_mm = timing_mark_area_mm + num_w_mm
-            bubble_centers_mm = []
-            for bi in range(4):
-                cx_mm = bubble_offset_mm + bi * (bubble_mm + gap_mm) + bubble_mm / 2
-                bubble_centers_mm.append(cx_mm)
+        # Use CSS layout math directly (calibration from detected bubbles is unreliable
+        # when many small contours exist — it can pick up timing marks/noise)
+        bubble_offset_mm = timing_mark_area_mm + num_w_mm
+        bubble_centers_mm = []
+        for bi in range(4):
+            cx_mm = bubble_offset_mm + bi * (bubble_mm + gap_mm) + bubble_mm / 2
+            bubble_centers_mm.append(cx_mm)
 
         # Find grid_top: try bubble-based first, then cross-correlation fallback
         grid_top_mm = None
@@ -1562,9 +1756,10 @@ class HybridOMR:
         max_grid_top = warped_h_mm - grid_height_mm - 5  # 5mm safety margin
 
         if grid_top_mm is None or grid_top_mm > max_grid_top or grid_top_mm < 20:
-            # Use safe fallback that fits within image
-            grid_top_mm = min(52.0, max(20.0, max_grid_top - 2))
-            self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm (max allowed: {max_grid_top:.0f}mm)")
+            # V1 header ~50mm from page top, minus corner offset
+            default_top = 50.0 - (corner_offset_mm if mode == "corner_marks" else 0)
+            grid_top_mm = min(default_top, max(20.0, max_grid_top - 2))
+            self.log(f"  Grid top fallback: {grid_top_mm:.0f}mm (max={max_grid_top:.0f}mm)")
 
         self.log(f"  Layout: {n_cols} cols, {rows_per_col} rows, bubble={bubble_mm}mm, gap={gap_mm}mm")
         self.log(f"  Grid area: ({grid_left_mm:.0f},{grid_top_mm:.0f})mm, col_w={col_width_mm:.0f}mm")
@@ -2768,7 +2963,7 @@ class HybridOMR:
                 if letter not in grid[q_num]:
                     continue
                 b = grid[q_num][letter]
-                r = max(3, int(bubble_w * 0.30))
+                r = max(5, int(bubble_w * 0.45))
                 y1, y2 = max(0, b['y'] - r), min(h_proc, b['y'] + r)
                 x1, x2 = max(0, b['x'] - r), min(w_proc, b['x'] + r)
                 if x2 - x1 < 2 or y2 - y1 < 2:
@@ -2785,12 +2980,13 @@ class HybridOMR:
         # ================================================================
         # PHASE 2: Calculate ADAPTIVE thresholds from bubble distribution
         # ================================================================
-        # Collect per-row baseline (median of 3 lightest bubbles in each row)
+        # Collect per-row baseline (median of 2 lightest bubbles in each row)
+        # Using 2 instead of 3 prevents corruption when student fills 2+ bubbles
         row_baselines = []
         all_values = []
         for q_num, fills in all_fills.items():
             sf = sorted(fills.values())
-            row_baselines.append(float(np.median(sf[:3])))  # 3 lightest = unfilled
+            row_baselines.append(float(np.median(sf[:2])))  # 2 lightest = unfilled
             all_values.extend(fills.values())
 
         unfilled_median = float(np.median(row_baselines))
@@ -2802,17 +2998,20 @@ class HybridOMR:
         # ================================================================
         # Global stats for logging only
         self.log(f"  [ADAPTIVE] unfilled_median={unfilled_median:.1f}%, unfilled_std={unfilled_std:.1f}%, overall_std={overall_std:.1f}%")
-        # SCORE_THRESHOLD: relative score must clearly exceed unfilled noise
-        # Use percentile-based: sort all row_ranges, take 80th percentile as "noise range"
+        # SCORE_THRESHOLD: use noise floor from truly empty rows (low percentile)
+        # p80 fails when many rows are filled — use p30 to capture empty rows
         row_ranges = []
         for q_num, fills in all_fills.items():
             sf = sorted(fills.values())
             row_ranges.append(sf[-1] - sf[0])
         row_ranges.sort()
-        # 80th percentile of row ranges = noise level (most rows are empty)
-        p80_range = row_ranges[int(len(row_ranges) * 0.80)] if row_ranges else 5.0
-        SCORE_THRESHOLD = max(p80_range * 1.2, unfilled_std * 0.8, 4.0)
-        self.log(f"  [ADAPTIVE] p80_range={p80_range:.1f}%, SCORE_THRESHOLD={SCORE_THRESHOLD:.1f}%")
+        # Use p20 of row ranges = noise level from truly empty rows
+        p20_idx = max(0, int(len(row_ranges) * 0.20))
+        noise_range = row_ranges[p20_idx] if row_ranges else 5.0
+        SCORE_THRESHOLD = max(noise_range * 1.5, unfilled_std * 2.0, 5.0)
+        # Clamp to prevent threshold from going too high on noisy images
+        SCORE_THRESHOLD = min(SCORE_THRESHOLD, 20.0)
+        self.log(f"  [ADAPTIVE] noise_range(p20)={noise_range:.1f}%, SCORE_THRESHOLD={SCORE_THRESHOLD:.1f}%")
 
         # ================================================================
         # PHASE 3: Detect filled bubbles — PER-ROW adaptive
@@ -2912,7 +3111,7 @@ class HybridOMR:
                 letter_counts = Counter(col_answers.values())
                 most_common_letter, most_common_count = letter_counts.most_common(1)[0]
                 # If one letter is >50% of detected in this column AND >4 instances → systematic noise
-                if most_common_count > len(col_answers) * 0.50 and most_common_count >= 4:
+                if most_common_count > len(col_answers) * 0.60 and most_common_count >= 5:
                     self.log(f"  ⚠️ Systematic false positive: col{col+1} has {most_common_count}x '{most_common_letter}' in {len(col_answers)} detected — removing")
                     for q, ans in list(col_answers.items()):
                         if ans == most_common_letter:
@@ -2942,7 +3141,7 @@ class HybridOMR:
             total_detected = len(detected_answers)
             det_rate = total_detected / total_q * 100 if total_q > 0 else 100
 
-            if third_filled >= n_c - 1 and det_rate < 50:
+            if third_filled >= n_c - 1 and det_rate < 60:
                 q1_y = grid[1]['A']['y'] if 1 in grid else 0
                 q2_y = grid[2]['A']['y'] if 2 in grid else 0
                 row_h_px = q2_y - q1_y if q2_y > q1_y else 0
@@ -2986,12 +3185,22 @@ class HybridOMR:
 
         # 1. Corner marks -> perspective transform
         corners = self.find_corner_marks(image)
+
+        # Note: paper bottom refinement disabled — contour detection picks up
+        # background edges instead of paper edges on textured backgrounds
+
         if corners:
             warped = self.four_point_transform(image, corners)
             mode = "corner_marks"
         else:
-            warped = image
-            mode = "marker_free"
+            # Try paper contour detection for perspective correction
+            warped = self._detect_paper_contour(image)
+            if warped is not None:
+                mode = "paper_contour"
+                self.log("Paper contour orqali perspective correction qilindi")
+            else:
+                warped = image
+                mode = "marker_free"
 
         # 2. Preprocess: resize to 1000px + CLAHE
         resized, enhanced, scale = self._preprocess(warped)
@@ -3005,27 +3214,49 @@ class HybridOMR:
         grid = {}
         grid_method = "none"
 
-        # Always try detection grid first (most accurate — uses actual bubble positions)
+        # Try both detection and layout grids, pick the better one
+        det_grid = {}
+        layout_grid = {}
+
         if len(bubbles) >= 16:
             self.log("\n--- Detection grid (bubble-based) ---")
-            grid = self._build_grid(bubbles, w_proc, h_proc)
-            if len(grid) >= (self.TOTAL_QUESTIONS or 30) * 0.8:
-                grid_method = "detection"
-                self.log(f"Detection grid OK: {len(grid)} questions")
-            else:
-                self.log(f"Detection grid insufficient ({len(grid)}), trying layout")
-                grid = {}
+            det_grid = self._build_grid(bubbles, w_proc, h_proc)
+            self.log(f"Detection grid: {len(det_grid)} questions")
 
-        # Fallback to layout grid if detection failed
-        if len(grid) < 4 and mode == "corner_marks" and self.TOTAL_QUESTIONS:
-            self.log(f"\n--- Layout grid (mm-based, {self.TOTAL_QUESTIONS}q) ---")
-            grid = self.build_grid_from_layout(resized, bubbles=bubbles)
-            if len(grid) >= self.TOTAL_QUESTIONS * 0.9:
-                grid_method = "layout"
-                self.log(f"Layout grid OK: {len(grid)} questions")
+        if self.TOTAL_QUESTIONS:
+            self.log(f"\n--- Layout grid (mm-based, {self.TOTAL_QUESTIONS}q, mode={mode}) ---")
+            layout_grid = self.build_grid_from_layout(resized, bubbles=bubbles, mode=mode)
+            self.log(f"Layout grid: {len(layout_grid)} questions")
+
+        # Pick best grid: test both and choose the one with more detected answers
+        best_grid = None
+        if len(det_grid) >= (self.TOTAL_QUESTIONS or 30) * 0.5 and len(layout_grid) >= (self.TOTAL_QUESTIONS or 30) * 0.5:
+            # Both viable — test fill detection on both, pick better
+            sample_det = next(iter(det_grid.values())) if det_grid else {}
+            bw_det = sample_det.get('A', {}).get('w', int(w_proc / 45))
+            det_answers, _ = self._detect_fills(det_grid, enhanced, bw_det, w_proc, h_proc, color_img=resized)
+
+            sample_lay = next(iter(layout_grid.values())) if layout_grid else {}
+            bw_lay = sample_lay.get('A', {}).get('w', int(w_proc / 45))
+            lay_answers, _ = self._detect_fills(layout_grid, enhanced, bw_lay, w_proc, h_proc, color_img=resized)
+
+            self.log(f"  Grid comparison: detection={len(det_answers)} answers, layout={len(lay_answers)} answers")
+            if len(det_answers) >= len(lay_answers):
+                grid, grid_method = det_grid, "detection"
             else:
-                self.log(f"Layout grid failed ({len(grid)})")
-                grid = {}
+                grid, grid_method = layout_grid, "layout"
+        elif len(det_grid) >= (self.TOTAL_QUESTIONS or 30) * 0.5:
+            grid, grid_method = det_grid, "detection"
+        elif len(layout_grid) >= (self.TOTAL_QUESTIONS or 30) * 0.5:
+            grid, grid_method = layout_grid, "layout"
+        else:
+            # Take whatever has more questions
+            if len(det_grid) >= len(layout_grid):
+                grid, grid_method = det_grid, "detection"
+            else:
+                grid, grid_method = layout_grid, "layout"
+
+        self.log(f"Selected grid: {grid_method} ({len(grid)} questions)")
 
         if len(grid) < 4:
             return {"success": False, "error": "Cannot build grid"}

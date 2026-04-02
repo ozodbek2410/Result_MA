@@ -58,7 +58,7 @@ function getParserKeyFromSubject(name: string): string {
   if (l.includes('matematika') || l.includes('algebra') || l.includes('geometriya')) return 'math';
   if (l.includes('fizika')) return 'physics';
   if (l.includes('kimyo')) return 'chemistry';
-  if (l.includes('biologiya') || l.includes('tibbiyot')) return 'biology';
+  if (l.includes('biologiya') || l.includes('tibbiyot') || l.includes('tabiiy')) return 'biology';
   if (l.includes('ona tili') || l.includes('adabiyot')) return 'literature';
   return 'math';
 }
