@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from './ui/Button';
-import { Plus, Trash2, Image as ImageIcon, X, FileText } from 'lucide-react';
+import { Plus, Trash2, Image as ImageIcon, X, FileText, GripVertical } from 'lucide-react';
 import 'katex/dist/katex.min.css';
 import RichTextEditor from './editor/RichTextEditor';
 import MathText from './MathText';
@@ -73,20 +73,68 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
   const removeVariant = (qIndex: number, vIndex: number) => {
     const updated = [...questions];
     const variants = updated[qIndex].variants.filter((_, i) => i !== vIndex);
-    
+
     // Re-assign letters after removal
     updated[qIndex].variants = variants.map((v, i) => ({
       ...v,
       letter: getVariantLetter(i)
     }));
-    
+
     // Update correct answer if it was the removed variant
     const removedLetter = updated[qIndex].variants[vIndex]?.letter;
     if (updated[qIndex].correctAnswer === removedLetter) {
       updated[qIndex].correctAnswer = ''; // Bo'sh qoldirish
     }
-    
+
     onChange(updated);
+  };
+
+  // Drag-and-drop for variants
+  const dragVariant = useRef<{ qIndex: number; vIndex: number } | null>(null);
+  const dragOverVariant = useRef<{ qIndex: number; vIndex: number } | null>(null);
+
+  const handleVariantDragStart = (qIndex: number, vIndex: number) => {
+    dragVariant.current = { qIndex, vIndex };
+  };
+
+  const handleVariantDragOver = (e: React.DragEvent, qIndex: number, vIndex: number) => {
+    e.preventDefault();
+    dragOverVariant.current = { qIndex, vIndex };
+  };
+
+  const handleVariantDrop = (qIndex: number) => {
+    if (!dragVariant.current || !dragOverVariant.current) return;
+    if (dragVariant.current.qIndex !== qIndex || dragOverVariant.current.qIndex !== qIndex) return;
+
+    const fromIdx = dragVariant.current.vIndex;
+    const toIdx = dragOverVariant.current.vIndex;
+    if (fromIdx === toIdx) return;
+
+    const updated = [...questions];
+    const variants = [...updated[qIndex].variants];
+    const correctLetter = updated[qIndex].correctAnswer;
+    const correctIdx = variants.findIndex(v => v.letter === correctLetter);
+
+    const [moved] = variants.splice(fromIdx, 1);
+    variants.splice(toIdx, 0, moved);
+
+    // Re-assign letters, update correctAnswer
+    updated[qIndex].variants = variants.map((v, i) => ({ ...v, letter: getVariantLetter(i) }));
+    if (correctIdx !== -1) {
+      let newCorrectIdx = correctIdx;
+      if (correctIdx === fromIdx) {
+        newCorrectIdx = toIdx;
+      } else if (fromIdx < correctIdx && toIdx >= correctIdx) {
+        newCorrectIdx = correctIdx - 1;
+      } else if (fromIdx > correctIdx && toIdx <= correctIdx) {
+        newCorrectIdx = correctIdx + 1;
+      }
+      updated[qIndex].correctAnswer = getVariantLetter(newCorrectIdx);
+    }
+
+    onChange(updated);
+    dragVariant.current = null;
+    dragOverVariant.current = null;
   };
 
   const updateQuestion = (index: number, field: keyof Question, value: any) => {
@@ -313,12 +361,22 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                     
                     <div className="space-y-3">
                       {question.variants.map((variant, vIndex) => (
-                        <div key={vIndex} className="space-y-2 border border-gray-200 rounded-lg p-2 sm:p-3 bg-gray-50">
+                        <div
+                          key={`${variant.letter}-${variant.text?.slice(0, 10)}-${vIndex}`}
+                          draggable
+                          onDragStart={() => handleVariantDragStart(qIndex, vIndex)}
+                          onDragOver={(e) => handleVariantDragOver(e, qIndex, vIndex)}
+                          onDrop={() => handleVariantDrop(qIndex)}
+                          onDragEnd={() => { dragVariant.current = null; dragOverVariant.current = null; }}
+                          className="space-y-2 border border-gray-200 rounded-lg p-2 sm:p-3 bg-gray-50 cursor-grab active:cursor-grabbing"
+                        >
                           {/* Variant Header - Letter and Actions */}
                           <div className="flex items-center justify-between gap-2">
-                            <button
-                              type="button"
-                              onClick={() => updateQuestion(qIndex, 'correctAnswer', variant.letter)}
+                            <div className="flex items-center gap-1">
+                              <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <button
+                                type="button"
+                                onClick={() => updateQuestion(qIndex, 'correctAnswer', variant.letter)}
                               className={`
                                 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-base sm:text-lg text-white flex-shrink-0 transition-all
                                 ${question.correctAnswer === variant.letter 
@@ -330,6 +388,7 @@ export default function TestEditor({ questions, onChange }: TestEditorProps) {
                             >
                               {variant.letter}
                             </button>
+                            </div>
 
                             <div className="flex items-center gap-1 sm:gap-2">
                               {/* Image Upload Icon */}
