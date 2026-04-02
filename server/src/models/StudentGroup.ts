@@ -12,7 +12,7 @@ const StudentGroupSchema = new Schema<IStudentGroup>({
   studentId: { type: Schema.Types.ObjectId, ref: 'Student', required: true },
   groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
   subjectId: { type: Schema.Types.ObjectId, ref: 'Subject' },
-  groupLetter: { type: String, enum: ['A', 'B', 'C', 'D', 'E', 'F'] },
+  groupLetter: { type: String, enum: ['A', 'B', 'C', 'D', 'E', 'F', 'T'] },
   createdAt: { type: Date, default: Date.now }
 });
 

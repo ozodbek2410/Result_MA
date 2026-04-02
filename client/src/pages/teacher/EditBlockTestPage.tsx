@@ -519,7 +519,7 @@ export default function EditBlockTestPage() {
                       disabled={uploading || row.status === 'done'}
                     >
                       <option value="">Umumiy</option>
-                      {['A', 'B', 'C', 'D', 'E', 'F'].map(l => (
+                      {['A', 'B', 'C', 'D', 'E', 'F', 'T'].map(l => (
                         <option key={l} value={l}>{l} guruh</option>
                       ))}
                     </select>

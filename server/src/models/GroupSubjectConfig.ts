@@ -9,7 +9,7 @@ export interface IGroupSubjectConfig extends Document {
 const GroupSubjectConfigSchema = new Schema<IGroupSubjectConfig>({
   groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
   subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
-  groupLetter: { type: String, enum: ['A', 'B', 'C', 'D', 'E', 'F'] },
+  groupLetter: { type: String, enum: ['A', 'B', 'C', 'D', 'E', 'F', 'T'] },
 });
 
 GroupSubjectConfigSchema.index({ groupId: 1 });

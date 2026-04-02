@@ -91,7 +91,7 @@ interface SubjectTab {
   status: 'idle' | 'loading' | 'done' | 'error';
 }
 
-const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'T'];
 const HIDDEN_SUBJECTS = ['it', 'shaxmat', 'sport', 'gimnastika', 'tarbiya', 'texnologiya', 'tasviriy', 'xoreografiya', 'xaregrofiya', 'xoreograf'];
 const filterSubjects = (list: { _id: string; nameUzb: string }[]) =>
   list.filter(s => !HIDDEN_SUBJECTS.some(h => s.nameUzb.toLowerCase().includes(h)));

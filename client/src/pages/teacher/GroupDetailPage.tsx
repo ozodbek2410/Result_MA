@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
-const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'T'] as const;
 
 interface SubjectConfig {
   subjectId: string;
