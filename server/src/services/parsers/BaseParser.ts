@@ -231,6 +231,8 @@ export abstract class BaseParser {
         }
         case 'Superscript': {
           const content = this.serializeInlines(il.c);
+          // Pandoc superscript "." = middle dot (·) ko'paytirish belgisi
+          if (content === '.' || content === '·') return '·';
           return content.length > 1 ? `^{${content}}` : `^${content}`;
         }
         case 'Subscript': {

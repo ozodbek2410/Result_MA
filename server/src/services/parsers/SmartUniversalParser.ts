@@ -280,6 +280,11 @@ export class SmartUniversalParser extends BaseParser {
     cleaned = cleaned.replace(/(^|\s|[.\)*])~([^~\s]+)~/gm, (_, pre, content) => {
       return content.length > 1 ? `${pre}_{${content}}` : `${pre}_${content}`;
     });
+    // Pandoc ^.^ (superscript dot) → · (ko'paytirish belgisi)
+    // DOCX dagi middle dot (·) Pandoc da ^.^ bo'lib chiqadi
+    cleaned = cleaned.replace(/\^\.?\u00B7?\^/g, '·');
+    cleaned = cleaned.replace(/\^\.\^/g, '·');
+
     // Multi-char superscripts need braces: ^2-^ → ^{2-}, ^23^ → ^{23}
     // Unicode \p{L} handles Cyrillic letters too (О^2-^ → О^{2-})
     cleaned = cleaned.replace(/([\p{L}\d])\^([^\^\s{}]+)\^/gu, (_, pre, content) => {
