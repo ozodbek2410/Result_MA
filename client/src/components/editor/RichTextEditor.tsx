@@ -1,9 +1,11 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import Image from '@tiptap/extension-image';
 import { FormulaExtension } from './FormulaExtension';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { hasMathML, convertMathMLToLatex } from '@/lib/mathmlUtils';
+import api from '@/lib/api';
 import './editor.css';
 
 interface RichTextEditorProps {
@@ -18,11 +20,28 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
   const formulaConvertedRef = useRef(false);
 
   // Мемоизируем расширения чтобы они не пересоздавались
+  // Rasm upload va editorga qo'shish
+  const uploadAndInsertImage = async (file: File, ed: ReturnType<typeof useEditor> | null) => {
+    if (!ed) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const { data } = await api.post('/uploads', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const url = data.url || data.path || data.fileUrl;
+      if (url) {
+        ed.chain().focus().setImage({ src: url }).run();
+      }
+    } catch (err) {
+      console.error('Image upload failed:', err);
+    }
+  };
+
   const extensions = useMemo(() => [
     StarterKit,
     Placeholder.configure({ placeholder: 'Matnni kiriting...' }),
     FormulaExtension,
-  ], []); // Пустой массив зависимостей - создаем только один раз
+    Image.configure({ inline: true, allowBase64: false }),
+  ], []);
 
   const editor = useEditor({
     extensions,
@@ -41,15 +60,29 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Matnni 
         class: 'prose prose-sm max-w-none focus:outline-none min-h-[80px] p-3',
       },
       // Обработка вставки из буфера обмена
+      handleDrop: (_view, event) => {
+        const files = event.dataTransfer?.files;
+        if (!files || files.length === 0) return false;
+        const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+        if (imageFiles.length === 0) return false;
+        event.preventDefault();
+        imageFiles.forEach(file => uploadAndInsertImage(file, editor));
+        return true;
+      },
       handlePaste: (view, event) => {
         const clipboardData = event.clipboardData;
         if (!clipboardData) return false;
 
-        // Получаем текст из буфера обмена
+        // Rasm paste (Ctrl+V screenshot yoki rasm fayl)
+        const imageFiles = Array.from(clipboardData.files).filter(f => f.type.startsWith('image/'));
+        if (imageFiles.length > 0) {
+          event.preventDefault();
+          imageFiles.forEach(file => uploadAndInsertImage(file, editor));
+          return true;
+        }
+
         const text = clipboardData.getData('text/plain');
         const html = clipboardData.getData('text/html');
-
-        console.log('📋 Paste detected');
 
         // Проверяем наличие MathML в HTML или тексте
         if (hasMathML(html) || hasMathML(text)) {
