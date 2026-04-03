@@ -281,6 +281,8 @@ export class PDFGeneratorService {
 
     try {
       const html = this.generateHTML(testData);
+      // Debug: save HTML to check LaTeX rendering
+      try { require('fs').writeFileSync('/tmp/debug_pdf.html', html); console.log('📝 DEBUG HTML saved to /tmp/debug_pdf.html'); } catch {}
       await page.setContent(html, { waitUntil: 'networkidle', timeout: this.PAGE_TIMEOUT_MS });
 
       await page.waitForFunction(`
