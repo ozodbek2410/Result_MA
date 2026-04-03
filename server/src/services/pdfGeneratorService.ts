@@ -670,12 +670,19 @@ export class PDFGeneratorService {
       display: inline-block;
       width: 100%;
       margin-bottom: 8px;
+      overflow: hidden;
     }
 
     .question.long-question {
       break-inside: auto;
       page-break-inside: auto;
       -webkit-column-break-inside: auto;
+    }
+
+    .question img {
+      max-width: 100%;
+      max-height: 150px;
+      object-fit: contain;
     }
 
     .question-number {
@@ -900,12 +907,19 @@ export class PDFGeneratorService {
       display: inline-block;
       width: 100%;
       margin-bottom: 8px;
+      overflow: hidden;
     }
 
     .question.long-question {
       break-inside: auto;
       page-break-inside: auto;
       -webkit-column-break-inside: auto;
+    }
+
+    .question img {
+      max-width: 100%;
+      max-height: 150px;
+      object-fit: contain;
     }
 
     .question-number {
