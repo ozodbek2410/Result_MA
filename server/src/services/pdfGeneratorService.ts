@@ -340,8 +340,11 @@ export class PDFGeneratorService {
   }
 
   /**
-   * Har talabani alohida render qilib, PDF buffer + per-student page counts qaytaradi.
+   * Normal batch mode da PDF generate qilib, per-student page counts ham qaytaradi.
    * Booklet imposition uchun kerak — talabalar turli sahifa soniga ega bo'lishi mumkin.
+   *
+   * 1) Haqiqiy PDF — batch mode (KaTeX to'g'ri ishlaydi)
+   * 2) Page counts — har talabani tez render qilib faqat sahifa sonini olish
    */
   static async generatePDFWithPageCounts(testData: TestData): Promise<{ buffer: Buffer; pageCounts: number[] }> {
     const students = testData.students || [];
@@ -350,38 +353,36 @@ export class PDFGeneratorService {
       return { buffer, pageCounts: [] };
     }
 
-    const allQuestions = students.flatMap(s => s.questions);
-    await this.preloadImages(allQuestions);
+    // Step 1: Haqiqiy PDF — normal batch mode (KaTeX to'g'ri ishlaydi)
+    const buffer = await this.generatePDF(testData);
 
-    let browser: Browser | null = null;
+    // Step 2: Har talabaning sahifa sonini aniqlash (tez, KaTeX kutilmaydi)
     const pageCounts: number[] = [];
-    const pdfBuffers: Buffer[] = [];
+    let browser: Browser | null = null;
 
     try {
       browser = await this.launchBrowser();
 
-      for (let i = 0; i < students.length; i++) {
-        const singleStudentData: TestData = { ...testData, students: [students[i]] };
-        const buf = await this.renderBatchPDF(browser, singleStudentData);
-        const tmpDoc = await PDFDocument.load(buf);
-        pageCounts.push(tmpDoc.getPageCount());
-        pdfBuffers.push(buf);
+      for (const student of students) {
+        const singleData: TestData = { ...testData, students: [student] };
+        const page = await browser.newPage();
+        try {
+          const html = this.generateHTML(singleData);
+          await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          const pdfResult = await page.pdf({ format: 'A4', margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' } });
+          const buf = Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult);
+          const doc = await PDFDocument.load(buf);
+          pageCounts.push(doc.getPageCount());
+        } finally {
+          await page.close();
+        }
       }
     } finally {
       await this.closeBrowserSafe(browser);
-      this.clearImageCache();
     }
 
-    // Merge
-    const mergedPdf = await PDFDocument.create();
-    for (const buf of pdfBuffers) {
-      const src = await PDFDocument.load(buf);
-      const pages = await mergedPdf.copyPages(src, src.getPageIndices());
-      pages.forEach(p => mergedPdf.addPage(p));
-    }
-    const mergedBytes = await mergedPdf.save();
-    console.log(`✅ [PageCounts] ${students.length} students, pageCounts=${pageCounts.join(',')}, total=${mergedBytes.length} bytes`);
-    return { buffer: Buffer.from(mergedBytes), pageCounts };
+    console.log(`✅ [PageCounts] ${students.length} students, pageCounts=${pageCounts.join(',')}, total=${buffer.length} bytes`);
+    return { buffer, pageCounts };
   }
 
   private static async _generatePDFInternal(testData: TestData): Promise<Buffer> {
