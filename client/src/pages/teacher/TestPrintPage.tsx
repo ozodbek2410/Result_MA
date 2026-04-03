@@ -1179,6 +1179,17 @@ export default function TestPrintPage() {
 
               {/* Export Buttons */}
               <div className="flex items-center gap-1.5 border-l pl-2">
+                {(type === 'questions' || type === 'sheets') && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleDownloadBookletPDF()}
+                    disabled={exporting}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : '2 tomonlama'}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -1200,28 +1211,16 @@ export default function TestPrintPage() {
                   {exporting ? `${exportProgress}%` : (type === 'sheets' ? 'Titul Word' : 'Word')}
                 </Button>
                 {(type === 'questions' || type === 'sheets') && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDownloadBookletPDF(false)}
-                      disabled={exporting}
-                      className="border-purple-300 text-purple-600 hover:bg-purple-50"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : '2 tomonlama'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDownloadBookletPDF(true)}
-                      disabled={exporting}
-                      className="border-green-300 text-green-600 hover:bg-green-50"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha PDF'}
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDownloadBookletPDF()}
+                    disabled={exporting}
+                    className="border-green-300 text-green-600 hover:bg-green-50"
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha PDF'}
+                  </Button>
                 )}
               </div>
 
