@@ -1164,6 +1164,7 @@ router.post('/:id/export-booklet-pdf-async', authenticate, async (req: AuthReque
       userId: req.user?.id || 'unknown',
       isBlockTest: true,
       booklet: true,
+      simplex: true,
       settings
     }, {
       priority: students.length > 50 ? 2 : 1,
@@ -1968,6 +1969,7 @@ router.post('/:id/export-answer-sheets-pdf-async', authenticate, async (req: Aut
       answerSheets: true,
       version: version || 'v2',
       booklet: !!booklet,
+      simplex: !!booklet,
     }, {
       priority: 1,
       jobId: `${booklet ? 'booklet-' : ''}sheets-block-${id}-${Date.now()}`,

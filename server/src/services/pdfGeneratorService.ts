@@ -324,7 +324,6 @@ export class PDFGeneratorService {
   }
 
   static async generatePDF(testData: TestData): Promise<Buffer> {
-    const BATCH_SIZE = 3;
     const students = testData.students || [];
 
     // Pre-compress all images once before generating HTML
@@ -338,6 +337,51 @@ export class PDFGeneratorService {
     } finally {
       this.clearImageCache();
     }
+  }
+
+  /**
+   * Har talabani alohida render qilib, PDF buffer + per-student page counts qaytaradi.
+   * Booklet imposition uchun kerak — talabalar turli sahifa soniga ega bo'lishi mumkin.
+   */
+  static async generatePDFWithPageCounts(testData: TestData): Promise<{ buffer: Buffer; pageCounts: number[] }> {
+    const students = testData.students || [];
+    if (students.length === 0) {
+      const buffer = await this.generatePDF(testData);
+      return { buffer, pageCounts: [] };
+    }
+
+    const allQuestions = students.flatMap(s => s.questions);
+    await this.preloadImages(allQuestions);
+
+    let browser: Browser | null = null;
+    const pageCounts: number[] = [];
+    const pdfBuffers: Buffer[] = [];
+
+    try {
+      browser = await this.launchBrowser();
+
+      for (let i = 0; i < students.length; i++) {
+        const singleStudentData: TestData = { ...testData, students: [students[i]] };
+        const buf = await this.renderBatchPDF(browser, singleStudentData);
+        const tmpDoc = await PDFDocument.load(buf);
+        pageCounts.push(tmpDoc.getPageCount());
+        pdfBuffers.push(buf);
+      }
+    } finally {
+      await this.closeBrowserSafe(browser);
+      this.clearImageCache();
+    }
+
+    // Merge
+    const mergedPdf = await PDFDocument.create();
+    for (const buf of pdfBuffers) {
+      const src = await PDFDocument.load(buf);
+      const pages = await mergedPdf.copyPages(src, src.getPageIndices());
+      pages.forEach(p => mergedPdf.addPage(p));
+    }
+    const mergedBytes = await mergedPdf.save();
+    console.log(`✅ [PageCounts] ${students.length} students, pageCounts=${pageCounts.join(',')}, total=${mergedBytes.length} bytes`);
+    return { buffer: Buffer.from(mergedBytes), pageCounts };
   }
 
   private static async _generatePDFInternal(testData: TestData): Promise<Buffer> {
@@ -1696,13 +1740,16 @@ export class PDFGeneratorService {
   /**
    * Booklet imposition — har bir o'quvchi PDF ni kitobcha formatga aylantirish
    * Natija: A4 landscape, har sahifada 2 ta A5 portrait sahifa yonma-yon
+   *
+   * pageCounts: har talabaning haqiqiy sahifa soni [3, 4, 3, 4, ...]
+   * simplex=true: Simplex printer uchun — avval barcha ORQA sahifalar, keyin barcha OLD sahifalar
+   *   Chop tartibi: 1) sahifa 1..N (orqalar) → 2) varaqlarni flip → 3) sahifa N+1..2N (oldlar)
    */
-  static async imposeBooklet(pdfBuffer: Buffer, studentCount: number): Promise<Buffer> {
+  static async imposeBooklet(pdfBuffer: Buffer, pageCounts: number[], simplex: boolean = false): Promise<Buffer> {
     const src = await PDFDocument.load(pdfBuffer);
     const totalPages = src.getPageCount();
-    const pagesPerStudent = Math.ceil(totalPages / studentCount);
 
-    console.log(`📖 [BOOKLET] ${studentCount} students, ${totalPages} pages, ~${pagesPerStudent} per student`);
+    console.log(`📖 [BOOKLET] ${pageCounts.length} students, ${totalPages} pages, pageCounts=[${pageCounts.join(',')}], simplex=${simplex}`);
 
     const dest = await PDFDocument.create();
 
@@ -1726,17 +1773,20 @@ export class PDFGeneratorService {
     // Embed all pages at once
     const embeddedPages = await dest.embedPages(src.getPages());
 
-    for (let s = 0; s < studentCount; s++) {
-      const startPage = s * pagesPerStudent;
-      const endPage = Math.min(startPage + pagesPerStudent, totalPages);
-      const n = endPage - startPage;
+    type PagePair = { left: typeof embeddedPages[0] | null; right: typeof embeddedPages[0] | null };
+    const allFronts: PagePair[] = [];
+    const allBacks: PagePair[] = [];
+
+    let offset = 0;
+    for (let s = 0; s < pageCounts.length; s++) {
+      const n = pageCounts[s];
       const padded = Math.ceil(n / 4) * 4;
 
       // Collect student pages (with null for padding)
       const studentPages: (typeof embeddedPages[0] | null)[] = [];
       for (let i = 0; i < padded; i++) {
-        const srcIdx = startPage + i;
-        studentPages.push(srcIdx < endPage ? embeddedPages[srcIdx] : null);
+        const srcIdx = offset + i;
+        studentPages.push(srcIdx < offset + n ? embeddedPages[srcIdx] : null);
       }
 
       // Booklet imposition: each sheet has front and back
@@ -1746,30 +1796,35 @@ export class PDFGeneratorService {
         const bl = 2 * si + 1;            // back left page index
         const br = padded - 2 - 2 * si;   // back right page index
 
-        // Front side
-        const frontPage = dest.addPage([LW, LH]);
-        if (studentPages[fl]) {
-          frontPage.drawPage(studentPages[fl]!, { x: xOffLeft, y: yOff, width: scaledW, height: scaledH });
-        }
-        if (studentPages[fr]) {
-          frontPage.drawPage(studentPages[fr]!, { x: xOffRight, y: yOff, width: scaledW, height: scaledH });
-        }
-
-        // Back side
-        const backPage = dest.addPage([LW, LH]);
-        if (studentPages[bl]) {
-          backPage.drawPage(studentPages[bl]!, { x: xOffLeft, y: yOff, width: scaledW, height: scaledH });
-        }
-        if (studentPages[br]) {
-          backPage.drawPage(studentPages[br]!, { x: xOffRight, y: yOff, width: scaledW, height: scaledH });
-        }
+        allFronts.push({ left: studentPages[fl], right: studentPages[fr] });
+        allBacks.push({ left: studentPages[bl], right: studentPages[br] });
       }
 
       console.log(`📖 [BOOKLET] Student ${s + 1}: ${n} pages → ${padded} padded → ${padded / 2} sheets`);
+      offset += n;
+    }
+
+    const drawPair = (pair: PagePair) => {
+      const page = dest.addPage([LW, LH]);
+      if (pair.left) page.drawPage(pair.left, { x: xOffLeft, y: yOff, width: scaledW, height: scaledH });
+      if (pair.right) page.drawPage(pair.right, { x: xOffRight, y: yOff, width: scaledW, height: scaledH });
+    };
+
+    if (simplex) {
+      // Simplex: barcha ORQALAR avval, keyin barcha OLDLAR
+      allBacks.forEach(drawPair);
+      allFronts.forEach(drawPair);
+      console.log(`✅ [BOOKLET SIMPLEX] ${allBacks.length} orqa + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
+    } else {
+      // Duplex: Front-Back-Front-Back ketma-ketlikda
+      for (let i = 0; i < allFronts.length; i++) {
+        drawPair(allFronts[i]);
+        drawPair(allBacks[i]);
+      }
+      console.log(`✅ [BOOKLET DUPLEX] ${allFronts.length + allBacks.length} sahifa`);
     }
 
     const bytes = await dest.save();
-    console.log(`✅ [BOOKLET] Done: ${dest.getPageCount()} landscape pages`);
     return Buffer.from(bytes);
   }
 }

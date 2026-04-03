@@ -24,6 +24,7 @@ export interface PDFExportJobData {
   userId: string;
   isBlockTest?: boolean;
   booklet?: boolean;
+  simplex?: boolean;
   answerSheets?: boolean;
   version?: string;
   settings?: {
@@ -68,7 +69,7 @@ export const pdfExportQueue = new Queue<PDFExportJobData, PDFExportJobResult>('p
  * Process answer sheet PDF export — lighter than full test PDF
  */
 async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDFExportJobResult> {
-  const { testId, studentIds, userId, isBlockTest, version, booklet } = job.data;
+  const { testId, studentIds, userId, isBlockTest, version, booklet, simplex } = job.data;
   try {
     await job.updateProgress(10);
     const Model = isBlockTest ? (await import('../../models/BlockTest')).default : Test;
@@ -138,7 +139,16 @@ async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDF
     // Booklet imposition (kitobcha format)
     if (booklet) {
       console.log(`📖 [PDF Worker ${process.pid}] Applying booklet imposition to answer sheets...`);
-      pdfBuffer = await PDFGeneratorService.imposeBooklet(pdfBuffer, pdfStudents.length);
+      // Answer sheets: har talaba 1 sahifa
+      const { PDFDocument: PDFDoc } = await import('pdf-lib');
+      const tmpDoc = await PDFDoc.load(pdfBuffer);
+      const totalSheetPages = tmpDoc.getPageCount();
+      const pagesPerSheet = Math.ceil(totalSheetPages / pdfStudents.length);
+      const pageCounts = pdfStudents.map((_, i) => {
+        const start = i * pagesPerSheet;
+        return Math.min(pagesPerSheet, totalSheetPages - start);
+      }).filter(c => c > 0);
+      pdfBuffer = await PDFGeneratorService.imposeBooklet(pdfBuffer, pageCounts, !!simplex);
       console.log(`✅ [PDF Worker ${process.pid}] Booklet answer sheets: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
     }
 
@@ -190,6 +200,7 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
       query.populate('groupId', 'name classNumber letter');
     } else {
       query.populate('subjectTests.subjectId', 'nameUzb');
+      query.populate('groupId', 'name classNumber letter');
     }
     const test: any = await query.lean();
     
@@ -259,8 +270,10 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
       title: test.name || 'Test',
       className: test.groupId
         ? ((test.groupId as any).name || `${(test.groupId as any).classNumber}-${(test.groupId as any).letter}`)
-        : '',
-      subjectName: (test.subjectId as any)?.nameUzb || '',
+        : (isBlockTest && test.classNumber ? `${test.classNumber}-sinf` : ''),
+      subjectName: isBlockTest
+        ? (test.subjectTests?.[0]?.subjectId?.nameUzb || '')
+        : ((test.subjectId as any)?.nameUzb || ''),
       questions: [],
       students,
       settings: job.data.settings
@@ -270,18 +283,23 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
     
     // Step 4: Generate PDF (70%)
     await job.updateProgress(70);
-    
-    console.log(`📄 [PDF Worker ${process.pid}] Generating PDF...`);
-    let pdfBuffer = await PDFGeneratorService.generatePDF(testData);
 
-    console.log(`✅ [PDF Worker ${process.pid}] PDF generated: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
+    let pdfBuffer: Buffer;
 
-    // Step 4.5: Booklet imposition (if requested)
     if (job.data.booklet) {
+      // Booklet: har talabani alohida render → pageCounts → impose
+      console.log(`📄 [PDF Worker ${process.pid}] Generating PDF with page counts for booklet...`);
+      const { buffer, pageCounts } = await PDFGeneratorService.generatePDFWithPageCounts(testData);
+      console.log(`✅ [PDF Worker ${process.pid}] PDF generated: ${(buffer.length / 1024).toFixed(2)} KB, pageCounts=[${pageCounts.join(',')}]`);
+
       await job.updateProgress(80);
       console.log(`📖 [PDF Worker ${process.pid}] Applying booklet imposition...`);
-      pdfBuffer = await PDFGeneratorService.imposeBooklet(pdfBuffer, students.length);
+      pdfBuffer = await PDFGeneratorService.imposeBooklet(buffer, pageCounts, !!job.data.simplex);
       console.log(`✅ [PDF Worker ${process.pid}] Booklet PDF: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
+    } else {
+      console.log(`📄 [PDF Worker ${process.pid}] Generating PDF...`);
+      pdfBuffer = await PDFGeneratorService.generatePDF(testData);
+      console.log(`✅ [PDF Worker ${process.pid}] PDF generated: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
     }
 
     // Step 5: Upload to storage (85%)
