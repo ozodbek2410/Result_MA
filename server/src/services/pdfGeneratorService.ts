@@ -1114,9 +1114,15 @@ export class PDFGeneratorService {
     // Strip remaining HTML tags (keep math-formula spans already created above)
     text = text.replace(/<(?!\/?span\s)[^>]+>/g, '');
 
-    // Convert \[...\] to $$...$$ and \(...\) to $...$
-    text = text.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
-    text = text.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    // Convert \[...\] to display math span
+    text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_match, latex) => {
+      return `<span class="math-formula display-math" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
+    });
+
+    // Convert \(...\) to inline math span
+    text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, latex) => {
+      return `<span class="math-formula" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
+    });
 
     // Display math $$...$$
     text = text.replace(/\$\$(.*?)\$\$/g, (_match, latex) => {
