@@ -272,9 +272,9 @@ export class PDFGeneratorService {
 
       await page.waitForFunction(`
         () => {
-          const elements = document.querySelectorAll('.math-formula');
-          if (elements.length === 0) return true;
-          return Array.from(elements).every(el => el.querySelector('.katex') !== null);
+          // auto-render converts \\(...\\) to .katex spans
+          const katexElements = document.querySelectorAll('.katex');
+          return katexElements.length > 0 || !document.body.textContent.includes('\\\\(');
         }
       `, { timeout: this.KATEX_TIMEOUT_MS }).catch(() => {
         console.warn('⚠️ KaTeX render timeout, continuing anyway');
@@ -774,17 +774,6 @@ export class PDFGeneratorService {
   <script>${KATEX_AUTORENDER_CONTENT}</script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // 1) Render data-latex spans
-      var formulas = document.querySelectorAll('.math-formula');
-      formulas.forEach(function(el) {
-        var latex = el.getAttribute('data-latex');
-        if (latex) {
-          try {
-            katex.render(latex, el, { throwOnError: false, displayMode: el.classList.contains('display-math') });
-          } catch (e) { el.textContent = latex; }
-        }
-      });
-      // 2) Auto-render \(...\), $$...$$, $...$ in text
       if (typeof renderMathInElement === 'function') {
         renderMathInElement(document.body, {
           delimiters: [
@@ -1085,17 +1074,6 @@ export class PDFGeneratorService {
   <script>${KATEX_AUTORENDER_CONTENT}</script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // 1) Render data-latex spans
-      var formulas = document.querySelectorAll('.math-formula');
-      formulas.forEach(function(el) {
-        var latex = el.getAttribute('data-latex');
-        if (latex) {
-          try {
-            katex.render(latex, el, { throwOnError: false, displayMode: el.classList.contains('display-math') });
-          } catch (e) { el.textContent = latex; }
-        }
-      });
-      // 2) Auto-render \(...\), $$...$$, $...$ in text
       if (typeof renderMathInElement === 'function') {
         renderMathInElement(document.body, {
           delimiters: [
@@ -1121,36 +1099,17 @@ export class PDFGeneratorService {
     if (!text) return '';
 
     // Convert TipTap formula spans: <span data-type="formula" data-latex="..."></span>
-    // Decode HTML entities (&amp; -> &) and detect display mode for aligned environments
+    // These need manual conversion — auto-render won't find them
     text = text.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_match, latex) => {
       const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-      const isDisplay = /\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded);
-      return `<span class="math-formula${isDisplay ? ' display-math' : ''}" data-latex="${this.escapeHtml(decoded)}"></span>`;
+      // Convert to \(...\) format so auto-render handles it uniformly
+      return `\\(${decoded}\\)`;
     });
 
-    // Strip remaining HTML tags (keep math-formula spans already created above)
-    text = text.replace(/<(?!\/?span\s)[^>]+>/g, '');
+    // Strip remaining HTML tags
+    text = text.replace(/<[^>]+>/g, '');
 
-    // Convert \[...\] to display math span
-    text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_match, latex) => {
-      return `<span class="math-formula display-math" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
-    });
-
-    // Convert \(...\) to inline math span
-    text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, latex) => {
-      return `<span class="math-formula" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
-    });
-
-    // Display math $$...$$
-    text = text.replace(/\$\$(.*?)\$\$/g, (_match, latex) => {
-      return `<span class="math-formula display-math" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
-    });
-
-    // Inline math $...$
-    text = text.replace(/\$([^\$]+?)\$/g, (_match, latex) => {
-      return `<span class="math-formula" data-latex="${this.escapeHtml(latex.trim())}"></span>`;
-    });
-
+    // \(...\), \[...\], $...$ — auto-render handles all of these client-side
     return text;
   }
 
