@@ -4,12 +4,11 @@ import * as path from 'path';
 import QRCode from 'qrcode';
 import { PDFDocument } from 'pdf-lib';
 import sharp from 'sharp';
+import katex from 'katex';
 
-// Resolve local KaTeX paths for offline PDF rendering (no CDN dependency)
+// KaTeX CSS with fonts inlined as base64 (file:// blocked by Playwright)
 const katexDistDir = path.join(path.dirname(require.resolve('katex/package.json')), 'dist');
-const KATEX_CSS_PATH = path.join(katexDistDir, 'katex.min.css').replace(/\\/g, '/');
 const KATEX_FONTS_DIR = path.join(katexDistDir, 'fonts');
-// Inline all KaTeX fonts as base64 data URIs (file:// is blocked by Playwright)
 const KATEX_CSS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.css'), 'utf-8')
   .replace(/url\(fonts\/([^)]+)\)/g, (_match, fontFile) => {
     const fontPath = path.join(KATEX_FONTS_DIR, fontFile);
@@ -21,8 +20,6 @@ const KATEX_CSS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.css
     }
     return _match;
   });
-const KATEX_JS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.js'), 'utf-8');
-const KATEX_AUTORENDER_CONTENT = fs.readFileSync(path.join(katexDistDir, 'contrib', 'auto-render.min.js'), 'utf-8');
 
 interface Question {
   number: number;
@@ -283,17 +280,8 @@ export class PDFGeneratorService {
       const html = this.generateHTML(testData);
       await page.setContent(html, { waitUntil: 'networkidle', timeout: this.PAGE_TIMEOUT_MS });
 
-      await page.waitForFunction(`
-        () => {
-          // auto-render converts \\(...\\) to .katex spans
-          const katexElements = document.querySelectorAll('.katex');
-          return katexElements.length > 0 || !document.body.textContent.includes('\\\\(');
-        }
-      `, { timeout: this.KATEX_TIMEOUT_MS }).catch(() => {
-        console.warn('⚠️ KaTeX render timeout, continuing anyway');
-      });
-
-      await page.waitForTimeout(2000);
+      // KaTeX rendered server-side — no client-side wait needed
+      await page.waitForTimeout(300);
 
       const pdfResult = await page.pdf({
         format: 'A4',
@@ -783,24 +771,7 @@ export class PDFGeneratorService {
     ${studentsHTML}
   </div>
 
-  <script>var module = undefined; var exports = undefined;</script>
-  <script>${KATEX_JS_CONTENT}</script>
-  <script>${KATEX_AUTORENDER_CONTENT}</script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      if (typeof renderMathInElement === 'function') {
-        renderMathInElement(document.body, {
-          delimiters: [
-            {left: '$$', right: '$$', display: true},
-            {left: '\\(', right: '\\)', display: false},
-            {left: '\\[', right: '\\]', display: true},
-            {left: '$', right: '$', display: false}
-          ],
-          throwOnError: false
-        });
-      }
-    });
-  </script>
+  <!-- KaTeX rendered server-side, no client scripts needed -->
 </body>
 </html>
       `;
@@ -1084,48 +1055,52 @@ export class PDFGeneratorService {
     </div>
   </div>
   
-  <script>var module = undefined; var exports = undefined;</script>
-  <script>${KATEX_JS_CONTENT}</script>
-  <script>${KATEX_AUTORENDER_CONTENT}</script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      if (typeof renderMathInElement === 'function') {
-        renderMathInElement(document.body, {
-          delimiters: [
-            {left: '$$', right: '$$', display: true},
-            {left: '\\(', right: '\\)', display: false},
-            {left: '\\[', right: '\\]', display: true},
-            {left: '$', right: '$', display: false}
-          ],
-          throwOnError: false
-        });
-      }
-    });
-  </script>
+  <!-- KaTeX rendered server-side, no client scripts needed -->
 </body>
 </html>
     `;
   }
 
   /**
-   * Обрабатывает текст с LaTeX формулами
+   * Server-side KaTeX rendering — converts LaTeX to HTML directly.
+   * No client-side scripts needed — 100% deterministic.
    */
   private static renderMath(text: string): string {
     if (!text) return '';
 
-    // Convert TipTap formula spans: <span data-type="formula" data-latex="..."></span>
-    // These need manual conversion — auto-render won't find them
+    // 1) TipTap formula spans: <span data-type="formula" data-latex="..."></span>
     text = text.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_match, latex) => {
       const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-      // Convert to \(...\) format so auto-render handles it uniformly
-      return `\\(${decoded}\\)`;
+      return this.katexRender(decoded, false);
     });
 
-    // Strip remaining HTML tags
-    text = text.replace(/<[^>]+>/g, '');
+    // 2) Strip remaining HTML tags (but keep already-rendered katex spans)
+    text = text.replace(/<(?!\/?span\s)[^>]+>/g, '');
 
-    // \(...\), \[...\], $...$ — auto-render handles all of these client-side
+    // 3) Display math: \[...\]
+    text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_match, latex) => this.katexRender(latex, true));
+
+    // 4) Inline math: \(...\)
+    text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, latex) => this.katexRender(latex, false));
+
+    // 5) Display math: $$...$$
+    text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_match, latex) => this.katexRender(latex, true));
+
+    // 6) Inline math: $...$
+    text = text.replace(/\$([^\$]+?)\$/g, (_match, latex) => this.katexRender(latex, false));
+
     return text;
+  }
+
+  /**
+   * Render single LaTeX expression to HTML using KaTeX server-side
+   */
+  private static katexRender(latex: string, displayMode: boolean): string {
+    try {
+      return katex.renderToString(latex.trim(), { throwOnError: false, displayMode });
+    } catch {
+      return latex;
+    }
   }
 
   /**
