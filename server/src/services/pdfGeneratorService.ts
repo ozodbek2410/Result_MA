@@ -8,6 +8,7 @@ import sharp from 'sharp';
 // Resolve local KaTeX paths for offline PDF rendering (no CDN dependency)
 const katexDistDir = path.join(path.dirname(require.resolve('katex/package.json')), 'dist');
 const KATEX_CSS_PATH = path.join(katexDistDir, 'katex.min.css').replace(/\\/g, '/');
+const KATEX_CSS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.css'), 'utf-8');
 const KATEX_JS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.js'), 'utf-8');
 const KATEX_AUTORENDER_CONTENT = fs.readFileSync(path.join(katexDistDir, 'contrib', 'auto-render.min.js'), 'utf-8');
 
@@ -550,7 +551,7 @@ export class PDFGeneratorService {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${testData.title}</title>
-  <link rel="stylesheet" href="file:///${KATEX_CSS_PATH}">
+  <style>${KATEX_CSS_CONTENT}</style>
   <style>
     * {
       margin: 0;
@@ -801,7 +802,7 @@ export class PDFGeneratorService {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${testData.title}</title>
-  <link rel="stylesheet" href="file:///${KATEX_CSS_PATH}">
+  <style>${KATEX_CSS_CONTENT}</style>
   <style>
     * {
       margin: 0;
