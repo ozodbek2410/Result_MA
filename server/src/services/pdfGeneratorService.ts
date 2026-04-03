@@ -1811,10 +1811,11 @@ export class PDFGeneratorService {
     };
 
     if (simplex) {
-      // Simplex: barcha ORQALAR avval, keyin barcha OLDLAR
+      // Simplex: barcha ORQALAR avval, keyin barcha OLDLAR TESKARI tartibda
+      // Printer face-down chiqaradi, tray dan pastdan oladi → fronts teskari bo'lishi kerak
       allBacks.forEach(drawPair);
-      allFronts.forEach(drawPair);
-      console.log(`✅ [BOOKLET SIMPLEX] ${allBacks.length} orqa + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
+      [...allFronts].reverse().forEach(drawPair);
+      console.log(`✅ [BOOKLET SIMPLEX] ${allBacks.length} orqa + ${allFronts.length} old (reversed) = ${allBacks.length + allFronts.length} sahifa`);
     } else {
       // Duplex: Front-Back-Front-Back ketma-ketlikda
       for (let i = 0; i < allFronts.length; i++) {
