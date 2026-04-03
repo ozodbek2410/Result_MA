@@ -9,6 +9,7 @@ import sharp from 'sharp';
 const katexDistDir = path.join(path.dirname(require.resolve('katex/package.json')), 'dist');
 const KATEX_CSS_PATH = path.join(katexDistDir, 'katex.min.css').replace(/\\/g, '/');
 const KATEX_JS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.js'), 'utf-8');
+const KATEX_AUTORENDER_CONTENT = fs.readFileSync(path.join(katexDistDir, 'contrib', 'auto-render.min.js'), 'utf-8');
 
 interface Question {
   number: number;
@@ -770,23 +771,31 @@ export class PDFGeneratorService {
   </div>
 
   <script>${KATEX_JS_CONTENT}</script>
+  <script>${KATEX_AUTORENDER_CONTENT}</script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const formulas = document.querySelectorAll('.math-formula');
+      // 1) Render data-latex spans
+      var formulas = document.querySelectorAll('.math-formula');
       formulas.forEach(function(el) {
-        const latex = el.getAttribute('data-latex');
+        var latex = el.getAttribute('data-latex');
         if (latex) {
           try {
-            katex.render(latex, el, {
-              throwOnError: false,
-              displayMode: el.classList.contains('display-math')
-            });
-          } catch (e) {
-            console.error('KaTeX error:', e);
-            el.textContent = latex;
-          }
+            katex.render(latex, el, { throwOnError: false, displayMode: el.classList.contains('display-math') });
+          } catch (e) { el.textContent = latex; }
         }
       });
+      // 2) Auto-render \(...\), $$...$$, $...$ in text
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\\\(', right: '\\\\)', display: false},
+            {left: '\\\\[', right: '\\\\]', display: true},
+            {left: '$', right: '$', display: false}
+          ],
+          throwOnError: false
+        });
+      }
     });
   </script>
 </body>
@@ -1073,23 +1082,31 @@ export class PDFGeneratorService {
   </div>
   
   <script>${KATEX_JS_CONTENT}</script>
+  <script>${KATEX_AUTORENDER_CONTENT}</script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const formulas = document.querySelectorAll('.math-formula');
+      // 1) Render data-latex spans
+      var formulas = document.querySelectorAll('.math-formula');
       formulas.forEach(function(el) {
-        const latex = el.getAttribute('data-latex');
+        var latex = el.getAttribute('data-latex');
         if (latex) {
           try {
-            katex.render(latex, el, {
-              throwOnError: false,
-              displayMode: el.classList.contains('display-math')
-            });
-          } catch (e) {
-            console.error('KaTeX error:', e);
-            el.textContent = latex;
-          }
+            katex.render(latex, el, { throwOnError: false, displayMode: el.classList.contains('display-math') });
+          } catch (e) { el.textContent = latex; }
         }
       });
+      // 2) Auto-render \(...\), $$...$$, $...$ in text
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\\\(', right: '\\\\)', display: false},
+            {left: '\\\\[', right: '\\\\]', display: true},
+            {left: '$', right: '$', display: false}
+          ],
+          throwOnError: false
+        });
+      }
     });
   </script>
 </body>
