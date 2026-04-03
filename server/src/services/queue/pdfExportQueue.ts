@@ -233,13 +233,13 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
           ? variant.shuffledQuestions
           : test.questions
         ).map((q: any, index: number) => {
-          const questionText = convertVariantText(q.text);
-          
+          // PDF uchun original text (renderMath \( va data-latex ni o'zi ishlatadi)
+          // convertVariantText faqat Word export uchun — PDF da backslashlarni buzadi
+          const questionText = q.text || '';
+
           const options = (q.variants || q.options || []).map((v: any) => {
             if (typeof v === 'string') return v;
-            if (v.text) {
-              return convertVariantText(v.text);
-            }
+            if (v.text) return v.text;
             return '';
           });
           
