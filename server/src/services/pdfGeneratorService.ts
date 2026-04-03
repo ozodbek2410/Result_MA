@@ -770,6 +770,7 @@ export class PDFGeneratorService {
     ${studentsHTML}
   </div>
 
+  <script>var module = undefined; var exports = undefined;</script>
   <script>${KATEX_JS_CONTENT}</script>
   <script>${KATEX_AUTORENDER_CONTENT}</script>
   <script>
@@ -1070,6 +1071,7 @@ export class PDFGeneratorService {
     </div>
   </div>
   
+  <script>var module = undefined; var exports = undefined;</script>
   <script>${KATEX_JS_CONTENT}</script>
   <script>${KATEX_AUTORENDER_CONTENT}</script>
   <script>
