@@ -1208,7 +1208,7 @@ export default function TestPrintPage() {
                       className="border-green-300 text-green-600 hover:bg-green-50"
                     >
                       <Download className="w-4 h-4 mr-1" />
-                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha (duplex)'}
+                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha 1→N'}
                     </Button>
                     <Button
                       size="sm"
@@ -1218,7 +1218,7 @@ export default function TestPrintPage() {
                       className="border-orange-300 text-orange-600 hover:bg-orange-50"
                     >
                       <Download className="w-4 h-4 mr-1" />
-                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha (1 tomonlama)'}
+                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha N→1'}
                     </Button>
                   </>
                 )}

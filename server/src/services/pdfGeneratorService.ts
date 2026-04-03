@@ -1811,9 +1811,9 @@ export class PDFGeneratorService {
     };
 
     if (simplex) {
-      // Simplex: barcha ORQALAR avval, keyin barcha OLDLAR (normal tartib)
-      allBacks.forEach(drawPair);
-      allFronts.forEach(drawPair);
+      // Simplex teskari: backs reversed, fronts reversed
+      [...allBacks].reverse().forEach(drawPair);
+      [...allFronts].reverse().forEach(drawPair);
       console.log(`✅ [BOOKLET SIMPLEX] ${allBacks.length} orqa + ${allFronts.length} old (reversed) = ${allBacks.length + allFronts.length} sahifa`);
     } else {
       // Duplex: Front-Back-Front-Back ketma-ketlikda
