@@ -1214,7 +1214,7 @@ export default function TestPrintPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleDownloadBookletPDF()}
+                    onClick={() => handleDownloadBookletPDF(false)}
                     disabled={exporting}
                     className="border-green-300 text-green-600 hover:bg-green-50"
                   >

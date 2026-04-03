@@ -1809,10 +1809,10 @@ export class PDFGeneratorService {
     };
 
     if (simplex) {
-      // Simplex: barcha ORQALAR avval, keyin barcha OLDLAR (normal tartib)
+      // 2 tomonlama: backs normal (1,2,3), fronts reversed (6,5,4)
       allBacks.forEach(drawPair);
-      allFronts.forEach(drawPair);
-      console.log(`✅ [BOOKLET SIMPLEX] ${allBacks.length} orqa + ${allFronts.length} old (reversed) = ${allBacks.length + allFronts.length} sahifa`);
+      [...allFronts].reverse().forEach(drawPair);
+      console.log(`✅ [BOOKLET 2-TOMONLAMA] ${allBacks.length} orqa + ${allFronts.length} old (reversed) = ${allBacks.length + allFronts.length} sahifa`);
     } else {
       // Duplex: Front-Back-Front-Back ketma-ketlikda
       for (let i = 0; i < allFronts.length; i++) {
