@@ -8,7 +8,19 @@ import sharp from 'sharp';
 // Resolve local KaTeX paths for offline PDF rendering (no CDN dependency)
 const katexDistDir = path.join(path.dirname(require.resolve('katex/package.json')), 'dist');
 const KATEX_CSS_PATH = path.join(katexDistDir, 'katex.min.css').replace(/\\/g, '/');
-const KATEX_CSS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.css'), 'utf-8');
+const KATEX_FONTS_DIR = path.join(katexDistDir, 'fonts');
+// Inline all KaTeX fonts as base64 data URIs (file:// is blocked by Playwright)
+const KATEX_CSS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.css'), 'utf-8')
+  .replace(/url\(fonts\/([^)]+)\)/g, (_match, fontFile) => {
+    const fontPath = path.join(KATEX_FONTS_DIR, fontFile);
+    if (fs.existsSync(fontPath)) {
+      const ext = path.extname(fontFile).slice(1);
+      const mime = ext === 'woff2' ? 'font/woff2' : ext === 'woff' ? 'font/woff' : 'font/ttf';
+      const b64 = fs.readFileSync(fontPath).toString('base64');
+      return `url(data:${mime};base64,${b64})`;
+    }
+    return _match;
+  });
 const KATEX_JS_CONTENT = fs.readFileSync(path.join(katexDistDir, 'katex.min.js'), 'utf-8');
 const KATEX_AUTORENDER_CONTENT = fs.readFileSync(path.join(katexDistDir, 'contrib', 'auto-render.min.js'), 'utf-8');
 
