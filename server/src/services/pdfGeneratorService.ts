@@ -1082,25 +1082,36 @@ export class PDFGeneratorService {
   private static renderMath(text: string): string {
     if (!text) return '';
 
-    // 1) TipTap formula spans: <span data-type="formula" data-latex="..."></span>
+    // 1) Extract data-latex spans → placeholder, strip HTML, then render all LaTeX
+    const formulas: { placeholder: string; latex: string }[] = [];
+    let idx = 0;
+
+    // Replace data-latex spans with placeholders (before HTML strip)
     text = text.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_match, latex) => {
       const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-      return this.katexRender(decoded, false);
+      const ph = `%%FORMULA_${idx++}%%`;
+      formulas.push({ placeholder: ph, latex: decoded });
+      return ph;
     });
 
-    // 2) Strip remaining HTML tags (but keep already-rendered katex spans)
-    text = text.replace(/<(?!\/?span\s)[^>]+>/g, '');
+    // 2) Strip HTML tags (placeholders are safe — no angle brackets)
+    text = text.replace(/<[^>]+>/g, '');
 
-    // 3) Display math: \[...\]
+    // 3) Restore placeholders → KaTeX HTML
+    for (const f of formulas) {
+      text = text.replace(f.placeholder, this.katexRender(f.latex, false));
+    }
+
+    // 4) \[...\] display math
     text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_match, latex) => this.katexRender(latex, true));
 
-    // 4) Inline math: \(...\)
+    // 5) \(...\) inline math
     text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, latex) => this.katexRender(latex, false));
 
-    // 5) Display math: $$...$$
+    // 6) $$...$$ display math
     text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_match, latex) => this.katexRender(latex, true));
 
-    // 6) Inline math: $...$
+    // 7) $...$ inline math
     text = text.replace(/\$([^\$]+?)\$/g, (_match, latex) => this.katexRender(latex, false));
 
     return text;

@@ -306,17 +306,18 @@ export default function TestPrintPage() {
   };
   
   // Booklet PDF export (kitobcha format)
-  const handleDownloadBookletPDF = async () => {
+  // simplex=true: 1 tomonlama (backs, then fronts reversed)
+  // simplex=false: duplex (front-back interleaved)
+  const handleDownloadBookletPDF = async (simplex: boolean = true) => {
     try {
       setExporting(true);
       setExportProgress(0);
-      success('Kitobcha PDF yaratilmoqda...');
+      success(simplex ? 'Kitobcha PDF (1 tomonlama) yaratilmoqda...' : 'Kitobcha PDF (2 tomonlama) yaratilmoqda...');
 
       let endpoint: string;
       let body: Record<string, unknown>;
 
       if (type === 'sheets') {
-        // Answer sheets booklet — async endpoint + booklet flag
         endpoint = isBlockTest
           ? `/block-tests/${id}/export-answer-sheets-pdf-async`
           : `/tests/${id}/export-answer-sheets-pdf-async`;
@@ -324,6 +325,7 @@ export default function TestPrintPage() {
           students: selectedStudents.map(s => s._id),
           version: 'v2',
           booklet: true,
+          simplex,
         };
       } else {
         endpoint = isBlockTest
@@ -331,6 +333,7 @@ export default function TestPrintPage() {
           : `/tests/${id}/export-booklet-pdf-async`;
         body = {
           students: selectedStudents.map(s => s._id),
+          simplex,
           settings: { fontSize, fontFamily, lineHeight, columnsCount, backgroundOpacity,
             backgroundImage: backgroundImage !== '/logo.png' ? backgroundImage : undefined },
         };
@@ -1197,16 +1200,28 @@ export default function TestPrintPage() {
                   {exporting ? `${exportProgress}%` : (type === 'sheets' ? 'Titul Word' : 'Word')}
                 </Button>
                 {(type === 'questions' || type === 'sheets') && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleDownloadBookletPDF}
-                    disabled={exporting}
-                    className="border-green-300 text-green-600 hover:bg-green-50"
-                  >
-                    <Download className="w-4 h-4 mr-1" />
-                    {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha PDF'}
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDownloadBookletPDF(false)}
+                      disabled={exporting}
+                      className="border-purple-300 text-purple-600 hover:bg-purple-50"
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : '2 tomonlama'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDownloadBookletPDF(true)}
+                      disabled={exporting}
+                      className="border-green-300 text-green-600 hover:bg-green-50"
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      {exporting && exportJobId?.startsWith('booklet') ? `${exportProgress}%` : 'Kitobcha PDF'}
+                    </Button>
+                  </>
                 )}
               </div>
 
