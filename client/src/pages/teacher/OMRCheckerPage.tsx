@@ -25,6 +25,7 @@ interface CheckResult {
     studentId: string;
     studentName: string;
     testName: string;
+    certSubjects?: { subjectId: string; percentage: number; subjectName?: string }[];
   };
   comparison?: {
     correct: number;
