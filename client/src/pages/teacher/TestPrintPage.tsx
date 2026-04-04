@@ -865,6 +865,11 @@ export default function TestPrintPage() {
                                         <img src={question.imageUrl} alt="Question" style={question.imageWidth ? { width: Math.round(question.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.5); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
                                       </div>
                                     )}
+                                    {question.media && question.media.map((m: { url: string }, mi: number) => (
+                                      <div key={mi} className="my-1 ml-6">
+                                        <img src={m.url} alt={`Media ${mi + 1}`} style={{ maxWidth: '100%', height: 'auto' }} />
+                                      </div>
+                                    ))}
                                     <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
                                       {question.variants?.map((qVariant: any, vi: number) => {
                                         const variantText = convertTiptapJsonToText(qVariant.text);
@@ -913,6 +918,11 @@ export default function TestPrintPage() {
                                     <img src={question.imageUrl} alt="Question" style={question.imageWidth ? { width: Math.round(question.imageWidth * 0.5), maxWidth: '100%', height: 'auto' } : undefined} onLoad={(e) => { const img = e.currentTarget; if (!img.style.width) { const w = Math.round(img.naturalWidth * 0.5); img.style.width = w + 'px'; img.style.height = 'auto'; } }} />
                                   </div>
                                 )}
+                                {question.media && question.media.map((m: { url: string }, mi: number) => (
+                                  <div key={mi} className="my-1 ml-6">
+                                    <img src={m.url} alt={`Media ${mi + 1}`} style={{ maxWidth: '100%', height: 'auto' }} />
+                                  </div>
+                                ))}
                                 <div className={testsPerPage > 1 ? 'ml-3' : 'ml-6'}>
                                   {question.variants?.map((qVariant: any, vi: number) => {
                                     const variantText = convertTiptapJsonToText(qVariant.text);
