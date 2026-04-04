@@ -202,7 +202,12 @@ export function BlockTestImportForm({
                   } else if (child.nodeType === Node.ELEMENT_NODE) {
                     const el = child as Element;
                     if (el.getAttribute('data-type') === 'formula') {
-                      const latex = (el.getAttribute('data-latex') || '').trim();
+                      let latex = (el.getAttribute('data-latex') || '').trim();
+                      // Strip outer/nested math delimiters from data-latex
+                      if (latex.startsWith('\\(') && latex.endsWith('\\)')) latex = latex.slice(2, -2).trim();
+                      else if (latex.startsWith('\\[') && latex.endsWith('\\]')) latex = latex.slice(2, -2).trim();
+                      latex = latex.replace(/\\\(/g, '').replace(/\\\)/g, '');
+                      latex = latex.replace(/\\\[/g, '').replace(/\\\]/g, '');
                       parts.push({ type: 'formula', attrs: { latex } });
                     } else if (el.tagName === 'IMG') {
                       parts.push({ type: 'image', attrs: { src: el.getAttribute('src'), alt: null, title: null } });
@@ -224,17 +229,54 @@ export function BlockTestImportForm({
               return { type: 'doc', content: paragraphs.length ? paragraphs : [{ type: 'paragraph', content: [] }] };
             };
 
+            // Strip nested \(...\) and \[...\] delimiters inside outer math regions
+            // e.g. \(\frac{\(6^{10}\)}{...}\) → \(\frac{6^{10}}{...}\)
+            const cleanNestedDelims = (s: string): string => {
+              let result = '';
+              let i = 0;
+              while (i < s.length) {
+                if (i + 1 < s.length && s[i] === '\\' && (s[i + 1] === '(' || s[i + 1] === '[')) {
+                  const openCh = s[i + 1];
+                  const closeCh = openCh === '(' ? ')' : ']';
+                  let depth = 1;
+                  let j = i + 2;
+                  let inner = '';
+                  while (j < s.length) {
+                    if (j + 1 < s.length && s[j] === '\\') {
+                      if (s[j + 1] === openCh) { depth++; j += 2; continue; }
+                      if (s[j + 1] === closeCh) { depth--; if (depth === 0) { j += 2; break; } else { j += 2; continue; } }
+                    }
+                    inner += s[j++];
+                  }
+                  result += `\\${openCh}${inner}\\${closeCh}`;
+                  i = j;
+                } else {
+                  result += s[i++];
+                }
+              }
+              return result;
+            };
+
             const convertText = (t: string) => {
               if (!t) return t;
               // Agar TipTap JSON string bo'lsa — to'g'ridan-to'g'ri parse qilish
               if (typeof t === 'string' && t.startsWith('{')) {
                 try { return JSON.parse(t); } catch { /* not JSON */ }
               }
-              // HTML (editor.getHTML() dan kelgan) → TipTap JSON ga o'gir
-              if (t.startsWith('<')) return htmlToTiptapJson(t);
+              // HTML → strip tags, extract data-latex as \(...\), keep text
+              if (t.startsWith('<')) {
+                const stripped = t
+                  .replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_m, latex) => latex ? ` \\(${latex}\\) ` : '')
+                  .replace(/<[^>]+>/g, '')
+                  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"')
+                  .replace(/\s+/g, ' ').trim();
+                return stripped || t;
+              }
               // Plain text / LaTeX text → TipTap JSON
               const hasFormula = t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\[');
               if (!hasFormula) return t;
+              // \(...\) yoki \[...\] delimiterlari bor — nested tozalab LaTeX converter ishlatish
+              if (t.includes('\\(') || t.includes('\\[')) return convertLatexToTiptapJson(cleanNestedDelims(t));
               if (pk === 'physics') return convertPhysicsToTiptapJson(t);
               if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
               return convertLatexToTiptapJson(t);
