@@ -1094,7 +1094,16 @@ export class PDFGeneratorService {
       return ph;
     });
 
-    // 2) Strip HTML tags (placeholders are safe — no angle brackets)
+    // 1b) Preserve <img> tags with placeholders
+    const images: { placeholder: string; html: string }[] = [];
+    let imgIdx = 0;
+    text = text.replace(/<img[^>]*>/g, (match) => {
+      const ph = `%%IMG_${imgIdx++}%%`;
+      images.push({ placeholder: ph, html: match });
+      return ph;
+    });
+
+    // 2) Strip remaining HTML tags (formulas and images are safe as placeholders)
     text = text.replace(/<[^>]+>/g, '');
 
     // 3) Restore placeholders → KaTeX HTML
@@ -1113,6 +1122,11 @@ export class PDFGeneratorService {
 
     // 7) $...$ inline math
     text = text.replace(/\$([^\$]+?)\$/g, (_match, latex) => this.katexRender(latex, false));
+
+    // 8) Restore <img> placeholders
+    for (const img of images) {
+      text = text.replace(img.placeholder, img.html);
+    }
 
     return text;
   }
