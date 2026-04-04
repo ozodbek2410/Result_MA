@@ -1016,14 +1016,15 @@ export function BlockTestImportForm({
                       {q.variants.map((v, vi) => (
                         <div
                           key={`${v.letter}-${vi}`}
-                          draggable
-                          onDragStart={() => varDragStart(active.id, idx, vi)}
                           onDragOver={(e) => varDragOver(e, active.id, idx, vi)}
                           onDrop={() => varDrop(active.id, idx)}
-                          onDragEnd={() => { dragVar.current = null; dragOverVar.current = null; }}
-                          className="flex items-center gap-3 cursor-grab active:cursor-grabbing"
+                          className="flex items-center gap-3"
                         >
-                          <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <div draggable onDragStart={() => varDragStart(active.id, idx, vi)}
+                            onDragEnd={() => { dragVar.current = null; dragOverVar.current = null; }}
+                            className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded flex-shrink-0">
+                            <GripVertical className="w-4 h-4 text-gray-400" />
+                          </div>
                           <button type="button"
                             onClick={() => qUpd(active.id, idx, { correctAnswer: v.letter })}
                             className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
