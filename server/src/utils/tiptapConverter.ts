@@ -80,30 +80,39 @@ export function convertTiptapToLatex(json: any): string {
   
   let text = '';
   
+  // Strip nested math delimiters from latex (invalid inside KaTeX math mode)
+  const cleanLatex = (raw: string): string => {
+    let l = raw.trim();
+    if (l.startsWith('\\(') && l.endsWith('\\)')) l = l.slice(2, -2).trim();
+    else if (l.startsWith('\\[') && l.endsWith('\\]')) l = l.slice(2, -2).trim();
+    else if (l.startsWith('$$') && l.endsWith('$$')) l = l.slice(2, -2).trim();
+    else if (l.startsWith('$') && l.endsWith('$')) l = l.slice(1, -1).trim();
+    l = l.replace(/\\\(/g, '').replace(/\\\)/g, '');
+    l = l.replace(/\\\[/g, '').replace(/\\\]/g, '');
+    return l;
+  };
+
   // Text node with potential formula mark
   if (json.type === 'text') {
     text = json.text || '';
-    
+
     // Check for formula marks
     if (json.marks && Array.isArray(json.marks)) {
       for (const mark of json.marks) {
         if (mark.type === 'formula' && mark.attrs?.latex) {
-          // Wrap in $ for LaTeX
-          const latex = mark.attrs.latex.trim();
+          const latex = cleanLatex(mark.attrs.latex);
           text = `$${latex}$`;
-          console.log(`✓ [CONVERT] Formula mark: ${latex}`);
         }
       }
     }
-    
+
     return text;
   }
-  
+
   // Formula node (standalone)
   if (json.type === 'formula' && json.attrs?.latex) {
-    const latex = json.attrs.latex.trim();
+    const latex = cleanLatex(json.attrs.latex);
     text = `$${latex}$`;
-    console.log(`✓ [CONVERT] Formula node: ${latex}`);
     return text;
   }
   

@@ -1136,6 +1136,15 @@ export class PDFGeneratorService {
       text = text.replace(f.placeholder, this.katexRender(f.latex, false));
     }
 
+    // 4-7) Process remaining raw math — protect already-rendered KaTeX spans first
+    // by replacing them with placeholders so steps 4-7 don't double-process them
+    const katexSpans: string[] = [];
+    text = text.replace(/<span class="katex[\s\S]*?<\/span><\/span>/g, (match) => {
+      const ph = `\x00KATEX${katexSpans.length}\x00`;
+      katexSpans.push(match);
+      return ph;
+    });
+
     // 4) \[...\] display math
     text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_match, latex) => this.katexRender(latex, true));
 
@@ -1147,6 +1156,9 @@ export class PDFGeneratorService {
 
     // 7) $...$ inline math
     text = text.replace(/\$([^\$]+?)\$/g, (_match, latex) => this.katexRender(latex, false));
+
+    // Restore KaTeX spans
+    katexSpans.forEach((span, i) => { text = text.replace(`\x00KATEX${i}\x00`, span); });
 
     // 8) Restore <img> placeholders
     for (const img of images) {
