@@ -1809,10 +1809,11 @@ export class PDFGeneratorService {
     };
 
     if (simplex) {
-      // 2 tomonlama: backs normal (1,2,3), fronts reversed (6,5,4)
+      // 2 tomonlama: backs (1,2,3), fronts (4,5,6) — normal tartib
+      // Print 1-3 → flip → print 4-6 → printer face-down: 3 ustda, flip → 1 ustda, 4→1ga tushadi ✅
       allBacks.forEach(drawPair);
-      [...allFronts].reverse().forEach(drawPair);
-      console.log(`✅ [BOOKLET 2-TOMONLAMA] ${allBacks.length} orqa + ${allFronts.length} old (reversed) = ${allBacks.length + allFronts.length} sahifa`);
+      allFronts.forEach(drawPair);
+      console.log(`✅ [BOOKLET 2-TOMONLAMA] ${allBacks.length} orqa + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
     } else {
       // Duplex: Front-Back-Front-Back ketma-ketlikda
       for (let i = 0; i < allFronts.length; i++) {
