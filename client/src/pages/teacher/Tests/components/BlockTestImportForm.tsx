@@ -257,10 +257,13 @@ export function BlockTestImportForm({
               return result;
             };
 
-            const convertText = (t: string) => {
+            const convertText = (t: unknown) => {
               if (!t) return t;
+              // Already a TipTap JSON object from DB (Schema.Types.Mixed)
+              if (typeof t === 'object') return t;
+              if (typeof t !== 'string') return String(t);
               // Agar TipTap JSON string bo'lsa — to'g'ridan-to'g'ri parse qilish
-              if (typeof t === 'string' && t.startsWith('{')) {
+              if (t.startsWith('{')) {
                 try { return JSON.parse(t); } catch { /* not JSON */ }
               }
               // HTML (editor.getHTML() dan kelgan) → TipTap JSON ga o'gir
@@ -1022,8 +1025,8 @@ export function BlockTestImportForm({
                         >
                           <div draggable onDragStart={() => varDragStart(active.id, idx, vi)}
                             onDragEnd={() => { dragVar.current = null; dragOverVar.current = null; }}
-                            className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded flex-shrink-0">
-                            <GripVertical className="w-4 h-4 text-gray-400" />
+                            className="cursor-grab active:cursor-grabbing p-0.5">
+                            <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
                           </div>
                           <button type="button"
                             onClick={() => qUpd(active.id, idx, { correctAnswer: v.letter })}
