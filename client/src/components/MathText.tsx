@@ -59,6 +59,11 @@ function renderMathToHtml(text: string): string {
     // Strip any existing $ delimiters from data-latex to prevent $$...$$ display mode
     while (decoded.startsWith('$$') && decoded.endsWith('$$') && decoded.length > 4) decoded = decoded.slice(2, -2).trim();
     while (decoded.startsWith('$') && decoded.endsWith('$') && decoded.length > 2) decoded = decoded.slice(1, -1).trim();
+    // Strip outer \(...\) or \[...\] delimiters
+    if (decoded.startsWith('\\(') && decoded.endsWith('\\)')) decoded = decoded.slice(2, -2).trim();
+    else if (decoded.startsWith('\\[') && decoded.endsWith('\\]')) decoded = decoded.slice(2, -2).trim();
+    // Strip any remaining nested \( \) delimiters (invalid in KaTeX math mode)
+    decoded = decoded.replace(/\\\(/g, '').replace(/\\\)/g, '');
     if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
       return '$$' + decoded + '$$';
     }

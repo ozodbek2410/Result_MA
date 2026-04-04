@@ -1144,6 +1144,8 @@ export class PDFGeneratorService {
     else if (l.startsWith('\\[') && l.endsWith('\\]')) l = l.slice(2, -2).trim();
     else if (l.startsWith('$$') && l.endsWith('$$')) l = l.slice(2, -2).trim();
     else if (l.startsWith('$') && l.endsWith('$')) l = l.slice(1, -1).trim();
+    // Strip any remaining \( \) delimiters nested inside the formula (invalid in KaTeX math mode)
+    l = l.replace(/\\\(/g, '').replace(/\\\)/g, '');
     try {
       return katex.renderToString(l, { throwOnError: false, displayMode });
     } catch {
