@@ -155,12 +155,15 @@ export function convertTiptapToLatex(json: any): string {
 function convertHtmlWithLatex(html: string): string {
   // Replace <span data-latex="..." ...></span> with $latex$ (decode HTML entities)
   let result = html.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_m, latex) => {
-    let decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
+    let decoded = latex
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&#39;/g, "'").trim();
     // Strip outer \(...\) or \[...\] delimiters
     if (decoded.startsWith('\\(') && decoded.endsWith('\\)')) decoded = decoded.slice(2, -2).trim();
     else if (decoded.startsWith('\\[') && decoded.endsWith('\\]')) decoded = decoded.slice(2, -2).trim();
-    // Strip any nested \( \) delimiters (invalid in KaTeX math mode)
+    // Strip any nested math delimiters (invalid in KaTeX math mode)
     decoded = decoded.replace(/\\\(/g, '').replace(/\\\)/g, '');
+    decoded = decoded.replace(/\\\[/g, '').replace(/\\\]/g, '');
     // Use $$...$$ for multi-line environments (aligned, cases, etc.)
     if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
       return `$$${decoded}$$`;

@@ -1097,10 +1097,15 @@ export class PDFGeneratorService {
 
     // Replace data-latex spans with placeholders (before HTML strip)
     text = text.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_match, latex) => {
-      let decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
+      let decoded = latex
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&#39;/g, "'").trim();
       // Strip outer math delimiters (\(...\), \[...\]) user might have accidentally included
       if (decoded.startsWith('\\(') && decoded.endsWith('\\)')) decoded = decoded.slice(2, -2).trim();
       else if (decoded.startsWith('\\[') && decoded.endsWith('\\]')) decoded = decoded.slice(2, -2).trim();
+      // Strip any nested math delimiters (invalid inside KaTeX math mode)
+      decoded = decoded.replace(/\\\(/g, '').replace(/\\\)/g, '');
+      decoded = decoded.replace(/\\\[/g, '').replace(/\\\]/g, '');
       const ph = `%%FORMULA_${idx++}%%`;
       formulas.push({ placeholder: ph, latex: decoded });
       return ph;
@@ -1161,8 +1166,9 @@ export class PDFGeneratorService {
     else if (l.startsWith('\\[') && l.endsWith('\\]')) l = l.slice(2, -2).trim();
     else if (l.startsWith('$$') && l.endsWith('$$')) l = l.slice(2, -2).trim();
     else if (l.startsWith('$') && l.endsWith('$')) l = l.slice(1, -1).trim();
-    // Strip any remaining \( \) delimiters nested inside the formula (invalid in KaTeX math mode)
+    // Strip any remaining nested math delimiters (invalid inside KaTeX math mode)
     l = l.replace(/\\\(/g, '').replace(/\\\)/g, '');
+    l = l.replace(/\\\[/g, '').replace(/\\\]/g, '');
     try {
       return katex.renderToString(l, { throwOnError: false, displayMode });
     } catch {

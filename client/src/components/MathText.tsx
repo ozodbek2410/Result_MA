@@ -55,15 +55,18 @@ function renderMathToHtml(text: string): string {
 
   // Extract formulas from HTML tags, decode entities and detect display mode
   cleanedText = cleanedText.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_: string, latex: string) => {
-    let decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    let decoded = latex
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&#39;/g, "'");
     // Strip any existing $ delimiters from data-latex to prevent $$...$$ display mode
     while (decoded.startsWith('$$') && decoded.endsWith('$$') && decoded.length > 4) decoded = decoded.slice(2, -2).trim();
     while (decoded.startsWith('$') && decoded.endsWith('$') && decoded.length > 2) decoded = decoded.slice(1, -1).trim();
     // Strip outer \(...\) or \[...\] delimiters
     if (decoded.startsWith('\\(') && decoded.endsWith('\\)')) decoded = decoded.slice(2, -2).trim();
     else if (decoded.startsWith('\\[') && decoded.endsWith('\\]')) decoded = decoded.slice(2, -2).trim();
-    // Strip any remaining nested \( \) delimiters (invalid in KaTeX math mode)
+    // Strip any remaining nested math delimiters (invalid in KaTeX math mode)
     decoded = decoded.replace(/\\\(/g, '').replace(/\\\)/g, '');
+    decoded = decoded.replace(/\\\[/g, '').replace(/\\\]/g, '');
     if (/\\begin\{(aligned|cases|array|matrix|pmatrix|bmatrix|vmatrix|gather|split)/.test(decoded)) {
       return '$$' + decoded + '$$';
     }
