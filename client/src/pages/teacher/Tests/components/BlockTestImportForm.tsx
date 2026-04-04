@@ -189,14 +189,49 @@ export function BlockTestImportForm({
             const pk = subName ? getParserKeyFromSubject(subName) : 'math';
             // DB dan kelgan textni TipTap JSON ga convert qilish
             // DB da 3 xil format bo'lishi mumkin: plain text, \(...\) text, TipTap JSON string
+            // HTML with data-type="formula" spans → TipTap JSON
+            const htmlToTiptapJson = (html: string): Record<string, unknown> => {
+              const div = document.createElement('div');
+              div.innerHTML = html;
+              const processNodes = (parent: Node): unknown[] => {
+                const parts: unknown[] = [];
+                parent.childNodes.forEach(child => {
+                  if (child.nodeType === Node.TEXT_NODE) {
+                    const text = child.textContent || '';
+                    if (text) parts.push({ type: 'text', text });
+                  } else if (child.nodeType === Node.ELEMENT_NODE) {
+                    const el = child as Element;
+                    if (el.getAttribute('data-type') === 'formula') {
+                      const latex = (el.getAttribute('data-latex') || '').trim();
+                      parts.push({ type: 'formula', attrs: { latex } });
+                    } else if (el.tagName === 'IMG') {
+                      parts.push({ type: 'image', attrs: { src: el.getAttribute('src'), alt: null, title: null } });
+                    } else {
+                      parts.push(...processNodes(el));
+                    }
+                  }
+                });
+                return parts;
+              };
+              const paragraphs: unknown[] = [];
+              div.childNodes.forEach(node => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  paragraphs.push({ type: 'paragraph', content: processNodes(node) });
+                } else if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+                  paragraphs.push({ type: 'paragraph', content: [{ type: 'text', text: node.textContent }] });
+                }
+              });
+              return { type: 'doc', content: paragraphs.length ? paragraphs : [{ type: 'paragraph', content: [] }] };
+            };
+
             const convertText = (t: string) => {
               if (!t) return t;
               // Agar TipTap JSON string bo'lsa — to'g'ridan-to'g'ri parse qilish
               if (typeof t === 'string' && t.startsWith('{')) {
                 try { return JSON.parse(t); } catch { /* not JSON */ }
               }
-              // HTML (editor.getHTML() dan kelgan) — as-is qaytarish, RichTextEditor setContent orqali parse qiladi
-              if (t.startsWith('<')) return t;
+              // HTML (editor.getHTML() dan kelgan) → TipTap JSON ga o'gir
+              if (t.startsWith('<')) return htmlToTiptapJson(t);
               // Plain text / LaTeX text → TipTap JSON
               const hasFormula = t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\[');
               if (!hasFormula) return t;
