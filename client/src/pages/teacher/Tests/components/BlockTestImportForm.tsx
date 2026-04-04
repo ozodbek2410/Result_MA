@@ -195,6 +195,8 @@ export function BlockTestImportForm({
               if (typeof t === 'string' && t.startsWith('{')) {
                 try { return JSON.parse(t); } catch { /* not JSON */ }
               }
+              // HTML (editor.getHTML() dan kelgan) — as-is qaytarish, RichTextEditor setContent orqali parse qiladi
+              if (t.startsWith('<')) return t;
               // Plain text / LaTeX text → TipTap JSON
               const hasFormula = t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\[');
               if (!hasFormula) return t;

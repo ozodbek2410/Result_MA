@@ -1088,7 +1088,10 @@ export class PDFGeneratorService {
 
     // Replace data-latex spans with placeholders (before HTML strip)
     text = text.replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_match, latex) => {
-      const decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+      let decoded = latex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
+      // Strip outer math delimiters (\(...\), \[...\]) user might have accidentally included
+      if (decoded.startsWith('\\(') && decoded.endsWith('\\)')) decoded = decoded.slice(2, -2).trim();
+      else if (decoded.startsWith('\\[') && decoded.endsWith('\\]')) decoded = decoded.slice(2, -2).trim();
       const ph = `%%FORMULA_${idx++}%%`;
       formulas.push({ placeholder: ph, latex: decoded });
       return ph;
@@ -1135,10 +1138,16 @@ export class PDFGeneratorService {
    * Render single LaTeX expression to HTML using KaTeX server-side
    */
   private static katexRender(latex: string, displayMode: boolean): string {
+    let l = latex.trim();
+    // Strip outer math delimiters if accidentally included
+    if (l.startsWith('\\(') && l.endsWith('\\)')) l = l.slice(2, -2).trim();
+    else if (l.startsWith('\\[') && l.endsWith('\\]')) l = l.slice(2, -2).trim();
+    else if (l.startsWith('$$') && l.endsWith('$$')) l = l.slice(2, -2).trim();
+    else if (l.startsWith('$') && l.endsWith('$')) l = l.slice(1, -1).trim();
     try {
-      return katex.renderToString(latex.trim(), { throwOnError: false, displayMode });
+      return katex.renderToString(l, { throwOnError: false, displayMode });
     } catch {
-      return latex;
+      return l;
     }
   }
 
