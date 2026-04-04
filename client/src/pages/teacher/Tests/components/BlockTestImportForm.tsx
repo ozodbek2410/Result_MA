@@ -257,13 +257,10 @@ export function BlockTestImportForm({
               return result;
             };
 
-            const convertText = (t: unknown) => {
+            const convertText = (t: string) => {
               if (!t) return t;
-              // Already a TipTap JSON object from DB (Schema.Types.Mixed)
-              if (typeof t === 'object') return t;
-              if (typeof t !== 'string') return String(t);
               // Agar TipTap JSON string bo'lsa — to'g'ridan-to'g'ri parse qilish
-              if (t.startsWith('{')) {
+              if (typeof t === 'string' && t.startsWith('{')) {
                 try { return JSON.parse(t); } catch { /* not JSON */ }
               }
               // HTML (editor.getHTML() dan kelgan) → TipTap JSON ga o'gir
@@ -941,9 +938,9 @@ export function BlockTestImportForm({
                     {/* Question header */}
                     <div className="flex items-start gap-3">
                       <div className="flex flex-col items-center gap-1 mt-2">
-                        <div draggable onDragStart={() => qDragStart(active.id, idx)}
-                          onDragEnd={() => { dragQ.current = null; dragOverQ.current = null; }}
-                          className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded">
+                        <div draggable className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded"
+                          onDragStart={(e) => { e.stopPropagation(); qDragStart(active.id, idx); }}
+                          onDragEnd={() => { dragQ.current = null; dragOverQ.current = null; }}>
                           <GripVertical className="w-4 h-4 text-gray-400" />
                         </div>
                         <span className="font-bold text-gray-700 text-lg">{idx + 1}.</span>
@@ -1023,10 +1020,10 @@ export function BlockTestImportForm({
                           onDrop={() => varDrop(active.id, idx)}
                           className="flex items-center gap-3"
                         >
-                          <div draggable onDragStart={() => varDragStart(active.id, idx, vi)}
-                            onDragEnd={() => { dragVar.current = null; dragOverVar.current = null; }}
-                            className="cursor-grab active:cursor-grabbing p-0.5">
-                            <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <div draggable className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded flex-shrink-0"
+                            onDragStart={(e) => { e.stopPropagation(); varDragStart(active.id, idx, vi); }}
+                            onDragEnd={() => { dragVar.current = null; dragOverVar.current = null; }}>
+                            <GripVertical className="w-4 h-4 text-gray-400" />
                           </div>
                           <button type="button"
                             onClick={() => qUpd(active.id, idx, { correctAnswer: v.letter })}
