@@ -246,9 +246,6 @@ export class PDFGeneratorService {
    * Generate HTML for question images — deduplicated with URL normalization
    */
   private static renderQuestionImages(q: Question): string {
-    // If q.text has inline <img> tags, skip separate images to avoid duplicates
-    if (q.text && /<img\s/i.test(q.text)) return '';
-
     let html = '';
     const seen = new Set<string>();
     const normalize = (url: string) => url.replace(/^https?:\/\/[^/]+/, '').replace(/\\/g, '/');
