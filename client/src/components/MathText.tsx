@@ -69,6 +69,13 @@ function renderMathToHtml(text: string): string {
     }
     return '$' + decoded + '$';
   });
+  // Preserve <img> tags before stripping HTML (restored at the end in the html output)
+  const imgPlaceholders: string[] = [];
+  cleanedText = cleanedText.replace(/<img[^>]*>/gi, (match) => {
+    const ph = `\x00IMG${imgPlaceholders.length}\x00`;
+    imgPlaceholders.push(match);
+    return ph;
+  });
   cleanedText = cleanedText.replace(/<[^>]+>/g, '');
   // Strip pandoc underline markers: [text]{.underline} → text
   cleanedText = cleanedText.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
@@ -231,6 +238,13 @@ function renderMathToHtml(text: string): string {
     } else {
       html += escapeHtml(part);
     }
+  }
+
+  // Restore <img> placeholders (they were preserved through escapeHtml safely)
+  if (imgPlaceholders.length > 0) {
+    imgPlaceholders.forEach((img, i) => {
+      html = html.replace(`\x00IMG${i}\x00`, img);
+    });
   }
 
   return html;
