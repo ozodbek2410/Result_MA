@@ -279,14 +279,16 @@ export function BlockTestImportForm({
             subjectId: sid,
             groupLetter: st.groupLetter || '',
             file: null,
-            questions: (st.questions || []).map((q: ParsedQuestion) => ({
-              text: convertText(q.text || ''),
-              contextText: q.contextText ? convertText(q.contextText) : q.contextText,
+            questions: (st.questions || []).map((q: ParsedQuestion) => {
+              const safeConvert = (t: string) => { try { return convertText(t); } catch (e) { console.warn('convertText error:', e, t?.substring?.(0, 80)); return t; } };
+              return {
+              text: safeConvert(q.text || ''),
+              contextText: q.contextText ? safeConvert(q.contextText) : q.contextText,
               contextImage: q.contextImage,
               contextImageWidth: q.contextImageWidth,
               contextImageHeight: q.contextImageHeight,
               formula: q.formula,
-              variants: (q.variants || []).map(v => ({ ...v, text: convertText(v.text || '') })),
+              variants: (q.variants || []).map(v => ({ ...v, text: safeConvert(v.text || '') })),
               correctAnswer: q.correctAnswer || '',
               points: q.points || 1,
               pinned: q.pinned || false,
@@ -295,7 +297,8 @@ export function BlockTestImportForm({
               imageWidth: q.imageWidth,
               imageHeight: q.imageHeight,
               media: q.media,
-            })),
+            };
+            }),
             error: '',
             status: 'done' as const,
           };
