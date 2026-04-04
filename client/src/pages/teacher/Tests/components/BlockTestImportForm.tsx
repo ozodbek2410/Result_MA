@@ -202,12 +202,7 @@ export function BlockTestImportForm({
                   } else if (child.nodeType === Node.ELEMENT_NODE) {
                     const el = child as Element;
                     if (el.getAttribute('data-type') === 'formula') {
-                      let latex = (el.getAttribute('data-latex') || '').trim();
-                      // Strip outer/nested math delimiters from data-latex
-                      if (latex.startsWith('\\(') && latex.endsWith('\\)')) latex = latex.slice(2, -2).trim();
-                      else if (latex.startsWith('\\[') && latex.endsWith('\\]')) latex = latex.slice(2, -2).trim();
-                      latex = latex.replace(/\\\(/g, '').replace(/\\\)/g, '');
-                      latex = latex.replace(/\\\[/g, '').replace(/\\\]/g, '');
+                      const latex = (el.getAttribute('data-latex') || '').trim();
                       parts.push({ type: 'formula', attrs: { latex } });
                     } else if (el.tagName === 'IMG') {
                       parts.push({ type: 'image', attrs: { src: el.getAttribute('src'), alt: null, title: null } });
