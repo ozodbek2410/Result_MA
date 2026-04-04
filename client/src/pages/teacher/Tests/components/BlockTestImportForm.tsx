@@ -983,64 +983,78 @@ export function BlockTestImportForm({
                         </div>
 
                         {/* Images */}
-                        <div className="flex flex-wrap gap-3 items-start">
-                          {/* imageUrl */}
-                          {(q.image || q.imageUrl) && (
-                            <div className="relative inline-block">
-                              <img src={q.imageUrl || q.image} alt="Question"
-                                className="rounded-lg border-2 border-gray-200"
-                                style={{ width: q.imageWidth ?? undefined, maxWidth: '300px', height: 'auto' }}
-                              />
-                              <button type="button" onClick={() => qUpd(active.id, idx, { image: undefined, imageUrl: undefined })}
-                                className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                        {(() => {
+                          const textStr = typeof q.text === 'string' ? q.text : '';
+                          const inlineMatches = textStr.includes('<img')
+                            ? [...textStr.matchAll(/<img[^>]+src="([^"]+)"[^>]*>/gi)] : [];
+                          type ImgEntry = { url: string; source: 'imageUrl' | 'media' | 'inline'; mediaIdx?: number; tag?: string };
+                          const allImgs: ImgEntry[] = [
+                            ...(q.imageUrl || q.image ? [{ url: (q.imageUrl || q.image)!, source: 'imageUrl' as const }] : []),
+                            ...(q.media || []).map((m, mi) => ({ url: m.url, source: 'media' as const, mediaIdx: mi })),
+                            ...inlineMatches.map(m => ({ url: m[1], source: 'inline' as const, tag: m[0] })),
+                          ];
+
+                          const moveImg = (from: number, to: number) => {
+                            if (to < 0 || to >= allImgs.length) return;
+                            const reordered = [...allImgs];
+                            const [item] = reordered.splice(from, 1);
+                            reordered.splice(to, 0, item);
+                            let newText = textStr;
+                            for (const m of inlineMatches) newText = newText.replace(m[0], '');
+                            qUpd(active.id, idx, {
+                              image: undefined, imageUrl: undefined,
+                              media: reordered.map(img => ({ type: 'image', url: img.url, position: 'above' })),
+                              ...(inlineMatches.length > 0 ? { text: newText } : {}),
+                            });
+                          };
+
+                          const deleteImg = (ii: number) => {
+                            const img = allImgs[ii];
+                            if (img.source === 'imageUrl') {
+                              qUpd(active.id, idx, { image: undefined, imageUrl: undefined });
+                            } else if (img.source === 'media') {
+                              qUpd(active.id, idx, { media: q.media!.filter((_, i) => i !== img.mediaIdx) });
+                            } else {
+                              qUpd(active.id, idx, { text: textStr.replace(img.tag!, '') });
+                            }
+                          };
+
+                          return (
+                            <div className="flex flex-col gap-3">
+                              {allImgs.map((img, ii) => (
+                                <div key={`${img.source}-${ii}`} className="flex items-start gap-2">
+                                  <div className="flex flex-col gap-1 pt-1">
+                                    <button type="button" onClick={() => moveImg(ii, ii - 1)} disabled={ii === 0}
+                                      className="p-1 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-30">
+                                      <ChevronUp className="w-4 h-4" />
+                                    </button>
+                                    <button type="button" onClick={() => moveImg(ii, ii + 1)} disabled={ii === allImgs.length - 1}
+                                      className="p-1 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-30">
+                                      <ChevronDown className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                  <div className="relative inline-block">
+                                    <img src={img.url} alt={`Rasm ${ii + 1}`}
+                                      className="rounded-lg border-2 border-gray-200"
+                                      style={{ maxWidth: '300px', height: 'auto' }}
+                                    />
+                                    <button type="button" onClick={() => deleteImg(ii)}
+                                      className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                              <label className="cursor-pointer self-start">
+                                <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
+                                  <ImagePlus className="w-5 h-5 text-gray-500" />
+                                  <span className="text-sm text-gray-600">Rasm qo'shish</span>
+                                </div>
+                                <input type="file" accept="image/*" className="hidden" onChange={e => imgUpload(active.id, idx, e)} />
+                              </label>
                             </div>
-                          )}
-                          {/* media[] images */}
-                          {q.media && q.media.map((m, mi) => (
-                            <div key={mi} className="relative inline-block">
-                              <img src={m.url} alt={`Media ${mi + 1}`}
-                                className="rounded-lg border-2 border-orange-300"
-                                style={{ maxWidth: '300px', height: 'auto' }}
-                              />
-                              <button type="button"
-                                onClick={() => qUpd(active.id, idx, { media: q.media!.filter((_, i) => i !== mi) })}
-                                className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                          {/* inline <img> inside q.text HTML */}
-                          {(() => {
-                            const textStr = typeof q.text === 'string' ? q.text : '';
-                            if (!textStr.includes('<img')) return null;
-                            const matches = [...textStr.matchAll(/<img[^>]+src="([^"]+)"[^>]*>/gi)];
-                            return matches.map((m, i) => (
-                              <div key={`inline-${i}`} className="relative inline-block">
-                                <img src={m[1]} alt={`Inline ${i + 1}`}
-                                  className="rounded-lg border-2 border-blue-300"
-                                  style={{ maxWidth: '300px', height: 'auto' }}
-                                />
-                                <button type="button"
-                                  onClick={() => qUpd(active.id, idx, { text: textStr.replace(m[0], '') })}
-                                  className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ));
-                          })()}
-                          {/* Upload button (only if no imageUrl) */}
-                          {!q.image && !q.imageUrl && (
-                            <label className="cursor-pointer">
-                              <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
-                                <ImagePlus className="w-5 h-5 text-gray-500" />
-                                <span className="text-sm text-gray-600">Rasm qo'shish</span>
-                              </div>
-                              <input type="file" accept="image/*" className="hidden" onChange={e => imgUpload(active.id, idx, e)} />
-                            </label>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </div>
                       <button onClick={() => removeQuestion(active.id, idx)}
                         className="text-red-500 hover:text-red-700 p-2" title="Savolni o'chirish">
