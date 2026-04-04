@@ -26,7 +26,8 @@ export function buildGrid(warpedWidth: number, totalQuestions: number): GridCell
   const layout = computeLayout(totalQuestions);
   const mmToPx = (mm: number) => mm * warpedWidth / SPAN_W;
 
-  const GRID_OFFSET_MM = SHEET.BUBBLE + 1.0;
+  // M-20 FIX: paddingTop(1mm) + col_header(BUBBLE=5mm) + col_header_mb(1.5mm) = 7.5mm
+  const GRID_OFFSET_MM = SHEET.BUBBLE + 2.5;
   const gridLeftPx = mmToPx(SHEET.PAGE_PAD - CORNER_CENTER);
   const gridTopPx = mmToPx(SHEET.PAGE_PAD_TOP + SHEET.HEADER_H + GRID_OFFSET_MM - CORNER_CENTER);
   const colWPx = mmToPx(COL_W_MM);
@@ -99,7 +100,8 @@ export function calibrateGrid(
 
     const marks = findTimingMarks(binary, width, height, tmXLeft, tmXRight, tmY1, tmY2, bubbleR);
 
-    if (marks.length >= 5) {
+    // M-21 FIX: 5 → 3 — kam timing mark bo'lsa ham calibration ishlaydi
+    if (marks.length >= 3) {
       const actualTop = marks[0];
       const diffs = marks.slice(1).map((m, i) => m - marks[i]);
       diffs.sort((a, b) => a - b);

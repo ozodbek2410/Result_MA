@@ -1,6 +1,11 @@
 /**
  * Fill detection — bubble to'ldirilganlikni aniqlash.
- * Port: server/python/omr/fill.py → TypeScript
+ * Synced with: server/python/omr/fill.py (M-14, M-15, M-16, M-18 FIX)
+ *
+ * 3 ta yondashuv:
+ * 1. Inner sampling (r * 0.78) — bubble chizig'ini o'tkazib yuborish
+ * 2. Per-row baseline subtraction — soya/yoritish farqi avtomatik yo'qoladi
+ * 3. Adaptive threshold — qora va ko'k qalam ikkalasini ham qo'llab-quvvatlaydi
  */
 import type { GridCell } from './gridBuilder';
 
@@ -11,11 +16,11 @@ export interface FillResult {
   candidates: string[];
 }
 
+// Python fill.py va omr_config.json bilan sinxron
 const FILL_INNER_RATIO = 0.78;
-const PRIMARY_THRESHOLD = 0.50;
-const RATIO_MIN_FILL = 0.48;
-const RATIO_MULTIPLIER = 1.8;
-const ABS_MIN = 0.42;
+const FILL_RATIO_THRESHOLD = 0.30; // omr_config.json: fill_ratio_threshold
+// M-14 FIX: 0.50 → 0.30 — past kontrast (ko'k qalam) marklar ham topiladi
+const PRIMARY_THRESHOLD = 0.30;
 
 /**
  * Har bir savol uchun javobni aniqlash.
@@ -81,7 +86,21 @@ export function sampleFill(
   return total > 0 ? filled / total : 0;
 }
 
-/** Bitta savol uchun javob tanlash — adaptive threshold */
+/**
+ * Bitta savol uchun javobni tanlash.
+ * Python fill.py _pick_answer() bilan to'liq sinxron.
+ *
+ * Algoritm:
+ * 1. Per-row baseline subtraction: min fill = "bo'sh bubble darajasi"
+ * 2. adjusted fill = fill - baseline
+ * 3. Agar max_adjusted < 0.30 → ratio_mode (past kontrast: ko'k qalam, soya)
+ * 4. ratio_mode da: max_fill >= 0.30 AND ratio >= 1.5 → haqiqiy belgi
+ * 5. Candidate tanlash → multi-select tekshirish (0.75 threshold)
+ *
+ * Qora qalam:  fill ≈ 0.60–0.90, ajralib turadi, baseline path o'tadi
+ * Ko'k qalam:  fill ≈ 0.30–0.50, ratio_mode orqali topiladi
+ * Bo'sh:        fill ≈ 0.03–0.10, barcha tekshiruvlardan o'tmaydi
+ */
 function pickAnswer(qCells: GridCell[]): FillResult {
   const fills = qCells.map(c => c.fill ?? 0);
   const baseline = Math.min(...fills);
@@ -90,53 +109,60 @@ function pickAnswer(qCells: GridCell[]): FillResult {
 
   const EMPTY: FillResult = { letter: null, status: 'empty', confidence: 0, candidates: [] };
 
-  // Ratio fallback
-  let ratioMode = false;
+  // Ko'k qalam va soyali rasmlarda adjusted farq kichik bo'ladi.
+  // M-14/M-15 FIX: 0.50 → 0.30
   if (maxAdj < PRIMARY_THRESHOLD) {
-    const maxFill = Math.max(...fills);
-    const maxIdx = fills.indexOf(maxFill);
-    const others = fills.filter((_, i) => i !== maxIdx);
+    const maxFillVal = Math.max(...fills);
+    const maxFillIdx = fills.indexOf(maxFillVal);
+    const others = fills.filter((_, i) => i !== maxFillIdx);
     const avgOthers = others.length > 0 ? others.reduce((a, b) => a + b, 0) / others.length : 0;
 
-    if (maxFill >= RATIO_MIN_FILL && avgOthers > 0.05 && maxFill / avgOthers >= RATIO_MULTIPLIER) {
-      ratioMode = true;
-    } else {
-      return EMPTY;
+    // M-15 FIX: abs 0.48→0.30, avg_others 0.05→0.03, ratio 1.8→1.5
+    // Ko'k qalam: fill ~0.35, others ~0.08, ratio ~4.4 ≥ 1.5 → topiladi
+    if (maxFillVal >= FILL_RATIO_THRESHOLD && avgOthers > 0.03 && maxFillVal / avgOthers >= 1.5) {
+      // ratio_mode: adjusted thresholdlar pastroq
+      const relMinAdj = 0.12;
+      const relativeThreshold = Math.max(maxAdj * 0.60, relMinAdj);
+      const candidates = qCells.filter((_, i) => adjusted[i] >= relativeThreshold && adjusted[i] >= relMinAdj);
+      if (candidates.length === 0) return EMPTY;
+      return finalize(candidates, baseline, maxAdj, fills);
     }
+    return EMPTY;
   }
 
-  // Absolute threshold
-  const maxFill = Math.max(...fills);
-  if (maxFill < ABS_MIN && maxAdj < 0.35) return EMPTY;
+  // Normal mode: max_adjusted >= 0.30 — ajralib turuvchi belgi
+  // M-18 FIX: ikki marta tekshiruv bitta shartga birlashtirildi
+  if (Math.max(...fills) < FILL_RATIO_THRESHOLD) return EMPTY;
 
-  // Candidate topish
-  const relMinAdj = ratioMode ? 0.15 : 0.20;
+  const relMinAdj = 0.18;
   const relativeThreshold = Math.max(maxAdj * 0.60, relMinAdj);
 
-  const candidates: GridCell[] = [];
-  for (let i = 0; i < qCells.length; i++) {
-    if (adjusted[i] >= relativeThreshold && adjusted[i] >= relMinAdj) {
-      candidates.push(qCells[i]);
-    }
-  }
-
+  const candidates = qCells.filter((_, i) => adjusted[i] >= relativeThreshold && adjusted[i] >= relMinAdj);
   if (candidates.length === 0) return EMPTY;
 
+  return finalize(candidates, baseline, maxAdj, fills);
+}
+
+/**
+ * Candidate ro'yxatidan yakuniy javob tanlash.
+ * Python fill.py _finalize() bilan sinxron.
+ */
+function finalize(candidates: GridCell[], baseline: number, maxAdj: number, allFills: number[]): FillResult {
   if (candidates.length === 1) {
     const letter = candidates[0].letter;
     return {
       letter,
       status: 'ok',
-      confidence: calcConfidence(candidates[0].fill ?? 0, fills),
+      confidence: calcConfidence(candidates[0].fill ?? 0, allFills),
       candidates: [letter],
     };
   }
 
-  // Multi-select tekshirish
+  // M-16 FIX: 0.85 → 0.75 — ikkita aniq belgi multi sifatida aniqlanadi
   const sorted = [...candidates].sort((a, b) => (b.fill ?? 0) - (a.fill ?? 0));
   const candAdj = sorted.map(c => (c.fill ?? 0) - baseline);
 
-  if (candAdj.length >= 2 && candAdj[1] >= maxAdj * 0.85) {
+  if (candAdj.length >= 2 && candAdj[1] >= maxAdj * 0.75) {
     return {
       letter: null,
       status: 'multi',
@@ -149,7 +175,7 @@ function pickAnswer(qCells: GridCell[]): FillResult {
   return {
     letter,
     status: 'ok',
-    confidence: calcConfidence(sorted[0].fill ?? 0, fills),
+    confidence: calcConfidence(sorted[0].fill ?? 0, allFills),
     candidates: [letter],
   };
 }

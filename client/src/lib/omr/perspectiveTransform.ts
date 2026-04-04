@@ -95,8 +95,8 @@ function computeHomography(
 /**
  * Warp source image using 4 corner points to a corrected rectangle.
  *
- * Output dimensions: ~1000px width, height = A4 ratio (285/198).
- * Matches Python omr_hybrid.py: SPAN_W_MM=198, SPAN_H_MM=285.
+ * Output dimensions: ~1000px width, height = A4 ratio (283/196).
+ * Matches Python config.py: SPAN_W=196mm, SPAN_H=283mm.
  *
  * @param sourceCanvas - Canvas with the source image (camera frame crop)
  * @param corners - 4 detected corner marks
@@ -108,8 +108,9 @@ export function warpPerspective(
   outputWidth = 1000
 ): WarpResult {
   const { tl, tr, bl, br } = corners;
-  const SPAN_W_MM = 198.0;
-  const SPAN_H_MM = 285.0;
+  // Python config.py bilan sinxron: 210 - 2*7 = 196, 297 - 2*7 = 283
+  const SPAN_W_MM = 196.0;
+  const SPAN_H_MM = 283.0;
   const outputHeight = Math.round(outputWidth * (SPAN_H_MM / SPAN_W_MM));
 
   // Source points (detected corners)
@@ -195,8 +196,8 @@ export function warpPerspectiveQuick(
   corners: { tl: CornerMark; tr: CornerMark; bl: CornerMark; br: CornerMark },
   outputWidth = 1000
 ): WarpResult {
-  const SPAN_H_MM = 285.0;
-  const SPAN_W_MM = 198.0;
+  const SPAN_H_MM = 283.0;
+  const SPAN_W_MM = 196.0;
   const outputHeight = Math.round(outputWidth * (SPAN_H_MM / SPAN_W_MM));
 
   const { tl, tr, bl, br } = corners;

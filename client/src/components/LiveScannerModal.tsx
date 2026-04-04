@@ -53,7 +53,7 @@ interface LiveScannerModalProps {
 const A4_RATIO = 297 / 210;
 const FRAME_W_RATIO = 0.88;
 const ANALYSIS_W = 480;
-const STABLE_FRAMES_NEEDED = 5; // ~1s — ishonchli capture
+const STABLE_FRAMES_NEEDED = 10; // ~2s — barcha telefonlarda ishonchli capture
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -173,8 +173,14 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         clearInterval(progressInterval);
         setProcessingProgress(100);
 
-        if (scanResult.success) {
-          // Server ga natija yuborish (rasm emas, faqat javoblar)
+        // Client scan muvaffaqiyatli VA yetarli javob topilgan bo'lsa
+        // Agar answered < 10% → iPhone HDR / ko'k qalam muammosi bo'lishi mumkin → server fallback
+        const answeredPct = scanResult.stats.total > 0
+          ? scanResult.stats.answered / scanResult.stats.total
+          : 0;
+
+        if (scanResult.success && answeredPct >= 0.10) {
+          // Yetarli javob topildi — client natijasini ishlatish
           const blob = await new Promise<Blob>(resolve =>
             canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92),
           );
@@ -220,8 +226,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           onClose();
           return;
         } else {
-          // Client scan xato — server fallback
-          console.warn('[OMR] Client scan failed, falling back to server:', scanResult.error);
+          // Client scan xato yoki answered < 10% — server fallback
+          console.warn('[OMR] Client scan insufficient, falling back to server:',
+            scanResult.success ? `answered ${Math.round(answeredPct * 100)}%` : scanResult.error);
         }
       }
 
