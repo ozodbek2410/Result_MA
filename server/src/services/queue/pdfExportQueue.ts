@@ -250,6 +250,10 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
             media: q.media,
             imageWidth: q.imageWidth,
             imageHeight: q.imageHeight,
+            contextText: q.contextText || '',
+            contextImage: q.contextImage || '',
+            contextImageWidth: q.contextImageWidth,
+            contextImageHeight: q.contextImageHeight,
           };
         });
         
