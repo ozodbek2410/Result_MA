@@ -229,34 +229,6 @@ export function BlockTestImportForm({
               return { type: 'doc', content: paragraphs.length ? paragraphs : [{ type: 'paragraph', content: [] }] };
             };
 
-            // Strip nested \(...\) and \[...\] delimiters inside outer math regions
-            // e.g. \(\frac{\(6^{10}\)}{...}\) → \(\frac{6^{10}}{...}\)
-            const cleanNestedDelims = (s: string): string => {
-              let result = '';
-              let i = 0;
-              while (i < s.length) {
-                if (i + 1 < s.length && s[i] === '\\' && (s[i + 1] === '(' || s[i + 1] === '[')) {
-                  const openCh = s[i + 1];
-                  const closeCh = openCh === '(' ? ')' : ']';
-                  let depth = 1;
-                  let j = i + 2;
-                  let inner = '';
-                  while (j < s.length) {
-                    if (j + 1 < s.length && s[j] === '\\') {
-                      if (s[j + 1] === openCh) { depth++; j += 2; continue; }
-                      if (s[j + 1] === closeCh) { depth--; if (depth === 0) { j += 2; break; } else { j += 2; continue; } }
-                    }
-                    inner += s[j++];
-                  }
-                  result += `\\${openCh}${inner}\\${closeCh}`;
-                  i = j;
-                } else {
-                  result += s[i++];
-                }
-              }
-              return result;
-            };
-
             const convertText = (t: string) => {
               if (!t) return t;
               // Agar TipTap JSON string bo'lsa — to'g'ridan-to'g'ri parse qilish
@@ -268,8 +240,6 @@ export function BlockTestImportForm({
               // Plain text / LaTeX text → TipTap JSON
               const hasFormula = t.includes('^') || t.includes('_') || t.includes('\\(') || t.includes('\\[');
               if (!hasFormula) return t;
-              // \(...\) yoki \[...\] delimiterlari bor — nested tozalab LaTeX converter ishlatish
-              if (t.includes('\\(') || t.includes('\\[')) return convertLatexToTiptapJson(cleanNestedDelims(t));
               if (pk === 'physics') return convertPhysicsToTiptapJson(t);
               if (t.includes('^') || t.includes('_')) return convertChemistryToTiptapJson(t);
               return convertLatexToTiptapJson(t);
