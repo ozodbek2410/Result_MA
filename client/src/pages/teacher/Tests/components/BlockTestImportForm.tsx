@@ -933,14 +933,16 @@ export function BlockTestImportForm({
               <div className="space-y-4">
                 {active.questions.map((q, idx) => (
                   <div key={idx} className={`border-2 rounded-xl p-5 space-y-4 ${q.pinned ? 'border-amber-400 bg-amber-50/30' : 'border-gray-200'}`}
-                    draggable onDragStart={() => qDragStart(active.id, idx)}
                     onDragOver={(e) => qDragOver(e, active.id, idx)}
-                    onDrop={() => qDrop(active.id)}
-                    onDragEnd={() => { dragQ.current = null; dragOverQ.current = null; }}>
+                    onDrop={() => qDrop(active.id)}>
                     {/* Question header */}
                     <div className="flex items-start gap-3">
-                      <div className="flex flex-col items-center gap-1 mt-2 cursor-grab active:cursor-grabbing">
-                        <GripVertical className="w-4 h-4 text-gray-400" />
+                      <div className="flex flex-col items-center gap-1 mt-2">
+                        <div draggable onDragStart={() => qDragStart(active.id, idx)}
+                          onDragEnd={() => { dragQ.current = null; dragOverQ.current = null; }}
+                          className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded">
+                          <GripVertical className="w-4 h-4 text-gray-400" />
+                        </div>
                         <span className="font-bold text-gray-700 text-lg">{idx + 1}.</span>
                         <button type="button" onClick={() => qUpd(active.id, idx, { pinned: !q.pinned })}
                           title={q.pinned ? 'Joylashuv qulflangan' : 'Joylashuvni qulflash'}
