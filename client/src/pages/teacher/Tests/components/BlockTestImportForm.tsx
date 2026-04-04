@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import {
   Plus, X, Upload, CheckCircle, AlertCircle, Loader2,
-  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight, FileUp, GripVertical,
+  Trash2, ImagePlus, Shuffle, Pin, ChevronLeft, ChevronRight, FileUp, GripVertical, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
@@ -626,31 +626,16 @@ export function BlockTestImportForm({
     }));
   };
 
-  // Drag-and-drop for questions
-  const dragQ = useRef<{ tabId: string; qi: number } | null>(null);
-  const dragOverQ = useRef<{ tabId: string; qi: number } | null>(null);
-
-  const qDragStart = (tabId: string, qi: number) => { dragQ.current = { tabId, qi }; };
-  const qDragOver = (e: React.DragEvent, tabId: string, qi: number) => {
-    if (!dragQ.current) return;
-    e.preventDefault();
-    dragOverQ.current = { tabId, qi };
-  };
-  const qDrop = (tabId: string) => {
-    if (!dragQ.current || !dragOverQ.current) return;
-    if (dragQ.current.tabId !== tabId || dragOverQ.current.tabId !== tabId) return;
-    const from = dragQ.current.qi;
-    const to = dragOverQ.current.qi;
-    if (from === to) { dragQ.current = null; dragOverQ.current = null; return; }
+  // Move question up/down
+  const moveQuestion = (tabId: string, from: number, to: number) => {
     setTabs(prev => prev.map(t => {
       if (t.id !== tabId) return t;
       const qs = [...t.questions];
+      if (to < 0 || to >= qs.length) return t;
       const [moved] = qs.splice(from, 1);
       qs.splice(to, 0, moved);
       return { ...t, questions: qs };
     }));
-    dragQ.current = null;
-    dragOverQ.current = null;
   };
 
   // Drag-and-drop for variants
@@ -935,18 +920,19 @@ export function BlockTestImportForm({
 
               <div className="space-y-4">
                 {active.questions.map((q, idx) => (
-                  <div key={idx} className={`border-2 rounded-xl p-5 space-y-4 ${q.pinned ? 'border-amber-400 bg-amber-50/30' : 'border-gray-200'}`}
-                    onDragOver={(e) => qDragOver(e, active.id, idx)}
-                    onDrop={() => qDrop(active.id)}>
+                  <div key={idx} className={`border-2 rounded-xl p-5 space-y-4 ${q.pinned ? 'border-amber-400 bg-amber-50/30' : 'border-gray-200'}`}>
                     {/* Question header */}
                     <div className="flex items-start gap-3">
-                      <div className="flex flex-col items-center gap-1 mt-2">
-                        <div draggable className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded"
-                          onDragStart={(e) => { e.stopPropagation(); qDragStart(active.id, idx); }}
-                          onDragEnd={() => { dragQ.current = null; dragOverQ.current = null; }}>
-                          <GripVertical className="w-4 h-4 text-gray-400" />
-                        </div>
+                      <div className="flex flex-col items-center gap-0.5 mt-1">
+                        <button type="button" onClick={() => moveQuestion(active.id, idx, idx - 1)} disabled={idx === 0}
+                          className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed" title="Yuqoriga">
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
                         <span className="font-bold text-gray-700 text-lg">{idx + 1}.</span>
+                        <button type="button" onClick={() => moveQuestion(active.id, idx, idx + 1)} disabled={idx === active.questions.length - 1}
+                          className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed" title="Pastga">
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
                         <button type="button" onClick={() => qUpd(active.id, idx, { pinned: !q.pinned })}
                           title={q.pinned ? 'Joylashuv qulflangan' : 'Joylashuvni qulflash'}
                           className={`p-1 rounded transition-all ${q.pinned ? 'text-amber-600 bg-amber-100' : 'text-gray-300 hover:text-amber-500'}`}>
