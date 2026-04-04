@@ -982,27 +982,65 @@ export function BlockTestImportForm({
                           />
                         </div>
 
-                        {/* Image */}
-                        {(q.image || q.imageUrl) ? (
-                          <div className="relative inline-block">
-                            <img src={q.imageUrl || q.image} alt="Question"
-                              className="rounded-lg border-2 border-gray-200"
-                              style={{ width: q.imageWidth ?? undefined, maxWidth: '100%', height: 'auto' }}
-                            />
-                            <button type="button" onClick={() => qUpd(active.id, idx, { image: undefined, imageUrl: undefined })}
-                              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="cursor-pointer">
-                            <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
-                              <ImagePlus className="w-5 h-5 text-gray-500" />
-                              <span className="text-sm text-gray-600">Rasm qo'shish</span>
+                        {/* Images */}
+                        <div className="flex flex-wrap gap-3 items-start">
+                          {/* imageUrl */}
+                          {(q.image || q.imageUrl) && (
+                            <div className="relative inline-block">
+                              <img src={q.imageUrl || q.image} alt="Question"
+                                className="rounded-lg border-2 border-gray-200"
+                                style={{ width: q.imageWidth ?? undefined, maxWidth: '300px', height: 'auto' }}
+                              />
+                              <button type="button" onClick={() => qUpd(active.id, idx, { image: undefined, imageUrl: undefined })}
+                                className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
-                            <input type="file" accept="image/*" className="hidden" onChange={e => imgUpload(active.id, idx, e)} />
-                          </label>
-                        )}
+                          )}
+                          {/* media[] images */}
+                          {q.media && q.media.map((m, mi) => (
+                            <div key={mi} className="relative inline-block">
+                              <img src={m.url} alt={`Media ${mi + 1}`}
+                                className="rounded-lg border-2 border-orange-300"
+                                style={{ maxWidth: '300px', height: 'auto' }}
+                              />
+                              <button type="button"
+                                onClick={() => qUpd(active.id, idx, { media: q.media!.filter((_, i) => i !== mi) })}
+                                className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                          {/* inline <img> inside q.text HTML */}
+                          {(() => {
+                            const textStr = typeof q.text === 'string' ? q.text : '';
+                            if (!textStr.includes('<img')) return null;
+                            const matches = [...textStr.matchAll(/<img[^>]+src="([^"]+)"[^>]*>/gi)];
+                            return matches.map((m, i) => (
+                              <div key={`inline-${i}`} className="relative inline-block">
+                                <img src={m[1]} alt={`Inline ${i + 1}`}
+                                  className="rounded-lg border-2 border-blue-300"
+                                  style={{ maxWidth: '300px', height: 'auto' }}
+                                />
+                                <button type="button"
+                                  onClick={() => qUpd(active.id, idx, { text: textStr.replace(m[0], '') })}
+                                  className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-lg">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ));
+                          })()}
+                          {/* Upload button (only if no imageUrl) */}
+                          {!q.image && !q.imageUrl && (
+                            <label className="cursor-pointer">
+                              <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
+                                <ImagePlus className="w-5 h-5 text-gray-500" />
+                                <span className="text-sm text-gray-600">Rasm qo'shish</span>
+                              </div>
+                              <input type="file" accept="image/*" className="hidden" onChange={e => imgUpload(active.id, idx, e)} />
+                            </label>
+                          )}
+                        </div>
                       </div>
                       <button onClick={() => removeQuestion(active.id, idx)}
                         className="text-red-500 hover:text-red-700 p-2" title="Savolni o'chirish">
