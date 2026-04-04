@@ -632,6 +632,7 @@ export function BlockTestImportForm({
 
   const qDragStart = (tabId: string, qi: number) => { dragQ.current = { tabId, qi }; };
   const qDragOver = (e: React.DragEvent, tabId: string, qi: number) => {
+    if (!dragQ.current) return;
     e.preventDefault();
     dragOverQ.current = { tabId, qi };
   };
@@ -661,7 +662,9 @@ export function BlockTestImportForm({
   };
 
   const varDragOver = (e: React.DragEvent, tabId: string, qi: number, vi: number) => {
+    if (!dragVar.current) return;
     e.preventDefault();
+    e.stopPropagation();
     dragOverVar.current = { tabId, qi, vi };
   };
 
