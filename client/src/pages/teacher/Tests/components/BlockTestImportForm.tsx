@@ -626,6 +626,32 @@ export function BlockTestImportForm({
     }));
   };
 
+  // Drag-and-drop for questions
+  const dragQ = useRef<{ tabId: string; qi: number } | null>(null);
+  const dragOverQ = useRef<{ tabId: string; qi: number } | null>(null);
+
+  const qDragStart = (tabId: string, qi: number) => { dragQ.current = { tabId, qi }; };
+  const qDragOver = (e: React.DragEvent, tabId: string, qi: number) => {
+    e.preventDefault();
+    dragOverQ.current = { tabId, qi };
+  };
+  const qDrop = (tabId: string) => {
+    if (!dragQ.current || !dragOverQ.current) return;
+    if (dragQ.current.tabId !== tabId || dragOverQ.current.tabId !== tabId) return;
+    const from = dragQ.current.qi;
+    const to = dragOverQ.current.qi;
+    if (from === to) { dragQ.current = null; dragOverQ.current = null; return; }
+    setTabs(prev => prev.map(t => {
+      if (t.id !== tabId) return t;
+      const qs = [...t.questions];
+      const [moved] = qs.splice(from, 1);
+      qs.splice(to, 0, moved);
+      return { ...t, questions: qs };
+    }));
+    dragQ.current = null;
+    dragOverQ.current = null;
+  };
+
   // Drag-and-drop for variants
   const dragVar = useRef<{ tabId: string; qi: number; vi: number } | null>(null);
   const dragOverVar = useRef<{ tabId: string; qi: number; vi: number } | null>(null);
@@ -906,10 +932,15 @@ export function BlockTestImportForm({
 
               <div className="space-y-4">
                 {active.questions.map((q, idx) => (
-                  <div key={idx} className={`border-2 rounded-xl p-5 space-y-4 ${q.pinned ? 'border-amber-400 bg-amber-50/30' : 'border-gray-200'}`}>
+                  <div key={idx} className={`border-2 rounded-xl p-5 space-y-4 ${q.pinned ? 'border-amber-400 bg-amber-50/30' : 'border-gray-200'}`}
+                    draggable onDragStart={() => qDragStart(active.id, idx)}
+                    onDragOver={(e) => qDragOver(e, active.id, idx)}
+                    onDrop={() => qDrop(active.id)}
+                    onDragEnd={() => { dragQ.current = null; dragOverQ.current = null; }}>
                     {/* Question header */}
                     <div className="flex items-start gap-3">
-                      <div className="flex flex-col items-center gap-1 mt-2">
+                      <div className="flex flex-col items-center gap-1 mt-2 cursor-grab active:cursor-grabbing">
+                        <GripVertical className="w-4 h-4 text-gray-400" />
                         <span className="font-bold text-gray-700 text-lg">{idx + 1}.</span>
                         <button type="button" onClick={() => qUpd(active.id, idx, { pinned: !q.pinned })}
                           title={q.pinned ? 'Joylashuv qulflangan' : 'Joylashuvni qulflash'}
