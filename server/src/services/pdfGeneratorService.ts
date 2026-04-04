@@ -167,6 +167,15 @@ export class PDFGeneratorService {
           if (m.url) urls.add(m.url);
         }
       }
+      // Also preload inline images from q.text HTML
+      if (q.text) {
+        const imgRe = /src=["']([^"']+)["']/gi;
+        let m;
+        while ((m = imgRe.exec(q.text)) !== null) {
+          const src = m[1];
+          if (!src.startsWith('data:') && !src.startsWith('blob:')) urls.add(src);
+        }
+      }
     }
 
     for (const url of urls) {
@@ -1097,12 +1106,20 @@ export class PDFGeneratorService {
       return ph;
     });
 
-    // 1b) Preserve <img> tags with placeholders
+    // 1b) Preserve <img> tags with placeholders — resolve src to data URI for Playwright
     const images: { placeholder: string; html: string }[] = [];
     let imgIdx = 0;
-    text = text.replace(/<img[^>]*>/g, (match) => {
+    text = text.replace(/<img([^>]*)>/gi, (_match, attrs: string) => {
+      const srcMatch = /src=["']([^"']+)["']/i.exec(attrs);
+      let resolvedAttrs = attrs;
+      if (srcMatch) {
+        const resolved = this.resolveImageForPdf(srcMatch[1]);
+        if (resolved !== srcMatch[1]) {
+          resolvedAttrs = attrs.replace(srcMatch[1], resolved);
+        }
+      }
       const ph = `%%IMG_${imgIdx++}%%`;
-      images.push({ placeholder: ph, html: match });
+      images.push({ placeholder: ph, html: `<img${resolvedAttrs}>` });
       return ph;
     });
 
