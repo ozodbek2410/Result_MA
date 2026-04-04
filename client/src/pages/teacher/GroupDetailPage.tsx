@@ -58,6 +58,8 @@ export default function GroupDetailPage() {
   // Per-student subject+letter assignments — key: `${studentId}:${subjectId}`
   const [studentLetters, setStudentLetters] = useState<Record<string, string>>({});
   const [savingLetters, setSavingLetters] = useState(false);
+  // Per-student sertifikat foizlari — key: `${studentId}:${subjectId}`
+  const [studentCertPercents, setStudentCertPercents] = useState<Record<string, string>>({});
   const [showSubjectConfig, setShowSubjectConfig] = useState(false);
   const [showStudentLetters, setShowStudentLetters] = useState(false);
   // O'quvchi qo'shish modal
@@ -84,6 +86,7 @@ export default function GroupDetailPage() {
       fetchSubjectConfig();
       fetchAllSubjects();
       fetchStudentLetters();
+      fetchStudentCertPercents();
     }
   }, [id]);
 
@@ -182,6 +185,34 @@ export default function GroupDetailPage() {
       error(err.response?.data?.message || 'Xatolik yuz berdi');
     } finally {
       setSavingLetters(false);
+    }
+  };
+
+  const fetchStudentCertPercents = async () => {
+    try {
+      const { data } = await api.get(`/student-certificates/group/${id}`);
+      const map: Record<string, string> = {};
+      data.forEach((d: any) => {
+        if (d.studentId && d.subjectId && d.percentage != null) {
+          map[`${d.studentId}:${d.subjectId}`] = String(d.percentage);
+        }
+      });
+      setStudentCertPercents(map);
+    } catch (err) {
+      console.warn('Could not load cert percents', err);
+    }
+  };
+
+  const setCertPercent = async (studentId: string, subjectId: string, value: string) => {
+    const key = `${studentId}:${subjectId}`;
+    setStudentCertPercents(prev => ({ ...prev, [key]: value }));
+    const pct = parseFloat(value);
+    try {
+      await api.put('/student-certificates', {
+        items: [{ studentId, subjectId, percentage: isNaN(pct) ? null : pct }],
+      });
+    } catch (err: unknown) {
+      error(err instanceof Error ? err.message : 'Xatolik');
     }
   };
 
@@ -604,9 +635,18 @@ export default function GroupDetailPage() {
                       <tr>
                         <th className="px-4 py-3 text-left font-semibold text-gray-600 text-xs uppercase">O'quvchi</th>
                         {letterSubjects.map((sub: any) => (
-                          <th key={sub._id} className="px-4 py-3 text-center font-semibold text-gray-600 text-xs uppercase whitespace-nowrap">
+                          <th key={sub._id} className="px-4 py-3 text-center font-semibold text-gray-600 text-xs uppercase whitespace-nowrap" colSpan={2}>
                             {sub.nameUzb}
                           </th>
+                        ))}
+                      </tr>
+                      <tr className="bg-gray-50 border-b">
+                        <th />
+                        {letterSubjects.map((sub: any) => (
+                          <>
+                            <th key={`${sub._id}-harf`} className="px-2 py-1 text-center text-xs text-gray-500 font-normal">Harf</th>
+                            <th key={`${sub._id}-cert`} className="px-2 py-1 text-center text-xs text-amber-600 font-normal">📜 Sertifikat %</th>
+                          </>
                         ))}
                       </tr>
                     </thead>
@@ -616,17 +656,37 @@ export default function GroupDetailPage() {
                           <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">{student.fullName}</td>
                           {letterSubjects.map((sub: any) => {
                             const key = `${student._id}:${sub._id}`;
+                            const certVal = studentCertPercents[key] || '';
                             return (
-                              <td key={sub._id} className="px-4 py-2 text-center">
-                                <select
-                                  className="rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                  value={studentLetters[key] || ''}
-                                  onChange={(e) => setStudentLetter(student._id, sub._id, e.target.value)}
-                                >
-                                  <option value="">-</option>
-                                  {LETTERS.map(l => <option key={l} value={l}>{l}</option>)}
-                                </select>
-                              </td>
+                              <>
+                                <td key={`${sub._id}-harf`} className="px-2 py-2 text-center">
+                                  <select
+                                    className="rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    value={certVal ? '' : (studentLetters[key] || '')}
+                                    disabled={!!certVal}
+                                    onChange={(e) => setStudentLetter(student._id, sub._id, e.target.value)}
+                                  >
+                                    <option value="">-</option>
+                                    {LETTERS.map(l => <option key={l} value={l}>{l}</option>)}
+                                  </select>
+                                </td>
+                                <td key={`${sub._id}-cert`} className="px-2 py-2 text-center">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step={0.5}
+                                    placeholder="—"
+                                    className={`w-16 rounded border px-2 py-1 text-sm text-center focus:ring-2 focus:ring-amber-400 focus:border-amber-400 ${certVal ? 'border-amber-400 bg-amber-50 font-semibold text-amber-700' : 'border-gray-300'}`}
+                                    value={certVal}
+                                    onChange={(e) => setCertPercent(student._id, sub._id, e.target.value)}
+                                    onBlur={(e) => {
+                                      const v = e.target.value;
+                                      if (v === '' || v === '0') setCertPercent(student._id, sub._id, '');
+                                    }}
+                                  />
+                                </td>
+                              </>
                             );
                           })}
                         </tr>
@@ -635,7 +695,7 @@ export default function GroupDetailPage() {
                   </table>
                 </div>
                 <p className="text-xs text-gray-500 px-4 py-2 border-t">
-                  Har bir o'quvchiga fan bo'yicha guruh harfini belgilang. Blok test yaratilganda shu ma'lumot ishlatiladi.
+                  <span className="text-amber-600 font-medium">📜 Sertifikat %</span> belgilangan o'quvchi o'sha fanni yechmaydi — ball avtomatik qo'shiladi. Harf ixtiyoriy bo'lib qoladi.
                 </p>
               </CardContent>
             )}

@@ -628,6 +628,25 @@ export default function OMRCheckerPage() {
               </div>
             )}
 
+            {/* Sertifikat fanlar ko'rsatish */}
+            {result.qr_code?.certSubjects && result.qr_code.certSubjects.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {result.qr_code.certSubjects.map((cert: any, idx: number) => (
+                  <div key={idx} className="rounded-xl border border-amber-300 bg-amber-50 p-3 sm:p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-gray-900">
+                        📜 {cert.subjectName || cert.subjectId}
+                      </span>
+                      <span className="text-sm font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                        {cert.percentage}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-700">Sertifikat bilan avtomatik ball</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Subject Breakdown Cards */}
             {result.comparison?.subjectBreakdown && result.comparison.subjectBreakdown.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

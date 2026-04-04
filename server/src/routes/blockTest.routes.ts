@@ -8,6 +8,7 @@ import StudentVariant from '../models/StudentVariant';
 import StudentTestConfig from '../models/StudentTestConfig';
 import GroupSubjectConfig from '../models/GroupSubjectConfig';
 import TestResult from '../models/TestResult';
+import StudentSubjectCertificate from '../models/StudentSubjectCertificate';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import { PDFExportService } from '../services/pdfExportService';
@@ -715,6 +716,23 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
     studentConfigs.forEach(config => {
       configMap.set(config.studentId.toString(), config);
     });
+
+    // === SERTIFIKAT MAP ===
+    // certMap: studentId → Set<subjectId> (sertifikat bor fanlar)
+    // certPercentMap: `${studentId}:${subjectId}` → percentage
+    const certDocs = await StudentSubjectCertificate.find({
+      studentId: { $in: studentIds },
+    }).lean();
+    const certSubjectMap = new Map<string, Set<string>>(); // studentId → Set<subjectId>
+    const certPercentMap = new Map<string, number>();      // `sid:subid` → percent
+    for (const c of certDocs) {
+      const sid = c.studentId.toString();
+      const subid = c.subjectId.toString();
+      if (!certSubjectMap.has(sid)) certSubjectMap.set(sid, new Set());
+      certSubjectMap.get(sid)!.add(subid);
+      certPercentMap.set(`${sid}:${subid}`, c.percentage);
+    }
+    console.log(`📜 Loaded ${certDocs.length} student-subject certificates`);
     
     for (let i = 0; i < studentIds.length; i += BATCH_SIZE) {
       const batchStudentIds = studentIds.slice(i, i + BATCH_SIZE);
@@ -736,11 +754,18 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
 
       const letters = studentLetterMap.get(studentId.toString()) || new Map();
 
-      // Fanlarni guruhlash (unique subjectId lar)
+      // === Sertifikat fanlari ===
+      const studentCertSubjects = certSubjectMap.get(studentId.toString()) || new Set<string>();
+
+      // Fanlarni guruhlash (unique subjectId lar) — sertifikat fanlar o'tkazib yuboriladi
       const subjectMap = new Map<string, typeof blockTest.subjectTests>();
       for (const st of blockTest.subjectTests) {
         if (!st.questions || st.questions.length === 0) continue;
         const sid = (st.subjectId._id || st.subjectId).toString();
+        if (studentCertSubjects.has(sid)) {
+          console.log(`📜 Skipping cert subject ${sid} for student ${studentId}`);
+          continue; // Sertifikat bor fan — o'tkazib yuboriladi
+        }
         if (!subjectMap.has(sid)) subjectMap.set(sid, []);
         subjectMap.get(sid)!.push(st);
       }
@@ -849,13 +874,21 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
 
       const qrPayload = variantCode;
 
+      // Sertifikat fanlarini variant ichiga saqlash (save-result da kerak)
+      const certSubjectsForStudent: { subjectId: string; percentage: number }[] = [];
+      for (const subid of studentCertSubjects) {
+        const pct = certPercentMap.get(`${studentId.toString()}:${subid}`);
+        if (pct !== undefined) certSubjectsForStudent.push({ subjectId: subid, percentage: pct });
+      }
+
       const variant = new StudentVariant({
         testId: blockTest._id,
         testType: 'BlockTest',
         studentId,
         variantCode,
         qrPayload,
-        shuffledQuestions
+        shuffledQuestions,
+        certSubjects: certSubjectsForStudent.length > 0 ? certSubjectsForStudent : undefined,
       });
 
         batchVariants.push(variant);

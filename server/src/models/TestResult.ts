@@ -9,6 +9,16 @@ export interface IAnswer {
   originalAnswer?: 'A' | 'B' | 'C' | 'D'; // Оригинальный ответ с фото
 }
 
+export interface ISubjectResult {
+  subjectId: mongoose.Types.ObjectId;
+  subjectName?: string;
+  correct: number;
+  total: number;
+  percentage: number;
+  isCertificate: boolean;
+  certPercent?: number; // belgilangan sertifikat foizi (isCertificate=true bo'lsa)
+}
+
 export interface ITestResult extends Document {
   testId?: mongoose.Types.ObjectId;
   blockTestId?: mongoose.Types.ObjectId;
@@ -19,6 +29,7 @@ export interface ITestResult extends Document {
   totalPoints: number;
   maxPoints: number;
   percentage: number;
+  subjectResults?: ISubjectResult[]; // fan bo'yicha natijalar (sertifikat+OMR)
   scannedImagePath?: string;
   scannedAt?: Date;
   createdAt: Date;
@@ -33,6 +44,16 @@ const AnswerSchema = new Schema<IAnswer>({
   originalAnswer: { type: String, enum: ['A', 'B', 'C', 'D'] }
 }, { _id: false });
 
+const SubjectResultSchema = new Schema<ISubjectResult>({
+  subjectId:    { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
+  subjectName:  { type: String },
+  correct:      { type: Number, required: true },
+  total:        { type: Number, required: true },
+  percentage:   { type: Number, required: true },
+  isCertificate: { type: Boolean, default: false },
+  certPercent:  { type: Number },
+}, { _id: false });
+
 const TestResultSchema = new Schema<ITestResult>({
   testId: { type: Schema.Types.ObjectId, ref: 'Test' },
   blockTestId: { type: Schema.Types.ObjectId, ref: 'BlockTest' },
@@ -43,6 +64,7 @@ const TestResultSchema = new Schema<ITestResult>({
   totalPoints: { type: Number, required: true },
   maxPoints: { type: Number, required: true },
   percentage: { type: Number, required: true },
+  subjectResults: { type: [SubjectResultSchema], default: undefined },
   scannedImagePath: String,
   scannedAt: Date,
   createdAt: { type: Date, default: Date.now }

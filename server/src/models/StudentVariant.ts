@@ -8,6 +8,7 @@ export interface IStudentVariant extends Document {
   qrPayload: string;
   questionOrder: number[];
   shuffledQuestions?: any[]; // Вопросы с перемешанными вариантами ответов
+  certSubjects?: { subjectId: mongoose.Types.ObjectId; percentage: number }[]; // sertifikat fanlar
   createdAt: Date;
 }
 
@@ -19,6 +20,11 @@ const StudentVariantSchema = new Schema<IStudentVariant>({
   qrPayload: { type: String, required: true },
   questionOrder: [{ type: Number }],
   shuffledQuestions: [{ type: Schema.Types.Mixed }],
+  certSubjects: [{
+    subjectId: { type: Schema.Types.ObjectId, ref: 'Subject' },
+    percentage: { type: Number },
+    _id: false,
+  }],
   createdAt: { type: Date, default: Date.now }
 });
 

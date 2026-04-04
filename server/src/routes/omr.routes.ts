@@ -225,7 +225,14 @@ router.post('/check-answers-final', authenticate, upload.single('image'), async 
               testName: testName,
               correctAnswers: correctAnswers,
               totalQuestions: varQCount,
-              sheetTotalQuestions: sheetTotalQuestions > varQCount ? sheetTotalQuestions : varQCount
+              sheetTotalQuestions: sheetTotalQuestions > varQCount ? sheetTotalQuestions : varQCount,
+              certSubjects: await Promise.all((variantInfo.certSubjects || []).map(async (cs: any) => {
+                try {
+                  const Subject = require('../models/Subject').default;
+                  const sub = await Subject.findById(cs.subjectId).select('nameUzb').lean() as any;
+                  return { ...cs, subjectName: sub?.nameUzb || '' };
+                } catch { return cs; }
+              })),
             };
 
             console.log('✅ Variant ma\'lumotlari olindi:', {
@@ -474,7 +481,14 @@ router.post('/check-answers-professional', authenticate, upload.single('image'),
               testName: testName,
               correctAnswers: correctAnswers,
               totalQuestions: varQCount,
-              sheetTotalQuestions: sheetTotalQuestions > varQCount ? sheetTotalQuestions : varQCount
+              sheetTotalQuestions: sheetTotalQuestions > varQCount ? sheetTotalQuestions : varQCount,
+              certSubjects: await Promise.all((variantInfo.certSubjects || []).map(async (cs: any) => {
+                try {
+                  const Subject = require('../models/Subject').default;
+                  const sub = await Subject.findById(cs.subjectId).select('nameUzb').lean() as any;
+                  return { ...cs, subjectName: sub?.nameUzb || '' };
+                } catch { return cs; }
+              })),
             };
 
             console.log('✅ Variant ma\'lumotlari olindi:', {
@@ -1448,18 +1462,120 @@ router.post('/save-result', authenticate, async (req, res) => {
 
     const imagePath = annotatedImage || originalImagePath;
 
+    // === SERTIFIKAT LOGIKASI ===
+    // variant.certSubjects → sertifikat fanlar va foizlari
+    // StudentTestConfig → har fan uchun savol soni
+    let finalTotalPoints = comparison.correct;
+    let finalMaxPoints   = comparison.total;
+    const subjectResults: any[] = [];
+
+    if (isBlockTest && variant.certSubjects && variant.certSubjects.length > 0) {
+      try {
+        const StudentTestConfig = require('../models/StudentTestConfig').default;
+        const Subject = require('../models/Subject').default;
+
+        const config = await StudentTestConfig.findOne({ studentId }).lean() as any;
+
+        // OMR savollarini subjectId bo'yicha guruhlash (shuffledQuestions dan)
+        const omrSubjectMap = new Map<string, { correct: number; total: number; name: string }>();
+        if (variant.shuffledQuestions) {
+          for (const q of variant.shuffledQuestions) {
+            const sid = (q.subjectId?._id || q.subjectId)?.toString();
+            if (!sid) continue;
+            if (!omrSubjectMap.has(sid)) omrSubjectMap.set(sid, { correct: 0, total: 0, name: '' });
+            omrSubjectMap.get(sid)!.total++;
+          }
+        }
+        // Har bir savol uchun to'g'rilik hisobi (answers index bo'yicha)
+        answers.forEach((ans: any) => {
+          const q = variant.shuffledQuestions?.[ans.questionIndex];
+          const sid = (q?.subjectId?._id || q?.subjectId)?.toString();
+          if (sid && omrSubjectMap.has(sid) && ans.isCorrect) {
+            omrSubjectMap.get(sid)!.correct++;
+          }
+        });
+
+        // OMR fanlari uchun subjectResults
+        for (const [sid, data] of omrSubjectMap) {
+          const subDoc = await Subject.findById(sid).select('nameUzb').lean() as any;
+          subjectResults.push({
+            subjectId: sid,
+            subjectName: subDoc?.nameUzb || '',
+            correct: data.correct,
+            total: data.total,
+            percentage: data.total > 0 ? Math.round((data.correct / data.total) * 1000) / 10 : 0,
+            isCertificate: false,
+          });
+        }
+
+        // Sertifikat fanlar uchun ball qo'shish
+        for (const cert of variant.certSubjects) {
+          const subid = cert.subjectId?.toString();
+          const certPct = cert.percentage;
+
+          // Savol sonini StudentTestConfig dan olish
+          let qCount = 0;
+          if (config?.subjects) {
+            const subConf = config.subjects.find(
+              (s: any) => (s.subjectId?._id || s.subjectId)?.toString() === subid
+            );
+            if (subConf) qCount = subConf.questionCount || 0;
+          }
+          if (qCount === 0) {
+            // Fallback: BlockTest dan o'qish
+            const BlockTest = require('../models/BlockTest').default;
+            const bt = await BlockTest.findById(testId).lean() as any;
+            if (bt?.subjectTests) {
+              const sts = bt.subjectTests.filter((st: any) =>
+                (st.subjectId?._id || st.subjectId)?.toString() === subid
+              );
+              qCount = sts.reduce((s: number, st: any) => s + (st.questions?.length || 0), 0);
+            }
+          }
+
+          const certCorrect = Math.round(qCount * certPct / 100);
+          finalTotalPoints += certCorrect;
+          finalMaxPoints   += qCount;
+
+          const subDoc = await (require('../models/Subject').default).findById(subid).select('nameUzb').lean() as any;
+          subjectResults.push({
+            subjectId: subid,
+            subjectName: subDoc?.nameUzb || '',
+            correct: certCorrect,
+            total: qCount,
+            percentage: certPct,
+            isCertificate: true,
+            certPercent: certPct,
+          });
+
+          console.log(`📜 Cert subject ${subDoc?.nameUzb}: ${certCorrect}/${qCount} (${certPct}%)`);
+        }
+
+        console.log(`📊 Final: ${finalTotalPoints}/${finalMaxPoints} (was ${comparison.correct}/${comparison.total})`);
+      } catch (certErr: any) {
+        console.error('⚠️ Cert calculation error (using raw score):', certErr.message);
+      }
+    }
+
+    const finalPercentage = finalMaxPoints > 0
+      ? Math.round((finalTotalPoints / finalMaxPoints) * 1000) / 10
+      : comparison.score;
+
+    const resultPayload: any = {
+      variantId: variant._id,
+      answers,
+      totalPoints: finalTotalPoints,
+      maxPoints:   finalMaxPoints,
+      percentage:  finalPercentage,
+      scannedImagePath: imagePath,
+      scannedAt: new Date(),
+      ...(isBlockTest ? { blockTestId: testId } : { testId }),
+      ...(subjectResults.length > 0 ? { subjectResults } : {}),
+    };
+
     // Agar forceOverwrite bo'lsa — mavjudini yangilash
     if (existingResult && forceOverwrite) {
-      const updated = await TestResult.findByIdAndUpdate(existingResult._id, {
-        variantId: variant._id,
-        answers,
-        totalPoints: comparison.correct,
-        maxPoints: comparison.total,
-        percentage: comparison.score,
-        scannedImagePath: imagePath,
-        scannedAt: new Date(),
-        ...(isBlockTest ? { blockTestId: testId } : { testId })
-      }, { new: true });
+      const updated = await TestResult.findByIdAndUpdate(existingResult._id, resultPayload, { new: true });
       console.log('✅ Natija yangilandi (overwrite):', updated?._id);
 
       await Promise.all([
@@ -1476,18 +1592,7 @@ router.post('/save-result', authenticate, async (req, res) => {
     }
 
     // Yangi natija yaratish
-    const testResult = new TestResult({
-      studentId,
-      ...(isBlockTest ? { blockTestId: testId } : { testId }),
-      variantId: variant._id,
-      answers,
-      totalPoints: comparison.correct,
-      maxPoints: comparison.total,
-      percentage: comparison.score,
-      scannedImagePath: imagePath,
-      scannedAt: new Date()
-    });
-
+    const testResult = new TestResult({ studentId, ...resultPayload });
     await testResult.save();
 
     console.log('✅ Natija saqlandi:', testResult._id);
