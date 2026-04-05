@@ -1810,9 +1810,9 @@ export class PDFGeneratorService {
    * pageCounts: har talabaning haqiqiy sahifa soni [3, 4, 3, 4, ...]
    * simplex=true: "2 tomonlama" — face-down printer uchun
    *   Tartib: backs (reversed) → flip → fronts (normal)
-   * simplex=false: "Kitobcha PDF" — face-up printer uchun
-   *   Tartib: backs (normal) → flip → fronts (reversed)
-   *   Misol: 8 output sahifa → 1-4 orqalar (B0,B1,B2,B3), 5-8 oldlar (F3,F2,F1,F0)
+   * simplex=false: "Kitobcha PDF" — 1 tomonlama printer, tartib saqlovchi flip
+   *   Tartib: backs (normal) → flip → fronts (normal)
+   *   Juftliklar: paper_i = (B_i, F_i) — masalan (1,5), (2,6), (3,7), (4,8)
    *   Flip qilib qaytadan chop → o'rtadan qatlasa avtomatik kitobcha
    */
   static async imposeBooklet(pdfBuffer: Buffer, pageCounts: number[], simplex: boolean = false): Promise<Buffer> {
@@ -1886,12 +1886,12 @@ export class PDFGeneratorService {
       allFronts.forEach(drawPair);
       console.log(`✅ [BOOKLET 2-TOMONLAMA face-down] ${allBacks.length} orqa (rev) + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
     } else {
-      // Kitobcha PDF (face-up printer): backs normal, keyin fronts reversed
-      // Oqim: 1) orqalar chop (1..N/2) → 2) flip qilib qayta joylash → 3) oldlar chop (N/2+1..N)
-      // Oxirida o'rtadan qatlasa → avtomatik kitobcha
+      // Kitobcha PDF: backs normal, keyin fronts normal
+      // Oqim: 1) orqalar (1..N/2) → 2) flip qilib qayta joylash (tartib saqlanadi) → 3) oldlar (N/2+1..N)
+      // Juftliklar: paper1=(B0,F0), paper2=(B1,F1), ... → o'rtadan qatlasa avtomatik kitobcha
       allBacks.forEach(drawPair);
-      [...allFronts].reverse().forEach(drawPair);
-      console.log(`✅ [BOOKLET KITOBCHA face-up] ${allBacks.length} orqa + ${allFronts.length} old (rev) = ${allBacks.length + allFronts.length} sahifa`);
+      allFronts.forEach(drawPair);
+      console.log(`✅ [BOOKLET KITOBCHA] ${allBacks.length} orqa + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
     }
 
     const bytes = await dest.save();
