@@ -1128,8 +1128,19 @@ export class PDFGeneratorService {
       return ph;
     });
 
-    // 2) Strip remaining HTML tags (formulas and images are safe as placeholders)
+    // 2) Preserve formatting tags (u, b, strong, em, i, s) via placeholders
+    const fmtTags: string[] = [];
+    text = text.replace(/<\/?(u|b|strong|em|i|s)(\s[^>]*)?>/gi, (match) => {
+      const ph = `%%FMT_${fmtTags.length}%%`;
+      fmtTags.push(match);
+      return ph;
+    });
+    // Strip remaining HTML tags (formulas, images, formatting are safe as placeholders)
     text = text.replace(/<[^>]+>/g, '');
+    // Restore formatting tags
+    for (let i = 0; i < fmtTags.length; i++) {
+      text = text.replace(`%%FMT_${i}%%`, fmtTags[i]);
+    }
 
     // 3) Restore placeholders → KaTeX HTML
     for (const f of formulas) {

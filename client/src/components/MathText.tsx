@@ -79,6 +79,13 @@ function renderMathToHtml(text: string): string {
     imgPlaceholders.push(match);
     return ph;
   });
+  // Preserve formatting tags (u, b, strong, em, i, s)
+  const tagPlaceholders: string[] = [];
+  cleanedText = cleanedText.replace(/<\/?(u|b|strong|em|i|s)(\s[^>]*)?>/gi, (match) => {
+    const ph = `\x00TAG${tagPlaceholders.length}\x00`;
+    tagPlaceholders.push(match);
+    return ph;
+  });
   cleanedText = cleanedText.replace(/<[^>]+>/g, '');
   // Strip pandoc underline markers: [text]{.underline} → text
   cleanedText = cleanedText.replace(/\[([^\]]+)\]\{\.underline\}/g, '$1');
@@ -249,6 +256,12 @@ function renderMathToHtml(text: string): string {
       html = html.replace(`\x00IMG${i}\x00`, img);
     });
   }
+  // Restore formatting tags (u, b, strong, em, i, s)
+  if (tagPlaceholders.length > 0) {
+    tagPlaceholders.forEach((tag, i) => {
+      html = html.replace(`\x00TAG${i}\x00`, tag);
+    });
+  }
 
   return html;
 }
@@ -257,9 +270,13 @@ function MathText({ text, className = '' }: MathTextProps) {
   // Fast path: no math markers — render plain text
   if (!text) return null;
   if (!hasMathMarkers(text)) {
-    // Strip simple HTML tags and decode HTML entities
+    // Strip simple HTML tags and decode HTML entities, but preserve formatting tags
     let clean = text.replace(/<\/?(?:p|br|div)(?:\s[^>]*)?>/gi, '').trim();
     clean = clean.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    // If text contains formatting tags, render as HTML
+    if (/<\/?(u|b|strong|em|i|s)(\s|>)/i.test(clean)) {
+      return <span className={className} dangerouslySetInnerHTML={{ __html: clean }} />;
+    }
     return <span className={className}>{clean}</span>;
   }
 

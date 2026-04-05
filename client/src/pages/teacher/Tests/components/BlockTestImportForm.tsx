@@ -263,11 +263,13 @@ export function BlockTestImportForm({
               if (typeof t === 'string' && t.startsWith('{')) {
                 try { return JSON.parse(t); } catch { /* not JSON */ }
               }
-              // HTML → strip tags, extract data-latex as \(...\), keep text
+              // HTML → preserve <u>, <b>, <strong>, <em>, <i>, <s>, extract data-latex as \(...\)
               if (t.startsWith('<')) {
                 const stripped = t
                   .replace(/<span[^>]*data-latex="([^"]*)"[^>]*><\/span>/g, (_m, latex) => latex ? ` \\(${latex}\\) ` : '')
+                  .replace(/<(\/?)(u|b|strong|em|i|s)(\s[^>]*)?>/gi, '§§$1$2§§')
                   .replace(/<[^>]+>/g, '')
+                  .replace(/§§(\/?)(u|b|strong|em|i|s)§§/gi, '<$1$2>')
                   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"')
                   .replace(/\s+/g, ' ').trim();
                 return stripped || t;

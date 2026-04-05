@@ -177,10 +177,20 @@ export function convertTiptapJsonToText(json: any): string {
   // Рекурсивная функция для обработки узлов
   function processNode(node: any): string {
     if (!node) return '';
-    
+
     // Текстовый узел
     if (node.type === 'text') {
-      return node.text || '';
+      let text = node.text || '';
+      // Preserve marks: underline, bold, italic, strike
+      if (Array.isArray(node.marks)) {
+        for (const mark of node.marks) {
+          if (mark?.type === 'underline') text = `<u>${text}</u>`;
+          else if (mark?.type === 'bold') text = `<strong>${text}</strong>`;
+          else if (mark?.type === 'italic') text = `<em>${text}</em>`;
+          else if (mark?.type === 'strike') text = `<s>${text}</s>`;
+        }
+      }
+      return text;
     }
     
     // Формула - возвращаем в LaTeX формате для MathText
