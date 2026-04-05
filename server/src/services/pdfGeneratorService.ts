@@ -1808,10 +1808,12 @@ export class PDFGeneratorService {
    * Natija: A4 landscape, har sahifada 2 ta A5 portrait sahifa yonma-yon
    *
    * pageCounts: har talabaning haqiqiy sahifa soni [3, 4, 3, 4, ...]
-   * simplex=true: "2 tomonlama" — face-down printer uchun (qog'oz yuzi pastga chiqadi)
+   * simplex=true: "2 tomonlama" — face-down printer uchun
    *   Tartib: backs (reversed) → flip → fronts (normal)
-   * simplex=false: "Kitobcha PDF" — face-up printer uchun (qog'oz yuzi tepaga chiqadi)
-   *   Tartib: fronts (reversed) → flip → backs (normal) — face-down ning to'liq teskarisi
+   * simplex=false: "Kitobcha PDF" — face-up printer uchun
+   *   Tartib: backs (normal) → flip → fronts (reversed)
+   *   Misol: 8 output sahifa → 1-4 orqalar (B0,B1,B2,B3), 5-8 oldlar (F3,F2,F1,F0)
+   *   Flip qilib qaytadan chop → o'rtadan qatlasa avtomatik kitobcha
    */
   static async imposeBooklet(pdfBuffer: Buffer, pageCounts: number[], simplex: boolean = false): Promise<Buffer> {
     const src = await PDFDocument.load(pdfBuffer);
@@ -1880,17 +1882,16 @@ export class PDFGeneratorService {
 
     if (simplex) {
       // 2 tomonlama (face-down printer): backs reversed, keyin fronts normal
-      // Printer qog'oz yuzini pastga chiqaradi → stack to'g'ri tartibda (1,2,3)
       [...allBacks].reverse().forEach(drawPair);
       allFronts.forEach(drawPair);
       console.log(`✅ [BOOKLET 2-TOMONLAMA face-down] ${allBacks.length} orqa (rev) + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
     } else {
-      // Kitobcha PDF (face-up printer): 2-tomonlama sequence ning to'liq teskarisi
-      // Printer qog'oz yuzini tepaga chiqaradi → stack teskari bo'ladi
-      // To'g'ri natija uchun print order ham teskari bo'lishi kerak
-      [...allFronts].reverse().forEach(drawPair);
+      // Kitobcha PDF (face-up printer): backs normal, keyin fronts reversed
+      // Oqim: 1) orqalar chop (1..N/2) → 2) flip qilib qayta joylash → 3) oldlar chop (N/2+1..N)
+      // Oxirida o'rtadan qatlasa → avtomatik kitobcha
       allBacks.forEach(drawPair);
-      console.log(`✅ [BOOKLET KITOBCHA face-up] ${allFronts.length} old (rev) + ${allBacks.length} orqa = ${allFronts.length + allBacks.length} sahifa`);
+      [...allFronts].reverse().forEach(drawPair);
+      console.log(`✅ [BOOKLET KITOBCHA face-up] ${allBacks.length} orqa + ${allFronts.length} old (rev) = ${allBacks.length + allFronts.length} sahifa`);
     }
 
     const bytes = await dest.save();
