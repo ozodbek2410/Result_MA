@@ -1808,8 +1808,10 @@ export class PDFGeneratorService {
    * Natija: A4 landscape, har sahifada 2 ta A5 portrait sahifa yonma-yon
    *
    * pageCounts: har talabaning haqiqiy sahifa soni [3, 4, 3, 4, ...]
-   * simplex=true: Simplex printer uchun — avval barcha ORQA sahifalar, keyin barcha OLD sahifalar
-   *   Chop tartibi: 1) sahifa 1..N (orqalar) → 2) varaqlarni flip → 3) sahifa N+1..2N (oldlar)
+   * simplex=true: "2 tomonlama" — face-down printer uchun (qog'oz yuzi pastga chiqadi)
+   *   Tartib: backs (reversed) → flip → fronts (normal)
+   * simplex=false: "Kitobcha PDF" — face-up printer uchun (qog'oz yuzi tepaga chiqadi)
+   *   Tartib: fronts (reversed) → flip → backs (normal) — face-down ning to'liq teskarisi
    */
   static async imposeBooklet(pdfBuffer: Buffer, pageCounts: number[], simplex: boolean = false): Promise<Buffer> {
     const src = await PDFDocument.load(pdfBuffer);
@@ -1877,19 +1879,18 @@ export class PDFGeneratorService {
     };
 
     if (simplex) {
-      // 2 tomonlama: backs reversed (3,2,1), fronts normal (4,5,6)
-      // Printer face-down: 3,2,1 bosiladi → stack: 1 ust → flip → 3 ust
-      // Fronts 4,5,6 bosiladi → 4→S3, 5→S2, 6→S1 → stack ust: S1,S2,S3 ✅
+      // 2 tomonlama (face-down printer): backs reversed, keyin fronts normal
+      // Printer qog'oz yuzini pastga chiqaradi → stack to'g'ri tartibda (1,2,3)
       [...allBacks].reverse().forEach(drawPair);
       allFronts.forEach(drawPair);
-      console.log(`✅ [BOOKLET 2-TOMONLAMA] ${allBacks.length} orqa (rev) + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
+      console.log(`✅ [BOOKLET 2-TOMONLAMA face-down] ${allBacks.length} orqa (rev) + ${allFronts.length} old = ${allBacks.length + allFronts.length} sahifa`);
     } else {
-      // Duplex: Front-Back-Front-Back ketma-ketlikda
-      for (let i = 0; i < allFronts.length; i++) {
-        drawPair(allFronts[i]);
-        drawPair(allBacks[i]);
-      }
-      console.log(`✅ [BOOKLET DUPLEX] ${allFronts.length + allBacks.length} sahifa`);
+      // Kitobcha PDF (face-up printer): 2-tomonlama sequence ning to'liq teskarisi
+      // Printer qog'oz yuzini tepaga chiqaradi → stack teskari bo'ladi
+      // To'g'ri natija uchun print order ham teskari bo'lishi kerak
+      [...allFronts].reverse().forEach(drawPair);
+      allBacks.forEach(drawPair);
+      console.log(`✅ [BOOKLET KITOBCHA face-up] ${allFronts.length} old (rev) + ${allBacks.length} orqa = ${allFronts.length + allBacks.length} sahifa`);
     }
 
     const bytes = await dest.save();
