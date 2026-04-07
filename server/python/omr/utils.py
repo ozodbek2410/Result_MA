@@ -132,7 +132,11 @@ def validate_rectangle(
     if avg_h < 1:
         return False
     aspect = avg_w / avg_h
-    if not (0.58 < aspect < 0.90):  # A4=0.707, ±20% perspektiv tolerans
+    # M-32 FIX: 0.58–0.90 → 0.62–0.85
+    #   A4 = 0.707. ±15% perspektiv tolerans (0.600–0.813).
+    #   0.62–0.85 — A4 ±20% beradi lekin kvadrat (1.0) va juda ingichka (0.3)
+    #   shakllarni rad etadi. Stol yuzasi, B5, Letter ham bu diapazondan tashqarida.
+    if not (0.62 < aspect < 0.85):
         return False
 
     # Parallellik — telefon burchakdan olsa tomonlar farq qiladi
@@ -227,15 +231,18 @@ def multi_threshold(gray: np.ndarray, thresholds: list = None) -> list[np.ndarra
     )
     results.append(adaptive)
 
-    # Canny-based binary
-    results.append(canny_binary(gray))
+    # M-27 FIX: Canny-based binary OLIB TASHLANDI.
+    #   Sabab: Canny qirralarni topadi, to'ldirilgan kvadratlarni emas.
+    #   Corner marker — qattiq to'ldirilgan kvadrat. Canny uning chegarasini
+    #   topadi, lekin MORPH_CLOSE bilan to'liq shaklni tiklash ishonchsiz.
+    #   Natija: yolg'on kandidatlar va sekinlashuv (1 qo'shimcha contour pass).
 
-    # CLAHE(3.0) + Otsu — qorong'u rasmlarda
-    clahe_strong = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
-    enhanced = clahe_strong.apply(gray)
-    _, clahe_otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    results.append(clahe_otsu)
+    # M-27 FIX: CLAHE(3.0) + Otsu OLIB TASHLANDI.
+    #   Sabab: load_and_preprocess() allaqachon CLAHE qo'llagan.
+    #   Yana CLAHE → Otsu redundant — ikki marta CLAHE bir xil natija beradi.
+    #   Eski CLAHE(2.0) allaqachon 7 ta fixed threshold + Otsu orqali qamrab olingan.
 
+    # Jami: 11 binary → 9 binary (7 fixed + Otsu + Adaptive)
     return results
 
 

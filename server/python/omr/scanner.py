@@ -1,22 +1,35 @@
 """
 OMR Scanner v2 — EvalBee-level bosh orkestrator.
 
-Fallback strategy:
+Pipeline (gibrid contour + layout):
 1. QR: original → warped → ROI retry
 2. Corners: normal CLAHE → aggressive CLAHE → bilateral filter
-3. Fill: inner sampling + baseline subtraction
-4. Warning system: past confidence → ogohlantirish
+3. Layout grid (expected pozitsiyalar) + timing mark calibration
+4. Contour detection (bubble'larning HAQIQIY pozitsiyalari)
+5. Layout mapping (har contour → Q-N-LETTER assignment)
+6. Fill detection (haqiqiy contour pozitsiyalarida)
+7. Warning system: past confidence / past mapping sifati → ogohlantirish
+
+Nima uchun gibrid:
+─────────────────
+Layout-first kamchiligi: perspektiv warp 3-5 px xato bersa, hisoblangan pozitsiya
+bo'sh joyga to'g'ri keladi → fill = 0 → detection 0%.
+Contour detection bubble'ni qayerda bo'lsa shu yerda topadi → matematik xato
+ahamiyatsiz → har qanday telefonda ishlaydi.
 """
 import cv2
 import numpy as np
 import sys
 import json
+import traceback as _traceback  # M-13 FIX: top-level import — xato traceback har doim mavjud
 
 from utils import load_and_preprocess
 from corners import find_corners, warp_perspective
 from qr import read_qr
 from grid import build_grid, calibrate_grid, apply_offset
-from fill import detect_fills
+from fill import detect_fills, detect_fills_from_mapped
+from contour import find_bubble_contours
+from mapper import map_contours_to_cells, is_mapping_high_quality
 from config import SCANNER
 
 
@@ -107,12 +120,16 @@ class OMRScanner:
                     result["warnings"].append(
                         f"QR topilmadi — timing marklardan {total_q} savol aniqlandi"
                     )
+                    # M-11 FIX: QR topilmasa partial=True — variant kodi yo'q
+                    result["partial"] = True
                 else:
                     # Fallback: eng keng tarqalgan 90
                     total_q = 90
                     result["warnings"].append(
                         "QR topilmadi — 90 savol deb taxmin qilindi"
                     )
+                    # M-11 FIX: taxmin qilingan holat — partial
+                    result["partial"] = True
 
             # Warped binary (fill detection uchun)
             _, warped_binary = cv2.threshold(
@@ -120,20 +137,35 @@ class OMRScanner:
                 cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
             )
 
-            # 6. Grid qurish (layout-first — PRIMARY)
-            cells = build_grid(warped_gray, total_q, is_doc_boundary)
+            # 6. Grid qurish — EXPECTED bubble pozitsiyalari (layout formula)
+            expected_cells = build_grid(warped_gray, total_q, is_doc_boundary)
 
-            # 7. Grid calibration (±offset)
-            dx, dy = calibrate_grid(cells, warped_binary)
+            # 7. Grid calibration (timing mark refinement, ±offset)
+            dx, dy = calibrate_grid(expected_cells, warped_binary)
             max_offset = SCANNER.get("calibration_max_offset_px", 15)
             if abs(dx) > max_offset or abs(dy) > max_offset:
                 result["warnings"].append(
                     f"Katta calibration offset: dx={dx:.1f}, dy={dy:.1f} — perspektiv noto'g'ri bo'lishi mumkin"
                 )
-            cells = apply_offset(cells, dx, dy)
+            expected_cells = apply_offset(expected_cells, dx, dy)
 
-            # 8. Fill detection (adaptive per-row + inner sampling)
-            fills = detect_fills(cells, warped_binary)
+            # 8. CONTOUR DETECTION — bubble'larning HAQIQIY pozitsiyalari
+            # EvalBee yondashuvi: rasmda bubble qayerda bo'lsa shu yerda topiladi
+            expected_r = expected_cells[0]["r"] if expected_cells else 12.0
+            all_contours = find_bubble_contours(warped_binary, expected_r)
+
+            # 9. LAYOUT MAPPING — har contour ni Q-N-LETTER ga biriktirish
+            mapping = map_contours_to_cells(expected_cells, all_contours)
+
+            if not is_mapping_high_quality(mapping, expected_r):
+                result["warnings"].append(
+                    f"Past mapping sifati: {mapping['matched_count']}/{mapping['total_count']} cell topildi "
+                    f"(median offset: {mapping['median_distance']:.1f}px)"
+                )
+
+            # 10. FILL DETECTION — haqiqiy contour pozitsiyalarida
+            # Layout fall qilgan cell'lar uchun degraded fallback
+            fills = detect_fills_from_mapped(mapping["cells"], warped_binary)
 
             # 9. Natija format
             answers = {}
@@ -169,6 +201,8 @@ class OMRScanner:
 
             if avg_conf < 0.4 and answered > 0:
                 result["warnings"].append("Past ishonchlilik — varaqni qayta skanerlang")
+                # M-12 FIX: past ishonchlilik ham partial sifatida belgilanadi
+                result["partial"] = True
 
             if not qr["found"]:
                 result["warnings"].append("QR topilmadi — variant kodi aniqlanmadi")
@@ -185,13 +219,21 @@ class OMRScanner:
                 "avg_confidence": round(avg_conf, 3),
                 "calibration_dx": round(dx, 2),
                 "calibration_dy": round(dy, 2),
+                # Contour mapping diagnostikasi
+                "contour_count": len(all_contours),
+                "matched_count": mapping["matched_count"],
+                "match_rate": round(mapping["match_rate"], 3),
+                "median_distance_px": round(mapping["median_distance"], 2),
             }
 
         except Exception as e:
             result["error"] = str(e)
+            # M-13 FIX: traceback har doim saqlanadi (debug flag dan mustaqil).
+            # Production'da server log'da ko'rinadi, debug=True da JSON'ga ham qo'shiladi.
+            tb = _traceback.format_exc()
+            print(f"[OMRScanner] Xato: {e}\n{tb}", file=sys.stderr)
             if self.debug:
-                import traceback
-                result["traceback"] = traceback.format_exc()
+                result["traceback"] = tb
 
         return result
 
@@ -244,7 +286,10 @@ class OMRScanner:
         best_count = None
         best_marks = 0
 
-        for total_q in [90, 30]:
+        # M-09 FIX: [90, 30] → [90, 75, 60, 45, 30]
+        #   Eski: 45/60/75 savol bo'lsa 90 deb xato taxmin qilinar edi.
+        #   Eng ko'p timing mark topilgan size = haqiqiy savol soni.
+        for total_q in [90, 75, 60, 45, 30]:
             cells = build_grid(warped_gray, total_q, is_doc_boundary)
             layout = compute_layout(total_q)
             rows_per_col = layout["rows_per_col"]

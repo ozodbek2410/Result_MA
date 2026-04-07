@@ -1,10 +1,19 @@
 /**
  * Client-side OMR Scanner — to'liq on-device processing.
  *
- * Pipeline: warp → grayscale → CLAHE → Otsu → QR → grid → calibrate → fill → results
+ * Pipeline (gibrid contour + layout):
+ *   warp → grayscale → CLAHE → Otsu → QR
+ *   → buildGrid (expected pozitsiyalar)
+ *   → calibrateGrid (timing mark refinement)
+ *   → findBubbleContours (haqiqiy bubble pozitsiyalari)
+ *   → mapContoursToCells (assignment)
+ *   → detectFillsFromMapped (haqiqiy pozitsiyalarda fill)
+ *   → results
+ *
  * Server ga faqat NATIJA yuboriladi (rasm emas).
  *
- * EvalBee darajasida: ~200-500ms per sheet.
+ * Performance: ~400-800ms per sheet (contour detection ~80-200ms qo'shadi).
+ * EvalBee darajasiga yetadi.
  */
 import type { CornerMark } from './cornerDetector';
 import type { QRData } from './qrReader';
@@ -12,7 +21,9 @@ import { warpPerspective } from './perspectiveTransform';
 import { readQR, readQRFromRegion } from './qrReader';
 import { toGrayscale, applyCLAHE, otsuThreshold } from './imageProcessing';
 import { buildGrid, calibrateGrid } from './gridBuilder';
-import { detectFills, type FillResult } from './fillDetector';
+import { detectFills, detectFillsFromMapped, type FillResult } from './fillDetector';
+import { findBubbleContours, estimateBubbleRadius } from './contourDetector';
+import { mapContoursToCells, isMappingHighQuality } from './layoutMapper';
 
 export interface ClientScanResult {
   success: boolean;
@@ -100,18 +111,36 @@ export function scanOnDevice(
       warnings.push('QR topilmadi — 90 savol deb taxmin qilindi');
     }
 
-    // 6. CLAHE + Otsu threshold
+    // 6. CLAHE + Otsu threshold (adaptive — har rasm o'ziga moslanadi)
     const enhanced = applyCLAHE(gray, warpedW, warpedH, 2.0, 8);
     const { binary } = otsuThreshold(enhanced);
 
-    // 7. Grid qurish
-    const cells = buildGrid(warpedW, totalQ);
+    // 7. Grid qurish — EXPECTED bubble pozitsiyalari (matematik formula)
+    const expectedCells = buildGrid(warpedW, totalQ);
 
-    // 8. Timing mark calibration
-    calibrateGrid(cells, binary, warpedW, warpedH);
+    // 8. Timing mark calibration — perspektiv kichik xatolarini tuzatish
+    calibrateGrid(expectedCells, binary, warpedW, warpedH);
 
-    // 9. Fill detection
-    const fills = detectFills(cells, binary, warpedW, warpedH);
+    // 9. CONTOUR DETECTION — bubble'larning HAQIQIY pozitsiyalari
+    // Bu EvalBee yondashuvi: rasmda bubble qayerda bo'lsa, shu yerda topiladi
+    const expectedR = expectedCells[0]?.r ?? 12;
+    const allContours = findBubbleContours(binary, warpedW, warpedH, expectedR);
+
+    // 10. LAYOUT MAPPING — har contour ni Q-N-LETTER ga biriktirish
+    // Greedy nearest-neighbor + tolerance (bubbleR × 1.5)
+    const mapping = mapContoursToCells(expectedCells, allContours);
+
+    // Mapping sifati past bo'lsa ogohlantirish (lekin scan davom etadi)
+    if (!isMappingHighQuality(mapping, expectedR)) {
+      warnings.push(
+        `Past mapping sifati: ${mapping.matchedCount}/${mapping.totalCount} cell topildi ` +
+        `(median offset: ${mapping.medianDistance.toFixed(1)}px)`
+      );
+    }
+
+    // 11. FILL DETECTION — haqiqiy contour pozitsiyalarida
+    // Layout fall qilgan cell'lar uchun degraded fallback (layout pozitsiya ishlatiladi)
+    const fills = detectFillsFromMapped(mapping.cells, binary, warpedW, warpedH);
 
     // 10. Natija format
     const detectedAnswers: Record<string, string> = {};

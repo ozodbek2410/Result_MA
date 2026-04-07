@@ -104,6 +104,9 @@ def _try_decode(img: np.ndarray) -> str | None:
             return data
 
     # pyzbar fallback — barcha scale lar bilan
+    # M-29 FIX: ImportError endi stderr ga yoziladi — admin log'da ko'rinadi.
+    #   pyzbar o'rnatilmagan yoki libzbar OS kutubxonasi yo'q bo'lsa,
+    #   foydalanuvchi sababini aniqlay oladi.
     try:
         from pyzbar.pyzbar import decode as pyzbar_decode
         for scale in [1.0, 2.0]:
@@ -117,7 +120,12 @@ def _try_decode(img: np.ndarray) -> str | None:
             if decoded:
                 return decoded[0].data.decode("utf-8")
     except ImportError:
-        pass
+        import sys
+        print(
+            "[omr/qr.py] pyzbar o'rnatilmagan — QR fallback ishlamaydi. "
+            "O'rnatish: pip install pyzbar (Linux: apt install libzbar0)",
+            file=sys.stderr,
+        )
 
     return None
 

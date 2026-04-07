@@ -1791,11 +1791,14 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             'Noma\'lum';
 
           const detectedAnswers: Record<string, string> = result.detected_answers || {};
+          // totalQ — student variant'idagi savol soni (skoring uchun)
+          // sheetTotalQ — fizik varaqdagi bubble soni (Python grid layout uchun)
+          // Comparison loop ALWAYS iterates totalQ — phantom savollarni hisoblamaslik uchun
           const totalQ = Object.keys(correctAnswers).length;
-          const sheetTotalQ = Math.max(sheetTotal, totalQ);
+          const sheetTotalQ = sheetTotal > totalQ ? sheetTotal : totalQ;
 
-          // Comparison (OMRCheckerPage format)
-          const details = Array.from({ length: sheetTotalQ }, (_, i) => {
+          // Comparison (OMRCheckerPage format) — FAQAT student'ning haqiqiy savollari
+          const details = Array.from({ length: totalQ }, (_, i) => {
             const qNum = i + 1;
             const qStr = String(qNum);
             const studentAnswer = detectedAnswers[qStr] || null;
@@ -1833,7 +1836,8 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             score: scorePercent,
             details,
           };
-          result.total_questions = sheetTotalQ;
+          // total_questions = student'ning haqiqiy savollari (sheetTotalQ EMAS)
+          result.total_questions = totalQ;
         }
       } catch (err: unknown) {
         console.warn('[OMR v2] DB lookup error:', err instanceof Error ? err.message : err);
@@ -1899,10 +1903,14 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
       'Noma\'lum';
 
     const detected: Record<string, string> = detectedAnswers || {};
+    // totalQ — student variant'idagi savol soni (skoring, comparison)
+    // sheetTotalQ — fizik varaqdagi bubble soni (qabul qilingan totalQuestions yoki sheet)
+    // Comparison loop totalQ ga asoslanadi — phantom javobsiz bug yo'q
     const totalQ = Object.keys(correctAnswers).length;
-    const sheetTotalQ = Math.max(sheetTotal, totalQ, totalQuestions || 0);
+    const sheetTotalQ = sheetTotal > totalQ ? sheetTotal : totalQ;
 
-    const details = Array.from({ length: sheetTotalQ }, (_, i) => {
+    // Comparison details FAQAT student'ning haqiqiy savollari uchun
+    const details = Array.from({ length: totalQ }, (_, i) => {
       const qStr = String(i + 1);
       const studentAnswer = detected[qStr] || null;
       const correctAnswer = correctAnswers[qStr] || '';
@@ -1939,7 +1947,8 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
         score: totalQ > 0 ? (correct / totalQ) * 100 : 0,
         details,
       },
-      total_questions: sheetTotalQ,
+      // total_questions = student variant savol soni (sheetTotalQ EMAS)
+      total_questions: totalQ,
       detected_answers: detected,
     });
   } catch (err: unknown) {

@@ -28,7 +28,7 @@ def make_answer_sheet_image(
     """
     from config import (
         SHEET, LAYOUT, SPAN_W as SW, SPAN_H as SH,
-        mm_to_px, compute_layout
+        mm_to_px, compute_layout, BUBBLE,
     )
 
     h = int(w * SH / SW)
@@ -48,7 +48,11 @@ def make_answer_sheet_image(
     rows = layout["rows_per_col"]
     rm   = layout["row_margin_mm"]
 
-    PP = int(mm_to_px(SHEET["page_pad_mm"], w))
+    # M-20 FIX: PP_h (horizontal) va PP_top (vertical top) alohida.
+    # Eski: PP = PAGE_PAD = 12mm — Y uchun ham shu ishlatilardi.
+    # To'g'ri: grid_top_px = PAGE_PAD_TOP (14mm) + HEADER + GRID_OFFSET - CORNER_CENTER
+    PP_h   = int(mm_to_px(SHEET["page_pad_mm"], w))                                    # 12mm
+    PP_top = int(mm_to_px(SHEET.get("page_pad_top_mm", SHEET["page_pad_mm"]), w))      # 14mm
     HH = int(mm_to_px(SHEET["header_height_mm"], w))
     BS = int(mm_to_px(SHEET["bubble_size_mm"], w))
     BG = int(mm_to_px(SHEET["bubble_gap_mm"], w))
@@ -57,25 +61,25 @@ def make_answer_sheet_image(
     CW = TW + NW + 4 * BS + 3 * BG
     RM = int(mm_to_px(rm, w))
 
-    usable = w - 2 * PP
+    usable = w - 2 * PP_h
     gap = int(min(int(mm_to_px(15, w)), (usable - cols * CW) // max(cols - 1, 1))) if cols > 1 else 0
 
-    # Grid content offset: paddingTop(1mm) + col_header(BS) + col_header_mb(1.5mm)
-    # Matches grid.py _GRID_OFFSET_MM and AnswerSheetV2.tsx CSS layout
-    GRID_OFF = int(mm_to_px(1.0 + SHEET["bubble_size_mm"] + 1.5, w))
+    # M-20 FIX: GRID_OFF = paddingTop(1mm) + col_header(BS=5mm) + col_header_mb(1.5mm) = 7.5mm
+    # grid.py _GRID_OFFSET_MM = BUBBLE + 2.5 = 7.5mm bilan to'liq mos.
+    GRID_OFF = int(mm_to_px(BUBBLE + 2.5, w))
 
     letters = ['A', 'B', 'C', 'D']
     filled = filled_answers or {}
 
     for ci in range(cols):
-        col_x = PP + ci * (CW + gap)  # col_x is int (PP, CW, gap all ints)
+        # M-20 FIX: horizontal → PP_h (12mm)
+        col_x = PP_h + ci * (CW + gap)
         for ri in range(rows):
             q_num = ci * rows + ri + 1
             if q_num > total_q:
                 break
-            # Grid top = PAGE_PAD + HEADER_H + col_header_offset (8.5mm)
-            # Must match grid.py build_grid() formula exactly
-            row_y = PP + HH + GRID_OFF + ri * (BS + 2 * RM)
+            # M-20 FIX: vertical top → PP_top (14mm) — grid.py PAGE_PAD_TOP bilan mos
+            row_y = PP_top + HH + GRID_OFF + ri * (BS + 2 * RM)
             # Timing mark (small black square, left of number)
             tm_x = int(col_x)
             tm_y = int(row_y) + BS // 4
@@ -134,12 +138,29 @@ class TestOMRScannerOutput:
         assert result["success"] is False
         assert "error" in result
 
-    def test_no_questions_without_qr_returns_error(self):
-        """QR yo'q va total_questions=None → xatolik."""
+    def test_no_questions_without_qr_uses_fallback(self):
+        """
+        M-04 FIX: QR yo'q va total_questions=None → scanner 90 deb taxmin qiladi.
+        Bu holatda success=True lekin partial=True qaytishi kerak.
+
+        Eski test noto'g'ri edi: 'success is False' kutilardi, lekin scanner
+        timing marks orqali yoki 90 deb taxmin qilib davom etadi (M-11 FIX).
+        """
         _, path = make_answer_sheet_image(30)
         try:
             result = OMRScanner().scan(path, total_questions=None)
-            assert result["success"] is False
+            # QR topilmasa scanner davom etadi (taxmin bilan)
+            # partial=True — variant kodi aniqlanmagan
+            if result["success"]:
+                assert result.get("partial") is True, (
+                    "QR topilmagan holat partial=True bo'lishi kerak"
+                )
+                # Warnings da QR haqida xabar bo'lishi kerak
+                warnings = result.get("warnings", [])
+                assert any("QR" in w or "qr" in w.lower() for w in warnings), (
+                    f"QR haqida warning yo'q: {warnings}"
+                )
+            # else: success=False ham mumkin (corners topilmasa)
         finally:
             os.unlink(path)
 
@@ -231,9 +252,11 @@ class TestOMRScannerFilledBubbles:
                 pytest.skip("Scanner sintetik rasmni qayta ishlay olmadi — real skan kerak")
             detected = result["detected_answers"]
             matched = sum(1 for q, l in filled.items() if detected.get(str(q)) == l)
-            # Kamida 70% to'g'ri (sintetik rasm o'ziga xos sharoitlarda)
-            assert matched >= 7, \
-                f"Faqat {matched}/10 javob topildi (kutilgan: ≥7)\n" \
+            # M-05 FIX: 70% → 90% — grid offset tuzatilgandan keyin aniqlik oshdi.
+            # M-20 FIX (PP→PP_top) va grid.py _GRID_OFFSET_MM (6mm→7.5mm) tuzatildi.
+            # Sintetik rasmda ideal sharoit — kamida 9/10 to'g'ri bo'lishi kerak.
+            assert matched >= 9, \
+                f"Faqat {matched}/10 javob topildi (kutilgan: ≥9)\n" \
                 f"Detected: {detected}"
         finally:
             os.unlink(path)

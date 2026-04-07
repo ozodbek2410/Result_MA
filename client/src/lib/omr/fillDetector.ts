@@ -6,8 +6,18 @@
  * 1. Inner sampling (r * 0.78) — bubble chizig'ini o'tkazib yuborish
  * 2. Per-row baseline subtraction — soya/yoritish farqi avtomatik yo'qoladi
  * 3. Adaptive threshold — qora va ko'k qalam ikkalasini ham qo'llab-quvvatlaydi
+ *
+ * Kontur bilan integratsiya:
+ * ───────────────────────────
+ * `detectFillsFromMapped()` — yangi entry point. MappedCell qabul qiladi va
+ * actualCx/actualCy/actualR (contour'dan kelgan haqiqiy markaz) ishlatadi.
+ * Bu layout xatosini yo'q qiladi: bubble qayerda bo'lsa o'sha yerda fill o'lchanadi.
+ *
+ * `detectFills()` — eski entry point. GridCell qabul qiladi va layout
+ * pozitsiyasini ishlatadi. Backward compatibility uchun saqlangan.
  */
 import type { GridCell } from './gridBuilder';
+import type { MappedCell } from './layoutMapper';
 
 export interface FillResult {
   letter: string | null;
@@ -25,6 +35,9 @@ const PRIMARY_THRESHOLD = 0.30;
 /**
  * Har bir savol uchun javobni aniqlash.
  * binary: Uint8Array (255=dark, 0=light), width x height
+ *
+ * Eski API — layout cell pozitsiyalari ishlatiladi.
+ * Yangi kod uchun `detectFillsFromMapped()` ni ishlating.
  */
 export function detectFills(
   cells: GridCell[],
@@ -46,6 +59,59 @@ export function detectFills(
   }
 
   // 3. Javob aniqlash
+  const results = new Map<number, FillResult>();
+  for (const [q, qCells] of questions) {
+    results.set(q, pickAnswer(qCells));
+  }
+
+  return results;
+}
+
+/**
+ * Yangi API — MappedCell (contour'dan haqiqiy pozitsiya bilan) ishlaydi.
+ *
+ * Bu funksiya contour-based pipeline'ning eng oxirgi bosqichi:
+ *   buildGrid → findBubbleContours → mapContoursToCells → detectFillsFromMapped
+ *
+ * Layout fall qilgan bo'lsa (matched=false), cell o'z layout pozitsiyasini ishlatadi
+ * (degraded mode). Aks holda contour'dan kelgan actualCx/actualCy/actualR.
+ *
+ * Algoritm bir xil — fill ratio + per-row baseline + ratio_mode/normal_mode.
+ * Faqat sampling pozitsiyasi farq qiladi.
+ */
+export function detectFillsFromMapped(
+  cells: MappedCell[],
+  binary: Uint8Array,
+  width: number,
+  height: number
+): Map<number, FillResult> {
+  // 1. Fill ratio hisoblash — actual coordinatalar bilan
+  // Original cell ob'yektini o'zgartirmaslik uchun adapter ishlatamiz
+  type SampledCell = GridCell & { fill: number };
+  const sampledCells: SampledCell[] = cells.map(c => ({
+    q: c.q,
+    col: c.col,
+    row: c.row,
+    letter: c.letter,
+    cx: c.actualCx,
+    cy: c.actualCy,
+    r: c.actualR,
+    fill: 0,
+  }));
+
+  for (const cell of sampledCells) {
+    cell.fill = sampleFill(cell, binary, width, height, FILL_INNER_RATIO);
+  }
+
+  // 2. Savollar bo'yicha guruhlash
+  const questions = new Map<number, SampledCell[]>();
+  for (const cell of sampledCells) {
+    const arr = questions.get(cell.q) || [];
+    arr.push(cell);
+    questions.set(cell.q, arr);
+  }
+
+  // 3. Javob aniqlash — pickAnswer eski funksiyasi qayta ishlatiladi
   const results = new Map<number, FillResult>();
   for (const [q, qCells] of questions) {
     results.set(q, pickAnswer(qCells));

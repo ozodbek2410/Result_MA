@@ -12,7 +12,9 @@ class TestComputeLayout:
         L = compute_layout(30)
         assert L["n_cols"] == 2
         assert L["rows_per_col"] == 15
-        assert L["row_margin_mm"] == 1.0  # rows <= 28
+        # M-06 FIX: 1.0 → 1.5 — omr_config.json row_margin_normal_mm = 1.5
+        # Eski test noto'g'ri qiymat ishlatgan edi (config o'qilmagan).
+        assert L["row_margin_mm"] == 1.5  # rows <= 28 → row_margin_normal_mm
 
     def test_60q_2cols(self):
         L = compute_layout(60)

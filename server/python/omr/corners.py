@@ -144,9 +144,13 @@ def _detect_document_boundary(gray: np.ndarray) -> np.ndarray | None:
 
             if len(approx) == 4:
                 area = cv2.contourArea(approx)
-                # Kamida 15% rasm maydoni (varaq rasmning katta qismini egallashi kerak)
-                if area > img_area * 0.15:
+                # M-26 FIX: 15% → 25% — stol yuzasi, kitob muqovasi kabi
+                # ob'ektlar (>15% lekin <25%) yolg'on hujjat sifatida qabul qilinmasin.
+                # Haqiqiy A4 varaq odatda >40% bo'lishi kerak.
+                if area > img_area * 0.25:
                     pts = approx.reshape(4, 2).astype(np.float32)
+                    # M-26 FIX: validate_rectangle aspect ratio 0.62–0.85 tekshiruvi
+                    # bu yerda ham ishlaydi — A4 bo'lmagan ob'ektlarni rad etadi.
                     if validate_rectangle(pts, w, h):
                         return pts
 
@@ -228,6 +232,10 @@ def _select_from_quadrants(
     areas = sorted([zone_bests[z][0][2] for z in zone_bests])
     ref_area = (areas[0] + areas[1]) / 2 if len(areas) >= 2 else areas[0]
 
+    # M-25 FIX: return None o'rniga outlier best'ni saqlab validate_rectangle ga topshirish.
+    # _estimate_fourth va _geometric_pick fallback'lari find_corners() da chaqiriladi,
+    # lekin ular uchun ham kandidatlar kerak. Outlier mavjud bo'lganda uni
+    # "best available" sifatida qoldirish — validate_rectangle noto'g'ri burchakni rad etadi.
     selected = {}
     for zone_name in zone_bests:
         best, zone_cands = zone_bests[zone_name]
@@ -236,8 +244,8 @@ def _select_from_quadrants(
             filtered = [c for c in zone_cands if c[2] <= ref_area * 2.5]
             if filtered:
                 best = max(filtered, key=lambda c: c[2] * c[3] * c[4])
-            else:
-                return None  # bu zonada haqiqiy marker yo'q
+            # M-25 FIX: else: return None → outlier best sifatida qoladi.
+            # validate_rectangle noto'g'ri natijani rad etadi.
         selected[zone_name] = best
 
     pts = np.array([
