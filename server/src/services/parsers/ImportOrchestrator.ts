@@ -149,7 +149,8 @@ export class ImportOrchestrator {
           const num = marker.match(/\d+/)?.[0];
           if (num && content.formulas.has(num)) {
             const latex = content.formulas.get(num)!;
-            text = text.replace(marker, `\\(${latex}\\)`);
+            const clean = latex.replace(/\\\(|\\\)/g, '').trim();
+            text = text.replace(marker, `\\(${clean}\\)`);
           }
         }
       }

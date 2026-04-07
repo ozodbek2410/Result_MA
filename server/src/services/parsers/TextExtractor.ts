@@ -276,7 +276,9 @@ class ExtractionHelper extends BaseParser {
 
     let text = lines.join('\n');
     for (const [marker, latex] of latexMap) {
-      text = text.replace(marker, `\\(${latex}\\)`);
+      // Groq ba'zan \( \) delimiter qo'shib yuboradi — olib tashlaymiz, o'zimiz qo'shamiz
+      const clean = latex.replace(/\\\(|\\\)/g, '').trim();
+      text = text.replace(marker, `\\(${clean}\\)`);
     }
     // Konvertlanmagan markerlarni o'chirish
     text = text.replace(/\[FORMULA_\d+\]/g, '');
@@ -345,7 +347,8 @@ class ExtractionHelper extends BaseParser {
         console.log(`[TextExtractor] Vision: ${latexMap.size}/${wmfImages.length} OK`);
 
         for (const [id, latex] of latexMap) {
-          html = html.replace(new RegExp(`<img[^>]*src="${id}"[^>]*\\/?>`, 'g'), `\\(${latex}\\)`);
+          const clean = latex.replace(/\\\(|\\\)/g, '').trim();
+          html = html.replace(new RegExp(`<img[^>]*src="${id}"[^>]*\\/?>`, 'g'), `\\(${clean}\\)`);
         }
       }
 
