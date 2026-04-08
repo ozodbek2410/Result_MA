@@ -60,6 +60,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // High-res QR canvas — alohida, faqat QR detection uchun (full video resolution)
+  // Bu past sifatli kamera/uzoq turgan telefon holatida QR'ni topadi.
+  // 480px analysis canvas dan ajralgan, qolgan logika tegmaydi.
+  const qrHighResCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const qrAttemptingRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef(0);
   const capturingRef = useRef(false);
@@ -87,6 +92,12 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   const getTempCanvas = useCallback(() => {
     if (!tempCanvasRef.current) tempCanvasRef.current = document.createElement('canvas');
     return tempCanvasRef.current;
+  }, []);
+
+  // High-res QR canvas — har frame qayta yaratmaslik uchun cached
+  const getQrHighResCanvas = useCallback(() => {
+    if (!qrHighResCanvasRef.current) qrHighResCanvasRef.current = document.createElement('canvas');
+    return qrHighResCanvasRef.current;
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -330,30 +341,87 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       };
     }
 
-    // QR detection — har frame da urinish (qabul qilingan stabillik kerak emas)
-    // Native BarcodeDetector (Samsung kamera bilan bir xil aniqlik) ishlatadi
-    // BarcodeDetector mavjud emas bo'lsa jsQR'ga fallback qiladi.
+    // QR detection — 3 bosqichli strategiya, qaysi birinchi topsa shu g'olib
     //
-    // Sync yo'l (jsQR) — birinchi marta tezroq topishga urinish:
-    // Async yo'l (BarcodeDetector) — past sifatli QR'larni o'qish (background)
+    // Bosqich 1: Sync jsQR 480px canvas'da (tezkor, kichik)
+    //   → Yaqin va yaxshi sifatli QR uchun ishlaydi (~10-50ms)
+    //
+    // Bosqich 2: Async BarcodeDetector 480px canvas'da (background)
+    //   → Native OS detector, jsQR'dan ko'ra robastroq (~10-30ms)
+    //
+    // Bosqich 3: Async BarcodeDetector FULL-RESOLUTION top-right region
+    //   → Past sifatli/uzoq turgan/xira kamera holatlari uchun
+    //   → 480px da QR ~72px bo'lsa, full-res da ~300-500px (10x katta)
+    //   → Bu bosqich qimmat (~50-100ms), shuning uchun parallel qaytarib ishga
+    //     tushirilmaydi (qrAttemptingRef bilan kontrol)
     if (!qrDataRef.current) {
-      // 1. Sync jsQR — top-right region (eng tez urinish)
+      // Bosqich 1: Sync jsQR
       const sync = readQR(tctx.getImageData(0, 0, ANALYSIS_W, ah));
       if (sync) {
         qrDataRef.current = sync;
         setQrFound(true);
       } else {
-        // 2. Async native detector — background da ishlaydi (frame loop'ni
-        //    blok qilmaydi). Topilganda qrDataRef yangilanadi.
-        // tc canvas — tempCanvas frame snapshot, har frame yangilanadi
+        // Bosqich 2: Async native detector — 480px canvas'da
         void readQRAsync(tc).then((qr) => {
           if (qr && !qrDataRef.current) {
             qrDataRef.current = qr;
             setQrFound(true);
           }
-        }).catch(() => {
-          // Native detector xatosini yutish — jsQR allaqachon urindi
-        });
+        }).catch(() => { /* ignore */ });
+
+        // Bosqich 3: Full-resolution top-right region scan
+        // Faqat oldingi attempt tugagandan keyin yangisini boshlaymiz
+        // (parallel ko'p attempts tezlik berishmaydi va memory yeydi)
+        if (!qrAttemptingRef.current) {
+          qrAttemptingRef.current = true;
+          try {
+            // QR varaqning top-right zonasida joylashgan
+            // Frame'ni A4 ratio bilan video coords'ga aylantiramiz
+            // (overlay coords → video coords)
+            const fullVw = vw, fullVh = vh;
+            const vToOverlayScaleX = cropW / ow;
+            const vToOverlayScaleY = cropH / oh;
+
+            // Sheet frame video coords'da (cropped frame ichida)
+            const sheetVx = cropX + fx * vToOverlayScaleX;
+            const sheetVy = cropY + fy * vToOverlayScaleY;
+            const sheetVw = fw * vToOverlayScaleX;
+            const sheetVh = fh * vToOverlayScaleY;
+
+            // QR area: sheet'ning top-right ~33% × 22%
+            // (qrReader.ts da readQRFromRegionAsync bilan bir xil ratio)
+            const qrVx = Math.max(0, Math.floor(sheetVx + sheetVw * 0.62));
+            const qrVy = Math.max(0, Math.floor(sheetVy + sheetVh * 0.02));
+            const qrVw = Math.min(fullVw - qrVx, Math.floor(sheetVw * 0.36));
+            const qrVh = Math.min(fullVh - qrVy, Math.floor(sheetVh * 0.22));
+
+            if (qrVw > 50 && qrVh > 50) {
+              const qrCanvas = getQrHighResCanvas();
+              qrCanvas.width = qrVw;
+              qrCanvas.height = qrVh;
+              const qctx = qrCanvas.getContext('2d', { willReadFrequently: true });
+              if (qctx) {
+                qctx.drawImage(video, qrVx, qrVy, qrVw, qrVh, 0, 0, qrVw, qrVh);
+                // Native detector full-res da
+                void readQRAsync(qrCanvas).then((qr) => {
+                  qrAttemptingRef.current = false;
+                  if (qr && !qrDataRef.current) {
+                    qrDataRef.current = qr;
+                    setQrFound(true);
+                  }
+                }).catch(() => {
+                  qrAttemptingRef.current = false;
+                });
+              } else {
+                qrAttemptingRef.current = false;
+              }
+            } else {
+              qrAttemptingRef.current = false;
+            }
+          } catch {
+            qrAttemptingRef.current = false;
+          }
+        }
       }
     }
 
@@ -659,6 +727,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     setProcessingProgress(0); setAutoProgress(0); setCornerCount(0);
     stableCountRef.current = 0; capturingRef.current = false;
     cornersRef.current = null; qrDataRef.current = null;
+    qrAttemptingRef.current = false;
     setQrFound(false); setQrStudentName(null);
   };
 
@@ -666,6 +735,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     stopCamera(); setState('scanning'); setCapturedImage(null); setCameraError(null);
     capturingRef.current = false; stableCountRef.current = 0;
     cornersRef.current = null; qrDataRef.current = null;
+    qrAttemptingRef.current = false;
     onClose();
   };
 
