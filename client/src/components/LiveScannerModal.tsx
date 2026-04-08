@@ -382,43 +382,99 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     const bracketLen = Math.max(50, fw * 0.15);
     const bracketW = 5;
 
+    // Aniqlangan corner pozitsiyalarni clip → overlay coords ga aylantirish.
+    // detectCorners clip space (frameImageData) ichida ishlaydi.
+    // Overlay screen coords:
+    //   overlay_x = (clip_x + clipX) * (ow / ANALYSIS_W) — analysis va overlay nisbati
+    // ANALYSIS_W → ow → bir xil masshtab (ah → oh)
+    const analysisToOverlayX = ow / ANALYSIS_W;
+    const analysisToOverlayY = oh / ah;
+    const toOverlayX = (clipLocalX: number) => (clipLocalX + clipX) * analysisToOverlayX;
+    const toOverlayY = (clipLocalY: number) => (clipLocalY + clipY) * analysisToOverlayY;
+
     const bracketCorners = [
-      { x: fx + insetX, y: fy + insetY, dx: 1, dy: 1, found: corners.tl.found },
-      { x: fx + fw - insetX, y: fy + insetY, dx: -1, dy: 1, found: corners.tr.found },
-      { x: fx + insetX, y: fy + fh - insetY, dx: 1, dy: -1, found: corners.bl.found },
-      { x: fx + fw - insetX, y: fy + fh - insetY, dx: -1, dy: -1, found: corners.br.found },
+      // bracket = fixed expected pozitsiya (foydalanuvchi yo'naltirish uchun)
+      // detected = aniqlangan real markaz (yashil dot + qora kvadrat shu yerda)
+      {
+        bracketX: fx + insetX, bracketY: fy + insetY,
+        detectedX: corners.tl.found ? toOverlayX(corners.tl.x) : fx + insetX,
+        detectedY: corners.tl.found ? toOverlayY(corners.tl.y) : fy + insetY,
+        dx: 1, dy: 1, found: corners.tl.found,
+      },
+      {
+        bracketX: fx + fw - insetX, bracketY: fy + insetY,
+        detectedX: corners.tr.found ? toOverlayX(corners.tr.x) : fx + fw - insetX,
+        detectedY: corners.tr.found ? toOverlayY(corners.tr.y) : fy + insetY,
+        dx: -1, dy: 1, found: corners.tr.found,
+      },
+      {
+        bracketX: fx + insetX, bracketY: fy + fh - insetY,
+        detectedX: corners.bl.found ? toOverlayX(corners.bl.x) : fx + insetX,
+        detectedY: corners.bl.found ? toOverlayY(corners.bl.y) : fy + fh - insetY,
+        dx: 1, dy: -1, found: corners.bl.found,
+      },
+      {
+        bracketX: fx + fw - insetX, bracketY: fy + fh - insetY,
+        detectedX: corners.br.found ? toOverlayX(corners.br.x) : fx + fw - insetX,
+        detectedY: corners.br.found ? toOverlayY(corners.br.y) : fy + fh - insetY,
+        dx: -1, dy: -1, found: corners.br.found,
+      },
     ];
+
+    // Mark size in overlay pixels (corner_mark = 10mm, A4 = 210mm)
+    const markPx = (10 / 210) * fw;
 
     for (const bc of bracketCorners) {
       const found = bc.found;
 
-      // Bracket fon glow
+      // Bracket fon glow (faqat topilmaganda) — ko'k zona, qaerda izlanayotganini ko'rsatadi
       if (!found) {
         ctx.fillStyle = 'rgba(59, 130, 246, 0.12)';
         const gs = bracketLen * 1.3;
         ctx.fillRect(
-          bc.dx > 0 ? bc.x - 5 : bc.x - gs + 5,
-          bc.dy > 0 ? bc.y - 5 : bc.y - gs + 5,
+          bc.dx > 0 ? bc.bracketX - 5 : bc.bracketX - gs + 5,
+          bc.dy > 0 ? bc.bracketY - 5 : bc.bracketY - gs + 5,
           gs, gs
         );
       }
 
-      // Bracket chiziqlari — qalinroq, aniqroq
+      // Bracket chiziqlari — fixed pozitsiyada (foydalanuvchi yo'naltirish)
       ctx.strokeStyle = found ? '#22c55e' : '#3b82f6';
       ctx.lineWidth = found ? bracketW + 2 : bracketW;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(bc.x + bc.dx * bracketLen, bc.y);
-      ctx.lineTo(bc.x, bc.y);
-      ctx.lineTo(bc.x, bc.y + bc.dy * bracketLen);
+      ctx.moveTo(bc.bracketX + bc.dx * bracketLen, bc.bracketY);
+      ctx.lineTo(bc.bracketX, bc.bracketY);
+      ctx.lineTo(bc.bracketX, bc.bracketY + bc.dy * bracketLen);
       ctx.stroke();
 
-      // Topilganda — yashil to'ldirilgan doira
+      // Topilganda — EvalBee style: aniqlangan markazda QORA kvadrat + yashil dot
+      // Bu telefon qaysi telefondan qattiy bo'lmasin, qora marker markazida turadi
       if (found) {
-        ctx.fillStyle = '#22c55e';
+        // 1. Yashil to'ldirilgan kvadrat (10mm marker o'lchamida) — aniq markazda
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.85)';
+        ctx.fillRect(
+          bc.detectedX - markPx / 2,
+          bc.detectedY - markPx / 2,
+          markPx,
+          markPx,
+        );
+
+        // 2. Yashil dot — sub-pixel markaz (centroid bilan hisoblangan)
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(bc.x, bc.y, 8, 0, Math.PI * 2);
+        ctx.arc(bc.detectedX, bc.detectedY, 4, 0, Math.PI * 2);
         ctx.fill();
+
+        // 3. Qora chiziq markazga (cross-hair) — markaz aniqligi belgisi
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(bc.detectedX - 6, bc.detectedY);
+        ctx.lineTo(bc.detectedX + 6, bc.detectedY);
+        ctx.moveTo(bc.detectedX, bc.detectedY - 6);
+        ctx.lineTo(bc.detectedX, bc.detectedY + 6);
+        ctx.stroke();
       }
     }
 
@@ -513,14 +569,14 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       }
     }
 
-    // Yoqmagan burchaklarga pulsing indicator
+    // Yoqmagan burchaklarga pulsing indicator (bracket pozitsiyada — yo'naltirish)
     if (!allGood && corners.count > 0) {
       const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
       for (const bc of bracketCorners) {
         if (!bc.found) {
           ctx.fillStyle = `rgba(239, 68, 68, ${0.3 + 0.3 * pulse})`;
           ctx.beginPath();
-          ctx.arc(bc.x, bc.y, 12, 0, Math.PI * 2);
+          ctx.arc(bc.bracketX, bc.bracketY, 12, 0, Math.PI * 2);
           ctx.fill();
         }
       }

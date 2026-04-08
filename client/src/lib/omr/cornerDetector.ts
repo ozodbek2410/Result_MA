@@ -102,15 +102,76 @@ function checkMarkAt(
 }
 
 /**
+ * Intensity-weighted centroid — sub-pixel precision.
+ *
+ * Berilgan markazi atrofidagi qora piksellardan og'irlikli markaz hisoblaydi.
+ * Har piksel weight = (threshold - brightness), shuning uchun qoraroq piksel
+ * ko'proq hissa qo'shadi.
+ *
+ * Bu EvalBee va professional OMR tizimlardagi standart usul — yashil dot
+ * qora marker markazida turishini ta'minlaydi (bracket pozitsiyada emas).
+ *
+ * @param data - RGBA pixel data
+ * @param imgW, imgH - rasm o'lchamlari
+ * @param cx, cy - yaqin markaz (rough estimate)
+ * @param radius - sampling radius (markSize * 0.7)
+ * @param threshold - brightness chegarasi (faqat undan past piksellar hisoblanadi)
+ * @returns sub-pixel center (x, y)
+ */
+function computeCentroid(
+  data: Uint8ClampedArray, imgW: number, imgH: number,
+  cx: number, cy: number, radius: number, threshold: number
+): { x: number; y: number; weight: number } {
+  let sumX = 0, sumY = 0, sumW = 0;
+  const r = Math.round(radius);
+
+  for (let dy = -r; dy <= r; dy++) {
+    const py = Math.round(cy + dy);
+    if (py < 0 || py >= imgH) continue;
+    for (let dx = -r; dx <= r; dx++) {
+      // Doiraviy mask — bracket emas, real bubble formasi
+      if (dx * dx + dy * dy > r * r) continue;
+      const px = Math.round(cx + dx);
+      if (px < 0 || px >= imgW) continue;
+
+      const i = (py * imgW + px) * 4;
+      const brightness = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+
+      // Faqat threshold dan past piksellar (qora qism) hissa qo'shadi
+      if (brightness < threshold) {
+        // Weight: qoraroq = ko'proq weight (linear)
+        const weight = threshold - brightness;
+        sumX += px * weight;
+        sumY += py * weight;
+        sumW += weight;
+      }
+    }
+  }
+
+  if (sumW === 0) {
+    return { x: cx, y: cy, weight: 0 };
+  }
+  return { x: sumX / sumW, y: sumY / sumW, weight: sumW };
+}
+
+/**
  * Fine-tune mark position by scanning a small grid around expected position.
- * Finds the darkest spot within ±offset pixels.
+ *
+ * 2-bosqichli refinement:
+ *  Bosqich 1: Coarse search (qo'pol qadam) — eng qora hududni topish
+ *  Bosqich 2: Centroid computation — sub-pixel markaz hisoblash
+ *
+ * Natijada: marker pozitsiyasi qora kvadrat real markazida bo'ladi
+ * (1 piksel aniqligi bilan), bracket pozitsiyada emas.
  */
 function refineMark(
   data: Uint8ClampedArray, imgW: number, imgH: number,
   cx: number, cy: number, markSize: number, searchRadius: number
 ): CornerMark {
+  // ─── Bosqich 1: Coarse search — eng qora rough pozitsiya ───
   let bestMark = checkMarkAt(data, imgW, imgH, cx, cy, markSize);
   let bestDarkness = bestMark.darkness;
+  let bestX = cx, bestY = cy;
 
   const step = Math.max(2, Math.round(markSize * 0.3));
 
@@ -126,12 +187,50 @@ function refineMark(
         const mark = checkMarkAt(data, imgW, imgH, nx, ny, markSize);
         if (mark.found && mark.contrast > bestMark.contrast) {
           bestMark = mark;
+          bestX = nx;
+          bestY = ny;
         }
       }
     }
   }
 
-  return bestMark;
+  if (!bestMark.found) {
+    return bestMark;
+  }
+
+  // ─── Bosqich 2: Centroid — sub-pixel markaz ───
+  // Threshold = (centerBright + surroundBright) / 2 (mark/paper o'rtasi)
+  // Bu yarmi qora kvadrat ichidagi piksellar uchun yetarli filter
+  const centroidThreshold = bestDarkness + Math.max(20, bestMark.contrast * 0.5);
+  const centroidRadius = markSize * 0.7;
+
+  const centroid = computeCentroid(
+    data, imgW, imgH,
+    bestX, bestY,
+    centroidRadius,
+    centroidThreshold,
+  );
+
+  // Centroid yetarli qora piksel topdimi? Aks holda original pozitsiyani saqlaymiz
+  const minWeight = markSize * markSize * 5; // ~5x markSize² piksel weight
+  if (centroid.weight < minWeight) {
+    return bestMark;
+  }
+
+  // Centroid juda uzoq ketmasligi kerak (max searchRadius/2)
+  const drift = Math.hypot(centroid.x - bestX, centroid.y - bestY);
+  if (drift > searchRadius * 0.5) {
+    return bestMark;
+  }
+
+  // Yangi sub-pixel markaz bilan yakuniy mark
+  return {
+    x: centroid.x,
+    y: centroid.y,
+    darkness: bestMark.darkness,
+    contrast: bestMark.contrast,
+    found: true,
+  };
 }
 
 /**
