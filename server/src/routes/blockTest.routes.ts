@@ -2082,17 +2082,10 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
     if (configs.length > 0) {
       totalQuestions = Math.max(...configs.map(c => c.totalQuestions));
     } else {
-      // Deduplicate subjects: count max questions per unique subject (ignore letter variants)
-      const subjectMax = new Map<string, number>();
-      allTests.forEach((t: Record<string, unknown>) => {
-        const sts = t.subjectTests as Array<Record<string, unknown>> | undefined;
-        sts?.forEach((st) => {
-          const sid = (st.subjectId as Record<string, unknown>)?._id?.toString();
-          const qLen = (st.questions as Array<unknown>)?.length || 0;
-          if (sid) subjectMax.set(sid, Math.max(subjectMax.get(sid) || 0, qLen));
-        });
-      });
-      totalQuestions = Array.from(subjectMax.values()).reduce((sum, q) => sum + q, 0);
+      // Only count questions from the CURRENT block test (matches browser preview).
+      // Previously aggregated across allTests in the group, inflating count (e.g. 60 → 90).
+      const sts = (blockTest as Record<string, unknown>).subjectTests as Array<Record<string, unknown>> | undefined;
+      totalQuestions = sts?.reduce((sum, st) => sum + ((st.questions as unknown[])?.length || 0), 0) || 0;
     }
 
     // Load variants for variant codes
@@ -2119,17 +2112,13 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
         : 'A'
       : 'A';
 
-    // Collect all subject names
+    // Collect subject names from the CURRENT block test only (matches preview)
     const subjectNames: string[] = [];
-    allTests.forEach((t: Record<string, unknown>) => {
-      const subjectTests = t.subjectTests as Array<Record<string, unknown>> | undefined;
-      subjectTests?.forEach((st) => {
-        const subjectId = st.subjectId as Record<string, unknown> | undefined;
-        const name = subjectId?.nameUzb as string | undefined;
-        if (name && !subjectNames.includes(name)) {
-          subjectNames.push(name);
-        }
-      });
+    const currentSts = (blockTest as Record<string, unknown>).subjectTests as Array<Record<string, unknown>> | undefined;
+    currentSts?.forEach((st) => {
+      const subjectId = st.subjectId as Record<string, unknown> | undefined;
+      const name = subjectId?.nameUzb as string | undefined;
+      if (name && !subjectNames.includes(name)) subjectNames.push(name);
     });
 
     const useV2 = req.body?.version === 'v2' || req.query.version === 'v2';

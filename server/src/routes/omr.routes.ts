@@ -1791,11 +1791,10 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             'Noma\'lum';
 
           const detectedAnswers: Record<string, string> = result.detected_answers || {};
-          // totalQ — student variant'idagi savol soni (skoring uchun)
-          // sheetTotalQ — fizik varaqdagi bubble soni (Python grid layout uchun)
-          // Comparison loop ALWAYS iterates totalQ — phantom savollarni hisoblamaslik uchun
+          // totalQ — student variant'idagi HAQIQIY savol soni (skoring va stats uchun)
+          // sheetTotalQ = totalQ — phantom javoblar uchun Math.max OLIB TASHLANDI (M-01 BUG FIX)
           const totalQ = Object.keys(correctAnswers).length;
-          const sheetTotalQ = sheetTotal > totalQ ? sheetTotal : totalQ;
+          const sheetTotalQ = totalQ;
 
           // Comparison (OMRCheckerPage format) — FAQAT student'ning haqiqiy savollari
           const details = Array.from({ length: totalQ }, (_, i) => {
@@ -1836,8 +1835,18 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             score: scorePercent,
             details,
           };
-          // total_questions = student'ning haqiqiy savollari (sheetTotalQ EMAS)
+          // total_questions + stats.total = student'ning haqiqiy savollari (phantom yo'q)
           result.total_questions = totalQ;
+          // Python stats.total = QR dan (sheetTotal), server override = variant totalQ
+          if (result.stats) {
+            const answered = Object.keys(detectedAnswers).filter(q => {
+              const qNum = parseInt(q, 10);
+              return qNum >= 1 && qNum <= totalQ;
+            }).length;
+            result.stats.total = totalQ;
+            result.stats.answered = answered;
+            result.stats.detection_rate = totalQ > 0 ? Math.round(answered / totalQ * 1000) / 10 : 0;
+          }
         }
       } catch (err: unknown) {
         console.warn('[OMR v2] DB lookup error:', err instanceof Error ? err.message : err);
