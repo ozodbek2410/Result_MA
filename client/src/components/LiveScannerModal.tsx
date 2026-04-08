@@ -184,13 +184,15 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         clearInterval(progressInterval);
         setProcessingProgress(100);
 
-        // Client scan muvaffaqiyatli VA yetarli javob topilgan bo'lsa
-        // Agar answered < 10% → iPhone HDR / ko'k qalam muammosi bo'lishi mumkin → server fallback
+        // Client scan muvaffaqiyatli VA yetarli javob topilgan VA QR topilgan bo'lsa
+        // Agar answered < 10% → iPhone HDR / ko'k qalam muammosi → server fallback
+        // Agar QR topilmagan → server fallback (server pyzbar QR ancha kuchli)
         const answeredPct = scanResult.stats.total > 0
           ? scanResult.stats.answered / scanResult.stats.total
           : 0;
+        const qrFound = scanResult.qrCode.found && !!scanResult.qrCode.variantCode;
 
-        if (scanResult.success && answeredPct >= 0.10) {
+        if (scanResult.success && answeredPct >= 0.10 && qrFound) {
           // Yetarli javob topildi — client natijasini ishlatish
           const blob = await new Promise<Blob>(resolve =>
             canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92),
@@ -237,9 +239,15 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           onClose();
           return;
         } else {
-          // Client scan xato yoki answered < 10% — server fallback
-          console.warn('[OMR] Client scan insufficient, falling back to server:',
-            scanResult.success ? `answered ${Math.round(answeredPct * 100)}%` : scanResult.error);
+          // Client scan xato/answered < 10%/QR yo'q — server fallback
+          // Server pyzbar QR detection client'dan ancha kuchli — past sifatli rasmda
+          // QR topilishi mumkin
+          const reason = !scanResult.success
+            ? `error: ${scanResult.error}`
+            : !qrFound
+              ? 'QR not found client-side'
+              : `answered ${Math.round(answeredPct * 100)}%`;
+          console.warn('[OMR] Client scan insufficient, falling back to server:', reason);
         }
       }
 
