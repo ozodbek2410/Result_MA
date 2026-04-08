@@ -6,7 +6,7 @@ import {
 import api from '../lib/api';
 import {
   detectCorners, estimateMissingCorner, validateCorners,
-  readQR,
+  readQR, readQRAsync,
   type CornersResult, type QRData,
 } from '../lib/omr';
 
@@ -330,13 +330,30 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       };
     }
 
-    // QR detection (every frame when corners found, less often otherwise)
-    if (corners.count >= 3 && !qrDataRef.current) {
-      const fullImageData = tctx.getImageData(0, 0, ANALYSIS_W, ah);
-      const qr = readQR(fullImageData);
-      if (qr) {
-        qrDataRef.current = qr;
+    // QR detection — har frame da urinish (qabul qilingan stabillik kerak emas)
+    // Native BarcodeDetector (Samsung kamera bilan bir xil aniqlik) ishlatadi
+    // BarcodeDetector mavjud emas bo'lsa jsQR'ga fallback qiladi.
+    //
+    // Sync yo'l (jsQR) — birinchi marta tezroq topishga urinish:
+    // Async yo'l (BarcodeDetector) — past sifatli QR'larni o'qish (background)
+    if (!qrDataRef.current) {
+      // 1. Sync jsQR — top-right region (eng tez urinish)
+      const sync = readQR(tctx.getImageData(0, 0, ANALYSIS_W, ah));
+      if (sync) {
+        qrDataRef.current = sync;
         setQrFound(true);
+      } else {
+        // 2. Async native detector — background da ishlaydi (frame loop'ni
+        //    blok qilmaydi). Topilganda qrDataRef yangilanadi.
+        // tc canvas — tempCanvas frame snapshot, har frame yangilanadi
+        void readQRAsync(tc).then((qr) => {
+          if (qr && !qrDataRef.current) {
+            qrDataRef.current = qr;
+            setQrFound(true);
+          }
+        }).catch(() => {
+          // Native detector xatosini yutish — jsQR allaqachon urindi
+        });
       }
     }
 
