@@ -772,6 +772,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
                   : state === 'processing' ? 'Tahlil qilinmoqda...'
                   : 'Xatolik'}
               </span>
+              {/* Version badge — yangi build yuklanganini tekshirish uchun.
+                  Foydalanuvchi screen'da v3 ko'rsa, demak yangi kod ishlayapti. */}
+              <span className="text-white/70 text-[10px] font-mono ml-1">
+                v3
+              </span>
             </div>
             <div className="flex gap-2">
               {state === 'scanning' && (

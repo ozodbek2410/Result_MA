@@ -1,5 +1,14 @@
-const CACHE_NAME = 'resultma-v1';
-const STATIC_ASSETS = ['/', '/logo.png'];
+// CACHE_NAME har deploy'da bumped — eski cache'ni majburan tozalaydi
+const CACHE_NAME = 'resultma-v3-2479aa4';
+const STATIC_ASSETS = ['/logo.png'];
+
+// Eski sw.js — JS bundle'larni cache qilib eski hash bilan saqlardi va yangi
+// deploy'da o'zgarmasdi. Bu user'larni eski kodga "qulflab qo'yardi".
+//
+// Yangi strategiya:
+// - HTML / JS / CSS — NETWORK-ONLY (har doim yangi deploy darhol ko'rinadi)
+// - Boshqa static (png, jpg, svg, fonts) — stale-while-revalidate (tez + yangilanadi)
+// - API/uploads — skip (SW aralashmaydi)
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -10,32 +19,67 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    (async () => {
+      // BARCHA eski cache'larni tozalash (resultma-v1, resultma-v2, ...)
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+      );
+      // Faol tab'larni yangi SW ostiga o'tkazish
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
+
+function isCodeAsset(url) {
+  return (
+    url.pathname === '/' ||
+    url.pathname === '/index.html' ||
+    /\.(html|js|mjs|css)$/.test(url.pathname)
+  );
+}
+
+function isStaticAsset(url) {
+  return /\.(png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|eot)$/.test(url.pathname);
+}
 
 self.addEventListener('fetch', (e) => {
   const { request } = e;
-  const url = new URL(request.url);
+  if (request.method !== 'GET') return;
 
-  // Skip non-GET and API/upload requests
-  if (request.method !== 'GET' || url.pathname.startsWith('/api') || url.pathname.startsWith('/uploads')) {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api')) return;
+  if (url.pathname.startsWith('/uploads')) return;
+  if (url.pathname.startsWith('/exports')) return;
+
+  // Code assets: NETWORK-ONLY — yangi deploy darhol ko'rinadi
+  if (isCodeAsset(url)) {
+    e.respondWith(
+      fetch(request).catch(() =>
+        // Offline fallback: cache'dan
+        caches.match(request).then((c) => c || new Response('Offline', { status: 503 }))
+      )
+    );
     return;
   }
 
-  e.respondWith(
-    fetch(request)
-      .then((response) => {
-        // Cache successful responses for static assets
-        if (response.ok && (url.pathname.match(/\.(js|css|png|jpg|svg|woff2?)$/) || url.pathname === '/')) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
+  // Static assets (img/font): stale-while-revalidate — tez yuklanadi, fon'da yangilanadi
+  if (isStaticAsset(url)) {
+    e.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(request);
+        const fetchPromise = fetch(request)
+          .then((response) => {
+            if (response && response.ok) cache.put(request, response.clone());
+            return response;
+          })
+          .catch(() => cached);
+        return cached || fetchPromise;
       })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
-  );
+    );
+    return;
+  }
+
+  // Default — network-only
 });
