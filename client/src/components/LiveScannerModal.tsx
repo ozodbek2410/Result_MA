@@ -67,6 +67,13 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   // 480px analysis canvas dan ajralgan, qolgan logika tegmaydi.
   const qrHighResCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const qrAttemptingRef = useRef(false);
+  // ImageCapture API — native HW kamera capture (camera ilovasi sifati).
+  // Stream start bo'lganda yaratiladi. takePhoto() chaqirilsa sensor pipeline'dan
+  // to'g'ridan-to'g'ri yuqori sifatli rasm beradi (WebRTC stream emas).
+  // qrNativeAttemptingRef — parallel takePhoto'larni oldini olish (har takePhoto qimmat).
+  const imageCaptureRef = useRef<unknown>(null);
+  const qrNativeAttemptingRef = useRef(false);
+  const qrNativeFrameCounterRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef(0);
   const capturingRef = useRef(false);
@@ -110,6 +117,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
   const stopCamera = useCallback(() => {
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    imageCaptureRef.current = null;
+    qrNativeAttemptingRef.current = false;
+    qrNativeFrameCounterRef.current = 0;
   }, []);
 
   // Guide frame rectangle
@@ -356,7 +366,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       };
     }
 
-    // QR detection — 3 bosqichli strategiya, qaysi birinchi topsa shu g'olib
+    // QR detection — 4 bosqichli strategiya, qaysi birinchi topsa shu g'olib
     //
     // Bosqich 1: Sync jsQR 480px canvas'da (tezkor, kichik)
     //   → Yaqin va yaxshi sifatli QR uchun ishlaydi (~10-50ms)
@@ -369,6 +379,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     //   → 480px da QR ~72px bo'lsa, full-res da ~300-500px (10x katta)
     //   → Bu bosqich qimmat (~50-100ms), shuning uchun parallel qaytarib ishga
     //     tushirilmaydi (qrAttemptingRef bilan kontrol)
+    //
+    // Bosqich 4: ImageCapture API native HW photo (eng kuchli)
+    //   → camera ilovasi bilan BIR XIL — native sensor pipeline
+    //   → 4 corner topilgandan keyin har 15 frame'da bir bor urinish
+    //   → ImageCapture mavjud bo'lmagan browserlarda skipped (Safari/Firefox)
     if (!qrDataRef.current) {
       // Bosqich 1: Sync jsQR
       const sync = readQR(tctx.getImageData(0, 0, ANALYSIS_W, ah));
@@ -436,6 +451,54 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
           } catch {
             qrAttemptingRef.current = false;
           }
+        }
+
+        // BOSQICH 4: ImageCapture API native HW photo (eng kuchli)
+        // Camera ilovasi sifati bilan bir xil — sensor pipeline'dan to'g'ridan-to'g'ri
+        // photo. WebRTC video stream past sifatiga bog'liq emas.
+        //
+        // Sharti:
+        // - 4 corner topilgan (corners.count >= 3 va valid)
+        // - Har 15 frame'da bir bor (qimmat operatsiya, ~200-500ms)
+        // - imageCapture mavjud (Chrome/Samsung Internet)
+        // - Oldingi takePhoto tugagan
+        qrNativeFrameCounterRef.current++;
+        const ic = imageCaptureRef.current as { takePhoto?: () => Promise<Blob> } | null;
+        if (
+          ic &&
+          typeof ic.takePhoto === 'function' &&
+          valid &&
+          !qrNativeAttemptingRef.current &&
+          qrNativeFrameCounterRef.current % 15 === 0
+        ) {
+          qrNativeAttemptingRef.current = true;
+          void (async () => {
+            try {
+              const blob = await ic.takePhoto!();
+              if (qrDataRef.current) return; // boshqa bosqich allaqachon topdi
+              // Blob'dan ImageBitmap yaratish — BarcodeDetector to'g'ridan oladi
+              const bitmap = await createImageBitmap(blob);
+              // Yangi canvas'ga chizamiz (BarcodeDetector ImageBitmap olishi mumkin
+              // lekin qrReader.ts canvas oladi — uniform qilamiz)
+              const photoCanvas = document.createElement('canvas');
+              photoCanvas.width = bitmap.width;
+              photoCanvas.height = bitmap.height;
+              const pctx = photoCanvas.getContext('2d');
+              if (pctx) {
+                pctx.drawImage(bitmap, 0, 0);
+                const qr = await readQRAsync(photoCanvas);
+                if (qr && !qrDataRef.current) {
+                  qrDataRef.current = qr;
+                  setQrFound(true);
+                }
+              }
+              bitmap.close?.();
+            } catch {
+              // takePhoto xatosi (tracker stop bo'lgan, busy, h.k.) — silently skip
+            } finally {
+              qrNativeAttemptingRef.current = false;
+            }
+          })();
         }
       }
     }
@@ -722,10 +785,62 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     try {
       setCameraError(null);
       stopCamera();
+
+      // Maksimal sifat: 4K asosiy, 1080p fallback
+      // Continuous autofocus — telefon kamera'sidagi auto-focus'ni faollashtirish
+      // (camera ilovasidagidek doimiy fokuslash → sharp rasm → QR o'qiladi)
+      // Standart MediaTrackConstraints'da focusMode/exposureMode/whiteBalanceMode
+      // yo'q (lekin Chrome/Samsung Internet qo'llab-quvvatlaydi). Track-level
+      // applyConstraints orqali keyinroq sozlanadi (pastda).
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 3840, min: 1280 },
+          height: { ideal: 2160, min: 720 },
+        },
       });
       streamRef.current = stream;
+
+      // Track-level capabilities — qo'shimcha sozlash (browser hammasini qo'llab-quvvatlamaydi)
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        try {
+          const caps = track.getCapabilities() as Record<string, unknown>;
+          const advanced: Array<Record<string, unknown>> = [];
+          if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+            advanced.push({ focusMode: 'continuous' });
+          }
+          if (caps.exposureMode && Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) {
+            advanced.push({ exposureMode: 'continuous' });
+          }
+          if (caps.whiteBalanceMode && Array.isArray(caps.whiteBalanceMode) && caps.whiteBalanceMode.includes('continuous')) {
+            advanced.push({ whiteBalanceMode: 'continuous' });
+          }
+          if (advanced.length > 0) {
+            await track.applyConstraints({ advanced } as MediaTrackConstraints);
+          }
+        } catch {
+          // Constraints apply qilolmasa ham davom etamiz — default ham ishlaydi
+        }
+
+        // ImageCapture init — native HW photo capture API
+        // Chrome/Edge/Samsung Internet qo'llab-quvvatlaydi. Safari/Firefox da yo'q.
+        // Bo'lmagan browserlarda imageCaptureRef.current = null bo'ladi va
+        // bosqich 4 skipped (qolgan 3 bosqich oldingidek ishlaydi)
+        try {
+          const w = window as unknown as { ImageCapture?: new (track: MediaStreamTrack) => unknown };
+          if (typeof w.ImageCapture === 'function') {
+            imageCaptureRef.current = new w.ImageCapture(track);
+          } else {
+            imageCaptureRef.current = null;
+          }
+        } catch {
+          imageCaptureRef.current = null;
+        }
+        qrNativeAttemptingRef.current = false;
+        qrNativeFrameCounterRef.current = 0;
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -801,9 +916,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
                   : 'Xatolik'}
               </span>
               {/* Version badge — yangi build yuklanganini tekshirish uchun.
-                  v4 = QR-required auto-capture (xira reject) */}
+                  v5 = ImageCapture API + 4K + continuous autofocus */}
               <span className="text-white/70 text-[10px] font-mono ml-1">
-                v4
+                v5
               </span>
             </div>
             <div className="flex gap-2">
