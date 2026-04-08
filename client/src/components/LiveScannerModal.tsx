@@ -54,6 +54,8 @@ const A4_RATIO = 297 / 210;
 const FRAME_W_RATIO = 0.88;
 const ANALYSIS_W = 480;
 const STABLE_FRAMES_NEEDED = 10; // ~2s — barcha telefonlarda ishonchli capture
+// Sharpness threshold ishlatilmaydi (QR o'qilishi natural blur filter):
+// xira rasmda QR detect bo'lmaydi → auto-capture trigger bo'lmaydi.
 
 export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -99,6 +101,11 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     if (!qrHighResCanvasRef.current) qrHighResCanvasRef.current = document.createElement('canvas');
     return qrHighResCanvasRef.current;
   }, []);
+
+  // Sharpness check kerak emas — QR o'qilishi natural blur reject:
+  // xira rasmda QR finder pattern xira → BarcodeDetector/jsQR/pyzbar topa olmaydi
+  // → auto-capture trigger bo'lmaydi (qrDataRef.current shart)
+  // Foydalanuvchi avtomatik ravishda fokus topishga majbur bo'ladi.
 
   const stopCamera = useCallback(() => {
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
@@ -443,8 +450,18 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     setCornerCount(corners.count);
     setAutoProgress(Math.min(stableCountRef.current / STABLE_FRAMES_NEEDED, 1));
 
-    // Auto-capture — barcha holatda STABLE_FRAMES_NEEDED kutish
-    if (valid && stableCountRef.current >= STABLE_FRAMES_NEEDED && !capturingRef.current) {
+    // Auto-capture — 3 ta shart bir vaqtda bajarilishi kerak:
+    // 1. valid: 4 corner topilgan (yoki 3+1 estimated) va to'g'ri to'rtburchak
+    // 2. stable: STABLE_FRAMES_NEEDED davomida turg'un (~2s)
+    // 3. QR topilgan — bu eng muhimi! QR yo'q bo'lsa kapture qilish ma'nosiz
+    //    (student aniqlanmaydi). QR topilishi rasm SHARP ekanligini ham tasdiqlaydi
+    //    (xira rasmda QR o'qilmaydi → avtomatik blur reject ham bo'ladi)
+    if (
+      valid &&
+      stableCountRef.current >= STABLE_FRAMES_NEEDED &&
+      qrDataRef.current &&
+      !capturingRef.current
+    ) {
       capturePhoto();
       return;
     }
@@ -621,11 +638,22 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     if (labelY > 30) {
       ctx.textAlign = 'center';
       if (allGood) {
-        // Yashil pill — "Skanerlash..."
-        ctx.fillStyle = 'rgba(34,197,94,0.9)';
-        ctx.beginPath(); ctx.roundRect(ow / 2 - 85, labelY - 14, 170, 30, 8); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 14px system-ui';
-        ctx.fillText('Qimirlamang...', ow / 2, labelY + 2);
+        // 4 corner topilgan — endi QR ham kerak
+        const qrReady = !!qrDataRef.current;
+        if (qrReady) {
+          // Yashil pill — "Qimirlamang..." (auto-capture sanog'i ketmoqda)
+          ctx.fillStyle = 'rgba(34,197,94,0.9)';
+          ctx.beginPath(); ctx.roundRect(ow / 2 - 85, labelY - 14, 170, 30, 8); ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 14px system-ui';
+          ctx.fillText('Qimirlamang...', ow / 2, labelY + 2);
+        } else {
+          // 4 corner OK lekin QR yo'q — sariq pill, fokus haqida xabar
+          // Bu xira rasm holatida ham triggerlanadi (xira QR o'qilmaydi)
+          ctx.fillStyle = 'rgba(245,158,11,0.92)';
+          ctx.beginPath(); ctx.roundRect(ow / 2 - 110, labelY - 14, 220, 30, 8); ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui';
+          ctx.fillText('QR kutilyapti — fokus toping', ow / 2, labelY + 2);
+        }
       } else {
         // Yo'nalishli hint — qaysi tomonga siljitish kerak
         const tl = corners.tl.found, tr = corners.tr.found;
@@ -773,9 +801,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
                   : 'Xatolik'}
               </span>
               {/* Version badge — yangi build yuklanganini tekshirish uchun.
-                  Foydalanuvchi screen'da v3 ko'rsa, demak yangi kod ishlayapti. */}
+                  v4 = QR-required auto-capture (xira reject) */}
               <span className="text-white/70 text-[10px] font-mono ml-1">
-                v3
+                v4
               </span>
             </div>
             <div className="flex gap-2">

@@ -1,5 +1,5 @@
 // CACHE_NAME har deploy'da bumped — eski cache'ni majburan tozalaydi
-const CACHE_NAME = 'resultma-v3-2479aa4';
+const CACHE_NAME = 'resultma-v4-qr-required';
 const STATIC_ASSETS = ['/logo.png'];
 
 // Eski sw.js — JS bundle'larni cache qilib eski hash bilan saqlardi va yangi
