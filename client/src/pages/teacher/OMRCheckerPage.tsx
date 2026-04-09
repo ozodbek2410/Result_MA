@@ -537,11 +537,19 @@ export default function OMRCheckerPage() {
                       </div>
                       
                       <div className="space-y-2 sm:space-y-3">
-                        {/* Student Name */}
-                        <div className="bg-white/10 rounded-lg p-2.5 sm:p-3 backdrop-blur-sm">
-                          <p className="text-xs text-blue-100 mb-0.5 sm:mb-1">O'quvchi</p>
-                          <p className="text-base sm:text-lg font-bold text-white truncate">{result.qr_code.studentName}</p>
-                        </div>
+                        {/* Student Name — bosilsa qo'lda o'zgartirish mumkin */}
+                        <button
+                          onClick={() => setIsStudentSelectorOpen(true)}
+                          className="w-full bg-white/10 hover:bg-white/20 active:bg-white/25 rounded-lg p-2.5 sm:p-3 backdrop-blur-sm text-left transition-colors group"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-blue-100 mb-0.5 sm:mb-1">O'quvchi (o'zgartirish uchun bosing)</p>
+                              <p className="text-base sm:text-lg font-bold text-white truncate">{result.qr_code.studentName}</p>
+                            </div>
+                            <Edit2 className="w-4 h-4 text-blue-200 group-hover:text-white flex-shrink-0 transition-colors" />
+                          </div>
+                        </button>
                         
                         <div className="grid grid-cols-2 gap-2 sm:gap-3">
                           {/* Test Name */}
