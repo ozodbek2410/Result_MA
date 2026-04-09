@@ -67,6 +67,7 @@ export interface AnswerSheetV2Props {
     fullName: string;
     variantCode: string;
     studentCode?: number;
+    room?: string;
   };
   test: {
     name: string;
@@ -192,6 +193,16 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
                 <>&nbsp;&nbsp;<b>Davr:</b>&nbsp;{MONTHS[test.periodMonth - 1]} {test.periodYear}</>
               )}
             </div>
+            {student.room && (
+              <div style={{
+                background: '#fff3cd', border: '1.5px solid #ffc107',
+                padding: '1mm 2mm', borderRadius: '2mm',
+                fontSize: '10pt', display: 'inline-block', marginTop: '0.5mm',
+              }}>
+                <b>🏫 Xona:</b>&nbsp;
+                <span style={{ fontWeight: 'bold', fontSize: '11pt', color: '#8b5a00' }}>{student.room}</span>
+              </div>
+            )}
             <div style={{
               background: '#f4f4f4', padding: '1mm 2mm',
               border: '1px solid #ccc', fontSize: '7pt', marginTop: '1mm',

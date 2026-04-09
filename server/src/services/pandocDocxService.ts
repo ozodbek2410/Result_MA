@@ -564,7 +564,7 @@ export class PandocDocxService {
    * Generate answer sheet DOCX for multiple students
    */
   static async generateAnswerSheetDocx(data: {
-    students: Array<{ fullName: string; variantCode: string }>;
+    students: Array<{ fullName: string; variantCode: string; room?: string }>;
     test: { classNumber: number; groupLetter: string; subjectName?: string };
     totalQuestions: number;
     className?: string;
@@ -581,6 +581,10 @@ export class PandocDocxService {
 
       if (test.subjectName) {
         md += `**Fan:** ${test.subjectName} &nbsp;&nbsp; **Savollar soni:** ${totalQuestions}\n\n`;
+      }
+
+      if (student.room) {
+        md += `**🏫 Xona:** **${student.room}**\n\n`;
       }
 
       // Build 2-column answer table

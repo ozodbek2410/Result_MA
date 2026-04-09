@@ -2110,7 +2110,8 @@ router.post('/:id/export-answer-sheets-pdf', authenticate, async (req: AuthReque
     const pdfStudents = selectedStudents.map(s => ({
       fullName: (s as Record<string, unknown>).fullName as string || '',
       variantCode: variantMap.get(s._id.toString()) || '',
-      studentCode: (s as Record<string, unknown>).studentCode as number | undefined
+      studentCode: (s as Record<string, unknown>).studentCode as number | undefined,
+      room: (s as Record<string, unknown>).room as string | undefined,
     }));
 
     const groupLetter = (selectedStudents[0] as Record<string, unknown>)?.directionId

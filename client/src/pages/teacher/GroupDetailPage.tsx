@@ -75,7 +75,11 @@ export default function GroupDetailPage() {
   const [editingStudent, setEditingStudent] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editRoom, setEditRoom] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [bulkRoomOpen, setBulkRoomOpen] = useState(false);
+  const [bulkRoom, setBulkRoom] = useState('');
+  const [bulkRoomSaving, setBulkRoomSaving] = useState(false);
   const { success, error } = useToast();
 
   useEffect(() => {
@@ -317,10 +321,11 @@ export default function GroupDetailPage() {
     }
   };
 
-  const startEditStudent = (student: { _id: string; fullName: string; phone?: string }) => {
+  const startEditStudent = (student: { _id: string; fullName: string; phone?: string; room?: string }) => {
     setEditingStudent(student._id);
     setEditName(student.fullName || '');
     setEditPhone(student.phone || '');
+    setEditRoom(student.room || '');
   };
 
   const handleSaveEdit = async (studentId: string) => {
@@ -330,6 +335,7 @@ export default function GroupDetailPage() {
       await api.put(`/students/${studentId}`, {
         fullName: editName.trim(),
         phone: editPhone.trim() || undefined,
+        room: editRoom.trim() || null, // null = clear room
       });
       success('O\'quvchi ma\'lumotlari yangilandi');
       setEditingStudent(null);
@@ -339,6 +345,30 @@ export default function GroupDetailPage() {
       error(msg);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  // Guruhdagi barcha o'quvchilarga bir xil xona tayinlash (bulk)
+  const handleBulkRoomAssign = async () => {
+    const room = bulkRoom.trim();
+    if (!room) { error('Xona kiritilmadi'); return; }
+    if (!students || students.length === 0) { error('O\'quvchilar yo\'q'); return; }
+    setBulkRoomSaving(true);
+    try {
+      await Promise.all(
+        students.map((s: { _id: string }) =>
+          api.put(`/students/${s._id}`, { room })
+        )
+      );
+      success(`${students.length} o'quvchiga "${room}" xonasi tayinlandi`);
+      setBulkRoomOpen(false);
+      setBulkRoom('');
+      fetchStudents();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Xatolik';
+      error(msg);
+    } finally {
+      setBulkRoomSaving(false);
     }
   };
 
@@ -706,16 +736,42 @@ export default function GroupDetailPage() {
       {/* Students List */}
       <Card className="border-0 shadow-soft">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-lg">O'quvchilar ro'yxati</CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="info" size="md">{students.length} ta</Badge>
+              <Button size="sm" variant="outline" onClick={() => setBulkRoomOpen(v => !v)} className="border-amber-300 text-amber-700 hover:bg-amber-50">
+                🏫 <span className="ml-1">Xona tayinlash</span>
+              </Button>
               <Button size="sm" onClick={openAddStudentModal}>
                 <UserPlus className="w-4 h-4 mr-1" />
                 <span className="hidden sm:inline">Qo'shish</span>
               </Button>
             </div>
           </div>
+          {bulkRoomOpen && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs text-amber-900 mb-2 font-semibold">
+                Guruhdagi barcha {students.length} o'quvchiga bir xil xona tayinlash:
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={bulkRoom}
+                  onChange={e => setBulkRoom(e.target.value)}
+                  placeholder="Xona raqami (masalan: 201)"
+                  className="flex-1 max-w-xs text-sm"
+                  autoFocus
+                  onKeyDown={e => e.key === 'Enter' && handleBulkRoomAssign()}
+                />
+                <Button size="sm" onClick={handleBulkRoomAssign} loading={bulkRoomSaving} disabled={!bulkRoom.trim()}>
+                  Tayinlash
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setBulkRoomOpen(false); setBulkRoom(''); }}>
+                  Bekor
+                </Button>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-4">
           <div className="mb-4">
@@ -745,6 +801,9 @@ export default function GroupDetailPage() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
                         Telefon
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        🏫 Xona
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
                         Status
@@ -793,6 +852,23 @@ export default function GroupDetailPage() {
                             />
                           ) : (
                             student.phone || 'N/A'
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {editingStudent === student._id ? (
+                            <Input
+                              value={editRoom}
+                              onChange={e => setEditRoom(e.target.value)}
+                              placeholder="Masalan: 201"
+                              className="w-24 text-sm"
+                              onKeyDown={e => e.key === 'Enter' && handleSaveEdit(student._id)}
+                            />
+                          ) : student.room ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md font-bold text-xs">
+                              🏫 {student.room}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
                           )}
                         </td>
                         <td className="px-6 py-4">
@@ -895,6 +971,13 @@ export default function GroupDetailPage() {
                             className="text-sm"
                             onKeyDown={e => e.key === 'Enter' && handleSaveEdit(student._id)}
                           />
+                          <Input
+                            value={editRoom}
+                            onChange={e => setEditRoom(e.target.value)}
+                            placeholder="🏫 Xona (masalan: 201)"
+                            className="text-sm"
+                            onKeyDown={e => e.key === 'Enter' && handleSaveEdit(student._id)}
+                          />
                           <div className="flex gap-2">
                             <Button size="sm" onClick={() => handleSaveEdit(student._id)} loading={savingEdit}>
                               <Check className="w-4 h-4 mr-1" /> Saqlash
@@ -917,6 +1000,11 @@ export default function GroupDetailPage() {
                             <h3 className="font-semibold text-gray-900 mb-1 truncate">{student.fullName}</h3>
                             {student.studentCode && <p className="text-xs text-gray-400 font-mono">ID: {student.studentCode}</p>}
                             <p className="text-sm text-gray-600">{student.phone || 'Telefon yo\'q'}</p>
+                            {student.room && (
+                              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md font-bold text-xs">
+                                🏫 Xona: {student.room}
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-col gap-1 flex-shrink-0">
                             <button

@@ -6,6 +6,7 @@ interface AnswerSheetProps {
     fullName: string;
     variantCode: string;
     studentCode?: number;
+    room?: string;
   };
   test: {
     name: string;
@@ -352,6 +353,20 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
                 <span style={{ marginLeft: '5mm', fontWeight: 600 }}>Savollar soni: {totalQuestions}</span>
               )}
             </div>
+            {student.room && (
+              <div style={{
+                margin: '1.5mm 0',
+                display: 'inline-block',
+                background: '#fff3cd',
+                border: '1.5px solid #ffc107',
+                padding: '1mm 3mm',
+                borderRadius: '2mm',
+                fontSize: '11pt',
+              }}>
+                <span style={{ fontWeight: 600 }}>🏫 Xona:</span>{' '}
+                <span style={{ fontWeight: 'bold', fontSize: '12pt', color: '#8b5a00' }}>{student.room}</span>
+              </div>
+            )}
           </div>
         </div>
         {qrData && (

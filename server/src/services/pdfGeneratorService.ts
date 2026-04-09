@@ -1228,6 +1228,7 @@ export class PDFGeneratorService {
       fullName: string;
       variantCode: string;
       studentCode?: number;
+      room?: string;
     }>;
     test: {
       classNumber: number;
@@ -1273,7 +1274,7 @@ export class PDFGeneratorService {
    * Generate answer sheets HTML
    */
   private static async generateAnswerSheetsHTML(data: {
-    students: Array<{ fullName: string; variantCode: string; studentCode?: number }>;
+    students: Array<{ fullName: string; variantCode: string; studentCode?: number; room?: string }>;
     test: { classNumber: number; groupLetter: string; subjectName?: string; periodMonth?: number; periodYear?: number };
     totalQuestions: number;
     sheetsPerPage?: number;
@@ -1402,6 +1403,7 @@ export class PDFGeneratorService {
               ${periodText ? `<tr><td class="info-label">Davr:</td><td class="info-value">${periodText}</td></tr>` : ''}
               <tr><td class="info-label">ID:</td><td class="info-value" style="font-weight:bold">${student.studentCode || student.variantCode}</td></tr>
               <tr><td class="info-label">Sinf:</td><td class="info-value">${test.classNumber}-${test.groupLetter} &nbsp;&nbsp; <span class="info-label">Savollar:</span> ${totalQuestions}</td></tr>
+              ${student.room ? `<tr><td class="info-label">&#127979; Xona:</td><td class="info-value" style="font-weight:bold;color:#8b5a00;background:#fff3cd;padding:1mm 3mm;border-radius:2mm">${student.room}</td></tr>` : ''}
             </table>
           </div>
           ${qrDataUrl ? `<div class="qr-box"><img src="${qrDataUrl}" class="qr-img"/></div>` : ''}
@@ -1548,7 +1550,7 @@ export class PDFGeneratorService {
   // ─── V2 Answer Sheet — omr_config.json bilan mos ────────────────────────────
 
   static async generateAnswerSheetsPDFV2(data: {
-    students: Array<{ fullName: string; variantCode: string; studentCode?: number }>;
+    students: Array<{ fullName: string; variantCode: string; studentCode?: number; room?: string }>;
     test: {
       name?: string;
       classNumber: number;
@@ -1583,7 +1585,7 @@ export class PDFGeneratorService {
   }
 
   private static async generateAnswerSheetsHTMLV2(data: {
-    students: Array<{ fullName: string; variantCode: string; studentCode?: number }>;
+    students: Array<{ fullName: string; variantCode: string; studentCode?: number; room?: string }>;
     test: { name?: string; classNumber: number; groupLetter: string; subjectName?: string; periodMonth?: number; periodYear?: number };
     totalQuestions: number;
     testType?: 'test' | 'block_test';
@@ -1701,6 +1703,7 @@ export class PDFGeneratorService {
                 <b>Savollar:</b> ${q}
                 ${periodText ? `&nbsp; <b>Davr:</b> ${periodText}` : ''}
               </div>
+              ${student.room ? `<div class="v2-line v2-room"><b>&#127979; Xona:</b> <span class="v2-room-val">${student.room}</span></div>` : ''}
               <div class="v2-instruct">
                 Doirachani <b>qora</b> yoki <b>ko&#39;k</b> ruchka bilan to&#39;liq to&#39;ldiring.
                 Bitta savolga — bitta javob. Tuzatish mumkin emas.
@@ -1761,6 +1764,12 @@ export class PDFGeneratorService {
   .v2-info-left { flex: 1; font-size: 8.5pt; }
   .v2-title { font-size: 13pt; font-weight: bold; margin-bottom: 1.5mm; }
   .v2-line { margin-bottom: 0.8mm; }
+  .v2-room {
+    background: #fff3cd; border: 1.5px solid #ffc107;
+    padding: 1mm 2mm; border-radius: 2mm;
+    font-size: 10pt; display: inline-block; margin-top: 0.5mm;
+  }
+  .v2-room-val { font-weight: bold; font-size: 11pt; color: #8b5a00; }
   .v2-instruct {
     background: #f4f4f4; padding: 1mm 2mm;
     border: 1px solid #ccc; font-size: 7pt; margin-top: 1mm;

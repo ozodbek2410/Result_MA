@@ -14,6 +14,8 @@ export interface IStudent extends Document {
   classNumber: number;
   phone?: string;
   motherPhone?: string;
+  /** Test o'tadigan xona raqami (titul varoqda chiqadi). CRM bermaydigan lokal field. */
+  room?: string;
   directionId?: mongoose.Types.ObjectId;
   subjectIds: mongoose.Types.ObjectId[];
   profileToken: string;
@@ -44,6 +46,7 @@ const StudentSchema = new Schema<IStudent>({
   classNumber: { type: Number, required: true },
   phone: String,
   motherPhone: String,
+  room: { type: String, trim: true },
   directionId: { type: Schema.Types.ObjectId, ref: 'Direction' },
   subjectIds: [{ type: Schema.Types.ObjectId, ref: 'Subject' }],
   profileToken: { type: String, required: true, unique: true },

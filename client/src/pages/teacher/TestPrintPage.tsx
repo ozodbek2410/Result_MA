@@ -960,7 +960,7 @@ export default function TestPrintPage() {
             return (
               <div key={`sheet-${student._id}`} className="page-break mb-8 print:mb-0" style={{ display: 'flex', justifyContent: 'center' }}>
                 <AnswerSheetV2
-                  student={{ fullName: student.fullName, variantCode, studentCode: student.studentCode }}
+                  student={{ fullName: student.fullName, variantCode, studentCode: student.studentCode, room: student.room }}
                   test={{
                     name: test.name || 'Test',
                     subjectName: isBlockTest
@@ -1142,7 +1142,8 @@ export default function TestPrintPage() {
                     student={{
                       fullName: student.fullName,
                       variantCode: variantCode,
-                      studentCode: student.studentCode
+                      studentCode: student.studentCode,
+                      room: student.room,
                     }}
                     test={{
                       name: test.name || 'Test',

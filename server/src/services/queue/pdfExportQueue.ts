@@ -86,11 +86,11 @@ async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDF
     const StudentGroup = (await import('../../models/StudentGroup')).default;
     let allStudents: Array<Record<string, unknown>> = [];
     if (test.groupId) {
-      const group = await StudentGroup.findById(test.groupId).populate('students', 'fullName').lean();
+      const group = await StudentGroup.findById(test.groupId).populate('students', 'fullName room studentCode').lean();
       allStudents = ((group as Record<string, unknown>)?.students as Array<Record<string, unknown>>) || [];
     }
     if (allStudents.length === 0 && studentIds.length > 0) {
-      allStudents = await Student.find({ _id: { $in: studentIds } }).select('fullName').lean();
+      allStudents = await Student.find({ _id: { $in: studentIds } }).select('fullName room studentCode').lean();
     }
     const selected = studentIds.length > 0
       ? allStudents.filter(s => studentIds.includes((s._id as string).toString()))
@@ -113,6 +113,8 @@ async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDF
     const pdfStudents = selected.map(s => ({
       fullName: (s.fullName as string) || '',
       variantCode: variantMap.get((s._id as string).toString()) || '',
+      studentCode: (s.studentCode as number | undefined),
+      room: (s.room as string | undefined),
     }));
 
     // totalQuestions
