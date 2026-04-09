@@ -1444,19 +1444,33 @@ router.post('/save-result', authenticate, async (req, res) => {
     }
 
     // Javoblarni to'g'ri formatga o'tkazish
+    // BUG FIX: multi-select "B,A" enum enum ['A','B','C','D'] ga mos kelmaydi →
+    // undefined (bo'sh) deb saqlanadi. isCorrect = false (multi-select javobsiz).
+    const normalizeLetter = (v: unknown): 'A' | 'B' | 'C' | 'D' | undefined => {
+      if (typeof v !== 'string' || !v) return undefined;
+      const trimmed = v.trim().toUpperCase();
+      if (trimmed === 'A' || trimmed === 'B' || trimmed === 'C' || trimmed === 'D') return trimmed;
+      // Multi-select (comma-separated) yoki noto'g'ri qiymat → undefined
+      return undefined;
+    };
+
     const answers = comparison.details.map((detail: any) => {
       const questionNum = detail.question;
-      const detectedAnswer = detectedAnswers[questionNum];
-      const finalAnswer = detail.student_answer;
-      const wasEdited = detectedAnswer !== finalAnswer;
+      const detectedRaw = detectedAnswers[questionNum];
+      const finalRaw = detail.student_answer;
+      const selectedAnswer = normalizeLetter(finalRaw);
+      const originalAnswer = normalizeLetter(detectedRaw);
+      const wasEdited = detectedRaw !== finalRaw;
+      // Multi-select bo'lsa selectedAnswer = undefined → isCorrect false bo'lishi kerak
+      const isCorrect = !!selectedAnswer && detail.is_correct;
 
       return {
         questionIndex: detail.question - 1,
-        selectedAnswer: finalAnswer || undefined,
-        isCorrect: detail.is_correct,
-        points: detail.is_correct ? 1 : 0,
-        wasEdited: wasEdited,
-        originalAnswer: detectedAnswer || undefined
+        selectedAnswer,
+        isCorrect,
+        points: isCorrect ? 1 : 0,
+        wasEdited,
+        originalAnswer,
       };
     });
 
