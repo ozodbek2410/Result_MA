@@ -321,9 +321,12 @@ router.post('/:id/generate-variants', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'Guruhda talabalar topilmadi' });
     }
     
-    // Удаляем старые варианты
-    const deleteResult = await StudentVariant.deleteMany({ testId: test._id });
-    console.log('🗑️ Deleted', deleteResult.deletedCount, 'old variants');
+    // Eski variantlarni supersede (hard-delete EMAS — chop etilgan varaqlar ishlashi uchun)
+    const superseded = await StudentVariant.updateMany(
+      { testId: test._id, superseded: { $ne: true } },
+      { $set: { superseded: true, supersededAt: new Date() } }
+    );
+    if (superseded.modifiedCount > 0) console.log(`♻️ Superseded ${superseded.modifiedCount} old variants`);
     
     const variants = [];
     
@@ -451,8 +454,11 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Test topilmadi' });
     }
     
-    // Also delete related student variants
-    await StudentVariant.deleteMany({ testId: req.params.id });
+    // Variantlarni supersede (hard-delete EMAS — eski chop etilgan varaqlar ishlashi uchun)
+    await StudentVariant.updateMany(
+      { testId: req.params.id, superseded: { $ne: true } },
+      { $set: { superseded: true, supersededAt: new Date() } }
+    );
     
     console.log('Test deleted:', req.params.id);
     res.json({ message: 'Test o\'chirildi' });

@@ -1755,6 +1755,19 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
 
     // QR variant code bo'yicha DB lookup
     const variantCode = result.qr_code?.variant_code;
+    // BUG FIX: QR fizik topilgan bo'lsa DOIM qr_found = true set qilish.
+    // Avval qr_found faqat DB variant topilganda set bo'lardi →
+    // QR rasmda aniq ko'rinsa ham frontend "QR topilmadi" ko'rsatardi.
+    if (result.qr_code?.found) {
+      result.qr_found = true;
+      // Minimal QR info — DB enrichment bo'lmasa ham variant code ko'rinadi
+      result.qr_code = {
+        variantCode: variantCode || result.qr_code?.variant_code,
+        studentName: 'Variant DB da topilmadi',
+        testName: '',
+        totalQuestions: result.qr_code?.total_questions || result.stats?.total,
+      };
+    }
     if (variantCode) {
       try {
         const StudentVariant = require('../models/StudentVariant').default;

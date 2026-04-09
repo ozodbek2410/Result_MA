@@ -409,9 +409,12 @@ router.put('/:id/subject-config', authenticate, async (req: AuthRequest, res) =>
       const blockTests = await BlockTest.find({ groupId }).select('_id').lean();
       if (blockTests.length > 0) {
         const btIds = blockTests.map(bt => bt._id);
-        const del = await StudentVariant.deleteMany({ testId: { $in: btIds } });
-        if (del.deletedCount > 0) {
-          console.log(`🗑️ Deleted ${del.deletedCount} stale variants (group subject-config changed)`);
+        const sup = await StudentVariant.updateMany(
+          { testId: { $in: btIds }, superseded: { $ne: true } },
+          { $set: { superseded: true, supersededAt: new Date() } }
+        );
+        if (sup.modifiedCount > 0) {
+          console.log(`♻️ Superseded ${sup.modifiedCount} stale variants (group subject-config changed)`);
         }
       }
     } catch (e) {
@@ -493,12 +496,12 @@ router.put('/:id/student-letters', authenticate, async (req: AuthRequest, res) =
         const blockTests = await BlockTest.find({ groupId }).select('_id').lean();
         if (blockTests.length > 0) {
           const btIds = blockTests.map(bt => bt._id);
-          const del = await StudentVariant.deleteMany({
-            testId: { $in: btIds },
-            studentId: { $in: affectedStudentIds }
-          });
-          if (del.deletedCount > 0) {
-            console.log(`🗑️ Deleted ${del.deletedCount} stale variants for ${affectedStudentIds.length} students (letters changed)`);
+          const sup = await StudentVariant.updateMany(
+            { testId: { $in: btIds }, studentId: { $in: affectedStudentIds }, superseded: { $ne: true } },
+            { $set: { superseded: true, supersededAt: new Date() } }
+          );
+          if (sup.modifiedCount > 0) {
+            console.log(`♻️ Superseded ${sup.modifiedCount} stale variants for ${affectedStudentIds.length} students (letters changed)`);
           }
         }
       }

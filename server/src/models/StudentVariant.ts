@@ -9,6 +9,10 @@ export interface IStudentVariant extends Document {
   questionOrder: number[];
   shuffledQuestions?: any[]; // Вопросы с перемешанными вариантами ответов
   certSubjects?: { subjectId: mongoose.Types.ObjectId; percentage: number }[]; // sertifikat fanlar
+  /** Variant eskirgan (yangi variant yaratilganda eski = true). Scan hali ishlaydi! */
+  superseded: boolean;
+  /** Eskirgan sana */
+  supersededAt?: Date;
   createdAt: Date;
 }
 
@@ -25,6 +29,8 @@ const StudentVariantSchema = new Schema<IStudentVariant>({
     percentage: { type: Number },
     _id: false,
   }],
+  superseded: { type: Boolean, default: false },
+  supersededAt: { type: Date },
   createdAt: { type: Date, default: Date.now }
 });
 

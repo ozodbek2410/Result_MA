@@ -98,11 +98,12 @@ async function processAnswerSheetExport(job: Job<PDFExportJobData>): Promise<PDF
 
     await job.updateProgress(50);
 
-    // Load variant codes
+    // Load variant codes (faqat aktiv — superseded bo'lmaganlar)
     const variants = await StudentVariant.find({
       testId: new Types.ObjectId(testId),
       ...(isBlockTest ? { testType: 'BlockTest' } : {}),
       studentId: { $in: selected.map(s => s._id) },
+      superseded: { $ne: true },
     }).lean();
     const variantMap = new Map<string, string>();
     variants.forEach((v: Record<string, unknown>) => {

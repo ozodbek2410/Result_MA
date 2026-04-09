@@ -306,9 +306,12 @@ router.delete('/groups/:groupId/students/:studentId', authenticate, async (req: 
       const blockTests = await BlockTest.find({ groupId }).select('_id').lean();
       if (blockTests.length > 0) {
         const btIds = blockTests.map(bt => bt._id);
-        const del = await StudentVariant.deleteMany({ testId: { $in: btIds }, studentId });
-        if (del.deletedCount > 0) {
-          console.log(`🗑️ Deleted ${del.deletedCount} variants for student ${studentId} (removed from group)`);
+        const sup = await StudentVariant.updateMany(
+          { testId: { $in: btIds }, studentId, superseded: { $ne: true } },
+          { $set: { superseded: true, supersededAt: new Date() } }
+        );
+        if (sup.modifiedCount > 0) {
+          console.log(`♻️ Superseded ${sup.modifiedCount} variants for student ${studentId} (removed from group)`);
         }
       }
     } catch (e) {

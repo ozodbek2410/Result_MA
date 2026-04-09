@@ -118,10 +118,15 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
       await blockTest.save();
       console.log('✅ Block test updated, total subjects:', blockTest.subjectTests.length);
 
-      // Eski variantlarni o'chirish (yangi fan qo'shilganda eski variantlar eskiradi)
-      const deletedVariants = await StudentVariant.deleteMany({ testId: blockTest._id });
-      if (deletedVariants.deletedCount > 0) {
-        console.log(`🗑️ Deleted ${deletedVariants.deletedCount} old variants (subjectTests changed)`);
+      // Eski variantlarni SUPERSEDE (soft-delete) — hard-delete EMAS!
+      // Sabab: eski varaqlar allaqachon chop etilgan bo'lishi mumkin.
+      // Superseded variant hali ham scan qilinsa DB dan topiladi (comparison ishlaydi).
+      const superseded = await StudentVariant.updateMany(
+        { testId: blockTest._id, superseded: { $ne: true } },
+        { $set: { superseded: true, supersededAt: new Date() } }
+      );
+      if (superseded.modifiedCount > 0) {
+        console.log(`♻️ Superseded ${superseded.modifiedCount} old variants (subjectTests changed)`);
       }
     } else {
       console.log('🆕 Creating new block test...');
@@ -527,12 +532,14 @@ router.post('/:id/generate-variants', authenticate, async (req: AuthRequest, res
       console.log(`  - ${st.subjectId?.nameUzb || 'Unknown'}: ${st.questions?.length || 0} questions, letter: ${st.groupLetter || 'umumiy'}`);
     });
 
-    // Удаляем старые варианты для этих студентов
-    await StudentVariant.deleteMany({
-      testId: blockTest._id,
-      studentId: { $in: studentIds }
-    });
-    console.log(`🗑️ Deleted old variants for ${studentIds.length} students`);
+    // Eski variantlarni SUPERSEDE (hard-delete EMAS — chop etilgan varaqlar ishlashi uchun)
+    const superseded = await StudentVariant.updateMany(
+      { testId: blockTest._id, studentId: { $in: studentIds }, superseded: { $ne: true } },
+      { $set: { superseded: true, supersededAt: new Date() } }
+    );
+    if (superseded.modifiedCount > 0) {
+      console.log(`♻️ Superseded ${superseded.modifiedCount} old variants for ${studentIds.length} students`);
+    }
 
     // Calculate total questions in block test
     let totalQuestions = 0;
