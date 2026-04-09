@@ -108,20 +108,33 @@ interface SubjectBreakdownItem {
  * Fan bo'yicha natijalarni hisoblash (subjectBreakdown + unansweredQuestions).
  * Barcha scan endpointlar (scan-v2, lookup-variant, manual-assign) shu yerdan foydalanadi.
  *
+ * Sertifikat fanlar uchun maxsus mantiq:
+ * - OMR natija E'TIBORSIZ qoldiriladi (student varaqda bosa ham, bo'sh qo'ysa ham)
+ * - Ball avtomatik: total × (certPercent / 100) = correct (yaxlitlashadi)
+ * - incorrect = total - correct, unanswered = 0
+ * - unansweredQuestions ro'yxatiga sertifikat savollar QO'SHILMAYDI (javob kerak emas)
+ *
  * @param shuffledQuestions — variant.shuffledQuestions (har savolda subjectId bor)
  * @param details — comparison.details (student_answer, correct_answer, is_correct)
  * @param certSubjects — variant.certSubjects (sertifikat fanlar ro'yxati)
- * @returns subjectBreakdown + unansweredQuestions raqamlari
+ * @returns subjectBreakdown + unansweredQuestions + certAdjustedTotals
  */
 function buildSubjectBreakdown(
   shuffledQuestions: ShuffledQuestion[] | undefined,
   details: VariantDetailItem[],
   certSubjects: CertSubject[] | undefined,
-): { subjectBreakdown: SubjectBreakdownItem[]; unansweredQuestions: number[] } {
+): {
+  subjectBreakdown: SubjectBreakdownItem[];
+  unansweredQuestions: number[];
+  /** Sertifikat fanlarga tegishli savol raqamlari — frontend recalculation uchun skip */
+  certQuestions: number[];
+  totals: { correct: number; incorrect: number; unanswered: number; total: number; score: number };
+} {
   const subjectMap: Record<string, SubjectBreakdownItem> = {};
   const unansweredQuestions: number[] = [];
+  const certQuestions: number[] = [];
 
-  // Sertifikat fanlar map
+  // Sertifikat fanlar map (subjectId -> percentage)
   const certMap = new Map<string, number>();
   if (certSubjects && certSubjects.length > 0) {
     for (const cs of certSubjects) {
@@ -130,6 +143,7 @@ function buildSubjectBreakdown(
     }
   }
 
+  // Har savol uchun OMR statistika (keyin sertifikat fanlar uchun override qilinadi)
   if (shuffledQuestions && shuffledQuestions.length > 0) {
     for (let i = 0; i < details.length; i++) {
       const sq = shuffledQuestions[i];
@@ -137,9 +151,9 @@ function buildSubjectBreakdown(
       const sidRaw = (sq.subjectId as { _id?: unknown })?._id || sq.subjectId;
       const sid = (sidRaw as { toString?: () => string })?.toString?.() || String(sidRaw || 'unknown');
       const name = (sq.subjectId as { nameUzb?: string })?.nameUzb || 'Boshqa fan';
+      const isCert = certMap.has(sid);
 
       if (!subjectMap[sid]) {
-        const certPercent = certMap.get(sid);
         subjectMap[sid] = {
           subjectId: sid,
           name,
@@ -148,14 +162,23 @@ function buildSubjectBreakdown(
           unanswered: 0,
           total: 0,
           score: 0,
-          isCertificate: certMap.has(sid),
-          certPercent,
+          isCertificate: isCert,
+          certPercent: certMap.get(sid),
         };
       }
       subjectMap[sid].total++;
 
       const det = details[i];
       if (!det) continue;
+
+      // Sertifikat fanlar uchun OMR ni e'tiborsiz qoldiramiz — faqat total
+      // hisoblash kerak (keyin avto override qilinadi). unanswered ro'yxatiga
+      // HAM qo'shmaymiz. certQuestions ro'yxatiga esa qo'shamiz (frontend skip).
+      if (isCert) {
+        if (det) certQuestions.push(det.question);
+        continue;
+      }
+
       if (!det.student_answer) {
         subjectMap[sid].unanswered++;
         unansweredQuestions.push(det.question);
@@ -172,12 +195,38 @@ function buildSubjectBreakdown(
     }
   }
 
+  // Sertifikat fanlar uchun avto override: total × percentage → correct
+  for (const s of Object.values(subjectMap)) {
+    if (s.isCertificate && s.certPercent != null) {
+      const autoCorrect = Math.round(s.total * s.certPercent / 100);
+      s.correct = autoCorrect;
+      s.incorrect = s.total - autoCorrect;
+      s.unanswered = 0;
+    }
+  }
+
   const subjectBreakdown = Object.values(subjectMap).map(s => ({
     ...s,
-    score: s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0,
+    // Sertifikat fan: ball = certPercent (aniq), OMR fan: correct/total
+    score: s.isCertificate && s.certPercent != null
+      ? s.certPercent
+      : s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0,
   }));
 
-  return { subjectBreakdown, unansweredQuestions };
+  // Sertifikat-moslashtirilgan umumiy totals
+  const totals = subjectBreakdown.reduce(
+    (acc, s) => ({
+      correct: acc.correct + s.correct,
+      incorrect: acc.incorrect + s.incorrect,
+      unanswered: acc.unanswered + s.unanswered,
+      total: acc.total + s.total,
+      score: 0,
+    }),
+    { correct: 0, incorrect: 0, unanswered: 0, total: 0, score: 0 }
+  );
+  totals.score = totals.total > 0 ? (totals.correct / totals.total) * 100 : 0;
+
+  return { subjectBreakdown, unansweredQuestions, certQuestions, totals };
 }
 
 /**
@@ -1938,17 +1987,17 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             };
           });
 
-          const correct = details.filter(d => d.is_correct).length;
-          const unanswered = details.filter(d => !d.student_answer && d.correct_answer).length;
-          const incorrect = totalQ - correct - unanswered;
-          const scorePercent = totalQ > 0 ? (correct / totalQ) * 100 : 0;
-
-          // Fan bo'yicha tahlil + javobsiz savol raqamlari
-          const { subjectBreakdown, unansweredQuestions } = buildSubjectBreakdown(
+          // Fan bo'yicha tahlil + javobsiz savol raqamlari + sertifikat moslashtirilgan totals
+          const { subjectBreakdown, unansweredQuestions, certQuestions, totals } = buildSubjectBreakdown(
             variantInfo.shuffledQuestions,
             details,
             variantInfo.certSubjects,
           );
+          // Sertifikat fanlar OMR o'rniga avto hisoblanadi — totals dan olamiz
+          const correct = totals.correct;
+          const incorrect = totals.incorrect;
+          const unanswered = totals.unanswered;
+          const scorePercent = totals.score;
 
           // backward-compatible fields (OMRCheckerPage format)
           result.qr_found = true;
@@ -1976,6 +2025,7 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             details,
             subjectBreakdown,
             unansweredQuestions,
+            certQuestions, // Sertifikat fanlar savollari — frontend skip qiladi
           };
           // total_questions + stats.total = student'ning haqiqiy savollari (phantom yo'q)
           result.total_questions = totalQ;
@@ -2075,16 +2125,15 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
       };
     });
 
-    const correct = details.filter(d => d.is_correct).length;
-    const unanswered = details.filter(d => !d.student_answer && d.correct_answer).length;
-    const incorrect = totalQ - correct - unanswered;
-
-    // Fan bo'yicha tahlil + javobsiz savollar ro'yxati
-    const { subjectBreakdown, unansweredQuestions } = buildSubjectBreakdown(
+    // Fan bo'yicha tahlil + sertifikat moslashtirilgan totals
+    const { subjectBreakdown, unansweredQuestions, certQuestions, totals } = buildSubjectBreakdown(
       variantInfo.shuffledQuestions,
       details,
       variantInfo.certSubjects,
     );
+    const correct = totals.correct;
+    const incorrect = totals.incorrect;
+    const unanswered = totals.unanswered;
 
     res.json({
       found: true,
@@ -2109,10 +2158,11 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
         incorrect,
         unanswered,
         total: totalQ,
-        score: totalQ > 0 ? (correct / totalQ) * 100 : 0,
+        score: totals.score,
         details,
         subjectBreakdown,
         unansweredQuestions,
+        certQuestions,
       },
       // total_questions = student variant savol soni (sheetTotalQ EMAS)
       total_questions: totalQ,
@@ -2269,17 +2319,16 @@ router.post('/manual-assign', authenticate, async (req, res) => {
       };
     });
 
-    const correct = details.filter(d => d.is_correct).length;
-    const unanswered = details.filter(d => !d.student_answer && d.correct_answer).length;
-    const incorrect = totalQ - correct - unanswered;
-    const scorePercent = totalQ > 0 ? (correct / totalQ) * 100 : 0;
-
-    // Fan bo'yicha tahlil + javobsiz savollar
-    const { subjectBreakdown, unansweredQuestions } = buildSubjectBreakdown(
+    // Fan bo'yicha tahlil + sertifikat moslashtirilgan totals
+    const { subjectBreakdown, unansweredQuestions, certQuestions, totals } = buildSubjectBreakdown(
       variantInfo.shuffledQuestions,
       details,
       variantInfo.certSubjects,
     );
+    const correct = totals.correct;
+    const incorrect = totals.incorrect;
+    const unanswered = totals.unanswered;
+    const scorePercent = totals.score;
 
     res.json({
       found: true,
@@ -2310,6 +2359,7 @@ router.post('/manual-assign', authenticate, async (req, res) => {
         details,
         subjectBreakdown,
         unansweredQuestions,
+        certQuestions,
         warning: variantInfo.superseded
           ? 'Eskirgan variant ishlatildi (manual tanlov)'
           : 'Manual student tanlov',

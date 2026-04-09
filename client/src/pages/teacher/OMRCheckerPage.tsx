@@ -54,6 +54,8 @@ interface CheckResult {
     }>;
     /** Javobsiz savol raqamlari ro'yxati — UI da ko'rsatish uchun */
     unansweredQuestions?: number[];
+    /** Sertifikat fan savollari — getUpdatedComparison ularni skip qiladi (avto ball) */
+    certQuestions?: number[];
   };
 }
 
@@ -221,36 +223,64 @@ export default function OMRCheckerPage() {
     });
   };
 
-  // Динамический пересчет статистики с учетом отредактированных ответов
+  // Sertifikat savol raqamlari — Set sifatida (tezroq lookup)
+  const certQuestionSet = new Set(result?.comparison?.certQuestions || []);
+
+  // Динамический пересчет — sertifikat savollar OMR dan emas, avto ball
   const getUpdatedComparison = () => {
     if (!result?.comparison) return null;
-    
+
     const details = result.comparison.details;
-    let correct = 0;
-    let incorrect = 0;
-    let unanswered = 0;
-    
+    const subjectBreakdown = result.comparison.subjectBreakdown || [];
+
+    // 1. Sertifikat fanlardan kelgan avto ball (server tomonidan hisoblangan)
+    let certCorrect = 0;
+    let certIncorrect = 0;
+    let certTotal = 0;
+    for (const s of subjectBreakdown) {
+      if (s.isCertificate) {
+        certCorrect += s.correct;
+        certIncorrect += s.incorrect;
+        certTotal += s.total;
+      }
+    }
+
+    // 2. OMR fanlardan kelgan ball — faqat sertifikat BO'LMAGAN savollar
+    let omrCorrect = 0;
+    let omrIncorrect = 0;
+    let omrUnanswered = 0;
+    let omrTotal = 0;
+
     details.forEach((detail) => {
+      // Sertifikat savol bo'lsa skip — uning ballini certCorrect dan oldik
+      if (certQuestionSet.has(detail.question)) return;
+
+      omrTotal++;
       const currentAnswer = editedAnswers[detail.question] || detail.student_answer;
-      
+
       if (!currentAnswer || currentAnswer === '-') {
-        unanswered++;
+        omrUnanswered++;
       } else if (currentAnswer === detail.correct_answer) {
-        correct++;
+        omrCorrect++;
       } else {
-        incorrect++;
+        omrIncorrect++;
       }
     });
-    
-    const total = details.length;
+
+    const correct = omrCorrect + certCorrect;
+    const incorrect = omrIncorrect + certIncorrect;
+    const unanswered = omrUnanswered;
+    const total = omrTotal + certTotal;
     const score = total > 0 ? Math.round((correct / total) * 100) : 0;
-    
+
     return {
       correct,
       incorrect,
       unanswered,
       total,
-      score
+      score,
+      certCorrect,
+      certTotal,
     };
   };
 
@@ -688,11 +718,50 @@ export default function OMRCheckerPage() {
               </div>
             )}
 
-            {/* Javobsiz savol raqamlari — clickable badge list */}
+            {/* Sertifikat avto ball blok — Stats card dan keyin */}
+            {updatedComparison && updatedComparison.certTotal > 0 && (
+              <Card className="border-2 border-amber-300 shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-r from-amber-50 to-yellow-50 p-3 sm:p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl">📜</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                        Sertifikat avto ball
+                      </p>
+                      <p className="text-sm sm:text-base text-amber-900 font-bold">
+                        {updatedComparison.certCorrect} / {updatedComparison.certTotal} ta savol avtomatik to'g'ri (OMR ta'sirsiz)
+                      </p>
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-bold text-amber-700">
+                      {updatedComparison.certTotal > 0
+                        ? Math.round((updatedComparison.certCorrect / updatedComparison.certTotal) * 100)
+                        : 0}%
+                    </div>
+                  </div>
+                  {result.comparison?.subjectBreakdown && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {result.comparison.subjectBreakdown
+                        .filter(s => s.isCertificate)
+                        .map((s, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 bg-white border border-amber-300 rounded-md text-xs font-semibold text-amber-800"
+                          >
+                            {s.name}: {s.certPercent}% ({s.correct}/{s.total})
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {/* Javobsiz savol raqamlari — clickable badge list (sertifikat savollar SKIP) */}
             {updatedComparison && (() => {
-              // Dinamik javobsiz raqamlar — tahrirlash bilan yangilanadi
+              // Dinamik javobsiz raqamlar — sertifikat savollarni qo'shmaymiz (avto)
               const unansweredNums = result.comparison?.details
                 ?.filter(d => {
+                  if (certQuestionSet.has(d.question)) return false;
                   const current = editedAnswers[d.question] ?? d.student_answer;
                   return !current || current === '-';
                 })
@@ -829,12 +898,15 @@ export default function OMRCheckerPage() {
                         const currentAnswer = editedAnswers[questionNum] || detail.student_answer || '-';
                         const isEdited = editedAnswers.hasOwnProperty(questionNum);
                         const isCorrect = currentAnswer === detail.correct_answer && currentAnswer !== '-';
-                        
+                        const isCertQ = certQuestionSet.has(questionNum);
+
                         return (
                           <div
                             key={questionNum}
                             id={`q-${questionNum}`}
                             className={`flex items-center gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg border transition-shadow ${
+                              isCertQ
+                                ? 'bg-amber-50 border-amber-300' :
                               isEdited
                                 ? 'bg-blue-50 border-blue-300' :
                               isCorrect
@@ -848,42 +920,52 @@ export default function OMRCheckerPage() {
                             <div className="flex-shrink-0 w-8 sm:w-12">
                               <span className="text-xs sm:text-sm font-bold text-gray-800">{questionNum})</span>
                             </div>
-                            
+
                             {/* Answer Display */}
                             <div className="flex-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`text-sm sm:text-base font-bold ${
-                                    currentAnswer === '-' ? 'text-gray-400' :
-                                    isCorrect ? 'text-green-700' : 'text-red-700'
-                                  }`}>
-                                    {currentAnswer}
-                                  </span>
-                                  <span className="text-gray-400">/</span>
-                                  <span className="text-xs sm:text-sm font-semibold text-gray-600">
-                                    {detail.correct_answer}
+                              {isCertQ ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">📜</span>
+                                  <span className="text-xs sm:text-sm font-semibold text-amber-800">
+                                    Sertifikat (avto ball)
                                   </span>
                                 </div>
-                                {/* Убрали текст (Rasmdan: ...) */}
+                              ) : (
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-sm sm:text-base font-bold ${
+                                      currentAnswer === '-' ? 'text-gray-400' :
+                                      isCorrect ? 'text-green-700' : 'text-red-700'
+                                    }`}>
+                                      {currentAnswer}
+                                    </span>
+                                    <span className="text-gray-400">/</span>
+                                    <span className="text-xs sm:text-sm font-semibold text-gray-600">
+                                      {detail.correct_answer}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Edit Buttons — sertifikat savol uchun yashirish */}
+                            {!isCertQ && (
+                              <div className="flex gap-1 sm:gap-1.5 flex-shrink-0">
+                                {['A', 'B', 'C', 'D'].map((option) => (
+                                  <button
+                                    key={option}
+                                    onClick={() => handleEditAnswer(questionNum, option)}
+                                    className={`w-8 h-8 sm:w-10 sm:h-10 text-xs sm:text-sm font-bold rounded-md transition-colors ${
+                                      currentAnswer === option
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    {option}
+                                  </button>
+                                ))}
                               </div>
-                            </div>
-                            
-                            {/* Edit Buttons */}
-                            <div className="flex gap-1 sm:gap-1.5 flex-shrink-0">
-                              {['A', 'B', 'C', 'D'].map((option) => (
-                                <button
-                                  key={option}
-                                  onClick={() => handleEditAnswer(questionNum, option)}
-                                  className={`w-8 h-8 sm:w-10 sm:h-10 text-xs sm:text-sm font-bold rounded-md transition-colors ${
-                                    currentAnswer === option
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                                  }`}
-                                >
-                                  {option}
-                                </button>
-                              ))}
-                            </div>
+                            )}
                           </div>
                         );
                       });
