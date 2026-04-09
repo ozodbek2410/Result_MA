@@ -2176,26 +2176,50 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
 
 /**
  * GET /api/omr/students-for-scan
- * Manual student selection uchun ro'yxat: sinf bo'yicha studentlar + variant holati.
+ * Manual student selection uchun ro'yxat: sinf yoki guruh bo'yicha studentlar.
  * Frontend ModalSelector da qidirish va tanlash uchun ishlatiladi.
  *
  * Query params:
- *   classNumber: 1-11 (ixtiyoriy filter)
+ *   classNumber: 1-11 (ixtiyoriy — Student.classNumber filter)
+ *   groupName: string (ixtiyoriy — guruh nomi orqali filter, masalan "6-03")
  *   search: string (ixtiyoriy — fullName qidiruvi)
- *   hasVariant: 'yes' | 'no' | 'any' (default: 'any')
+ *
+ * Eslatma: classNumber va groupName birgalikda yoki alohida ishlatish mumkin.
+ * Bir studentning classNumber=7 lekin guruhi 6-03 bo'lishi mumkin (CRM dublikat) —
+ * groupName filter shu holatlarni ham topadi.
  */
 router.get('/students-for-scan', authenticate, async (req, res) => {
   try {
     const Student = require('../models/Student').default;
     const StudentVariant = require('../models/StudentVariant').default;
+    const StudentGroup = require('../models/StudentGroup').default;
+    const Group = require('../models/Group').default;
 
     const classNumber = req.query.classNumber ? Number(req.query.classNumber) : undefined;
+    const groupName = (req.query.groupName as string || '').trim();
     const search = (req.query.search as string || '').trim();
     const limit = Math.min(Number(req.query.limit) || 200, 500);
+
+    // groupName bo'yicha filter — avval guruh ID larini topib, keyin
+    // shu guruhlardagi studentlarni Student modelidan olamiz
+    let groupStudentIds: unknown[] | null = null;
+    if (groupName) {
+      const groups = await Group.find({ name: { $regex: groupName, $options: 'i' } })
+        .select('_id name').lean();
+      if (groups.length > 0) {
+        const groupIds = groups.map((g: { _id: unknown }) => g._id);
+        const sgs = await StudentGroup.find({ groupId: { $in: groupIds } })
+          .select('studentId').lean();
+        groupStudentIds = [...new Set(sgs.map((sg: { studentId: unknown }) => String(sg.studentId)))];
+      } else {
+        groupStudentIds = []; // group topilmadi → bo'sh natija
+      }
+    }
 
     const filter: Record<string, unknown> = {};
     if (classNumber) filter.classNumber = classNumber;
     if (search) filter.fullName = { $regex: search, $options: 'i' };
+    if (groupStudentIds !== null) filter._id = { $in: groupStudentIds };
 
     const students = await Student.find(filter)
       .select('fullName classNumber studentCode')
@@ -2203,11 +2227,12 @@ router.get('/students-for-scan', authenticate, async (req, res) => {
       .limit(limit)
       .lean();
 
-    // Har bir student uchun variant holati (active/superseded/none)
     const sids = students.map((s: { _id: unknown }) => s._id);
+
+    // Variant holati (active birinchi, keyin superseded)
     const variants = await StudentVariant.find({ studentId: { $in: sids } })
       .select('studentId variantCode testId testType superseded createdAt')
-      .sort({ superseded: 1, createdAt: -1 }) // active birinchi, keyin eng yangi
+      .sort({ superseded: 1, createdAt: -1 })
       .lean();
 
     const varMap = new Map<string, { variantCode: string; superseded: boolean; testId: string; testType: string }>();
@@ -2223,13 +2248,29 @@ router.get('/students-for-scan', authenticate, async (req, res) => {
       }
     }
 
+    // Har student uchun guruh nomlari (CRM dublikat aniqlash uchun)
+    const sgs = await StudentGroup.find({ studentId: { $in: sids } })
+      .populate('groupId', 'name')
+      .lean();
+    const groupNamesMap = new Map<string, string[]>();
+    for (const sg of sgs) {
+      const sid = String(sg.studentId);
+      const gname = (sg.groupId as { name?: string })?.name || '';
+      if (!gname) continue;
+      if (!groupNamesMap.has(sid)) groupNamesMap.set(sid, []);
+      const arr = groupNamesMap.get(sid)!;
+      if (!arr.includes(gname)) arr.push(gname);
+    }
+
     const result = students.map((s: { _id: unknown; fullName: string; classNumber: number; studentCode?: number }) => {
       const info = varMap.get(String(s._id));
+      const groupNames = groupNamesMap.get(String(s._id)) || [];
       return {
         studentId: String(s._id),
         fullName: s.fullName,
         classNumber: s.classNumber,
         studentCode: s.studentCode,
+        groupNames, // Guruh nomlari ro'yxati — frontend bir studentni boshqasidan ajratish uchun
         variantCode: info?.variantCode || null,
         variantSuperseded: info?.superseded || false,
         testId: info?.testId || null,
