@@ -112,7 +112,7 @@ export default function OMRCheckerPage() {
   };
 
   // Manual student tanlangan holat — /omr/manual-assign ga detectedAnswers yuborish
-  const handleManualStudentSelect = async (studentId: string) => {
+  const handleManualStudentSelect = async (studentId: string, variantCode?: string) => {
     if (!result?.detected_answers) {
       toast('Avval skanerdan o\'tkazing', 'error');
       return;
@@ -122,6 +122,7 @@ export default function OMRCheckerPage() {
       const response = await api.post('/omr/manual-assign', {
         studentId,
         detectedAnswers: result.detected_answers,
+        variantCode, // optional — bir nechta variant bo'lsa
       });
       if (response.data?.found) {
         // Mavjud result'ni manual natija bilan yangilash (rasm saqlanadi)

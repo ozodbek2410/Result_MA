@@ -2,6 +2,14 @@ import { useEffect, useState, useRef } from 'react';
 import { X, Search, User, CheckCircle, AlertTriangle } from 'lucide-react';
 import api from '../lib/api';
 
+interface VariantInfo {
+  variantCode: string;
+  superseded: boolean;
+  testId: string;
+  testType: string;
+  testLabel: string;
+}
+
 interface StudentItem {
   studentId: string;
   fullName: string;
@@ -11,12 +19,14 @@ interface StudentItem {
   variantCode: string | null;
   variantSuperseded: boolean;
   hasVariant: boolean;
+  variants?: VariantInfo[];
 }
 
 interface ManualStudentSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (studentId: string) => void;
+  /** studentId — variantCode ixtiyoriy (bir nechta variant bo'lsa) */
+  onSelect: (studentId: string, variantCode?: string) => void;
   /** Dastlabki sinf filter (optional — QR dan kelgan class) */
   initialClass?: number;
 }
@@ -154,70 +164,95 @@ export function ManualStudentSelector({
           )}
           {!loading && students.length > 0 && (
             <div className="divide-y divide-gray-100">
-              {students.map(s => (
-                <button
-                  key={s.studentId}
-                  onClick={() => s.hasVariant && onSelect(s.studentId)}
-                  disabled={!s.hasVariant}
-                  className={`w-full p-3 sm:p-4 flex items-center gap-3 text-left transition-colors ${
-                    s.hasVariant
-                      ? 'hover:bg-blue-50 active:bg-blue-100 cursor-pointer'
-                      : 'opacity-60 cursor-not-allowed'
-                  }`}
-                >
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      s.hasVariant
-                        ? s.variantSuperseded
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-400'
-                    }`}
-                  >
-                    {s.hasVariant ? (
-                      s.variantSuperseded ? (
-                        <AlertTriangle className="w-5 h-5" />
-                      ) : (
-                        <CheckCircle className="w-5 h-5" />
-                      )
-                    ) : (
-                      <X className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 text-sm truncate">
-                      {s.fullName}
+              {students.map(s => {
+                const hasMultiple = (s.variants?.length || 0) > 1;
+                return (
+                  <div key={s.studentId} className={`p-3 sm:p-4 ${!s.hasVariant ? 'opacity-60' : ''}`}>
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          s.hasVariant
+                            ? s.variantSuperseded
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-400'
+                        }`}
+                      >
+                        {s.hasVariant ? (
+                          s.variantSuperseded ? (
+                            <AlertTriangle className="w-5 h-5" />
+                          ) : (
+                            <CheckCircle className="w-5 h-5" />
+                          )
+                        ) : (
+                          <X className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 text-sm">
+                          {s.fullName}
+                        </div>
+                        <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span>{s.classNumber}-sinf</span>
+                          {s.studentCode && <span>• ID: {s.studentCode}</span>}
+                          {!s.hasVariant && <span className="text-red-500">• variant yo'q</span>}
+                        </div>
+                        {/* Guruh nomlari — CRM dublikatlarni aniqlash uchun */}
+                        {s.groupNames && s.groupNames.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {s.groupNames.map((gn, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded border border-blue-200"
+                              >
+                                👥 {gn}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span>{s.classNumber}-sinf</span>
-                      {s.studentCode && <span>• ID: {s.studentCode}</span>}
-                      {s.variantCode ? (
-                        <span className="font-mono">• {s.variantCode}</span>
-                      ) : (
-                        <span className="text-red-500">• variant yo'q</span>
-                      )}
-                    </div>
-                    {/* Guruh nomlari — CRM dublikatlarni aniqlash uchun */}
-                    {s.groupNames && s.groupNames.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {s.groupNames.map((gn, i) => (
-                          <span
+
+                    {/* Variantlar ro'yxati — bittadan ko'p bo'lsa har birini alohida tugma */}
+                    {s.hasVariant && s.variants && s.variants.length > 0 && (
+                      <div className="mt-2 pl-13 space-y-1.5">
+                        {hasMultiple && (
+                          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                            {s.variants.length} ta blok testdan variant — birini tanlang:
+                          </p>
+                        )}
+                        {s.variants.map((v, i) => (
+                          <button
                             key={i}
-                            className="inline-flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded border border-blue-200"
+                            onClick={() => onSelect(s.studentId, v.variantCode)}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                              v.superseded
+                                ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100'
+                                : 'bg-green-50 border-green-300 hover:bg-green-100'
+                            }`}
                           >
-                            👥 {gn}
-                          </span>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-semibold text-gray-800 truncate">
+                                  {v.testLabel}
+                                </div>
+                                <div className="text-[10px] text-gray-500 font-mono">
+                                  {v.variantCode}
+                                </div>
+                              </div>
+                              {v.superseded && (
+                                <span className="text-[9px] px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded font-bold whitespace-nowrap">
+                                  ESKIRGAN
+                                </span>
+                              )}
+                            </div>
+                          </button>
                         ))}
                       </div>
                     )}
-                    {s.variantSuperseded && (
-                      <div className="text-[10px] text-yellow-700 mt-0.5">
-                        ⚠ Eskirgan variant — skan ishlaydi
-                      </div>
-                    )}
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

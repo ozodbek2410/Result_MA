@@ -2229,23 +2229,52 @@ router.get('/students-for-scan', authenticate, async (req, res) => {
 
     const sids = students.map((s: { _id: unknown }) => s._id);
 
-    // Variant holati (active birinchi, keyin superseded)
+    // Variant holati (active birinchi, keyin superseded). HAR student uchun BARCHA
+    // variantlar qaytariladi (1 student = N ta blok test = N ta variant bo'lishi mumkin).
     const variants = await StudentVariant.find({ studentId: { $in: sids } })
       .select('studentId variantCode testId testType superseded createdAt')
       .sort({ superseded: 1, createdAt: -1 })
       .lean();
 
-    const varMap = new Map<string, { variantCode: string; superseded: boolean; testId: string; testType: string }>();
+    // BlockTest nomlarini batch fetch (test/sinf nomini ko'rsatish uchun)
+    const testIds = [...new Set(variants.map((v: { testId: unknown }) => String(v.testId)))];
+    const BlockTest = require('../models/BlockTest').default;
+    const blockTests = await BlockTest.find({ _id: { $in: testIds } })
+      .select('classNumber periodMonth periodYear groupId')
+      .populate('groupId', 'name')
+      .lean();
+    const btMap = new Map<string, { classNumber: number; periodMonth: number; periodYear: number; groupName?: string }>();
+    for (const bt of blockTests) {
+      btMap.set(String(bt._id), {
+        classNumber: bt.classNumber,
+        periodMonth: bt.periodMonth,
+        periodYear: bt.periodYear,
+        groupName: (bt.groupId as { name?: string })?.name,
+      });
+    }
+
+    interface VariantInfo {
+      variantCode: string;
+      superseded: boolean;
+      testId: string;
+      testType: string;
+      testLabel: string; // "6-sinf blok test 4/2026 (6-03)"
+    }
+    const varMapAll = new Map<string, VariantInfo[]>();
     for (const v of variants) {
       const sid = String(v.studentId);
-      if (!varMap.has(sid)) {
-        varMap.set(sid, {
-          variantCode: v.variantCode,
-          superseded: !!v.superseded,
-          testId: String(v.testId),
-          testType: v.testType,
-        });
-      }
+      const bt = btMap.get(String(v.testId));
+      const label = bt
+        ? `${bt.classNumber}-sinf ${bt.periodMonth}/${bt.periodYear}${bt.groupName ? ` (${bt.groupName})` : ''}`
+        : v.variantCode;
+      if (!varMapAll.has(sid)) varMapAll.set(sid, []);
+      varMapAll.get(sid)!.push({
+        variantCode: v.variantCode,
+        superseded: !!v.superseded,
+        testId: String(v.testId),
+        testType: v.testType,
+        testLabel: label,
+      });
     }
 
     // Har student uchun guruh nomlari (CRM dublikat aniqlash uchun)
@@ -2263,19 +2292,23 @@ router.get('/students-for-scan', authenticate, async (req, res) => {
     }
 
     const result = students.map((s: { _id: unknown; fullName: string; classNumber: number; studentCode?: number }) => {
-      const info = varMap.get(String(s._id));
+      const allVariants = varMapAll.get(String(s._id)) || [];
       const groupNames = groupNamesMap.get(String(s._id)) || [];
+      const firstActive = allVariants.find(v => !v.superseded) || allVariants[0];
       return {
         studentId: String(s._id),
         fullName: s.fullName,
         classNumber: s.classNumber,
         studentCode: s.studentCode,
-        groupNames, // Guruh nomlari ro'yxati — frontend bir studentni boshqasidan ajratish uchun
-        variantCode: info?.variantCode || null,
-        variantSuperseded: info?.superseded || false,
-        testId: info?.testId || null,
-        testType: info?.testType || null,
-        hasVariant: !!info,
+        groupNames,
+        // Backward compat — birinchi (active yoki eng yangi) variant
+        variantCode: firstActive?.variantCode || null,
+        variantSuperseded: firstActive?.superseded || false,
+        testId: firstActive?.testId || null,
+        testType: firstActive?.testType || null,
+        hasVariant: allVariants.length > 0,
+        // Yangi: BARCHA variantlar (1 student bir nechta blok testdan qatnashishi mumkin)
+        variants: allVariants,
       };
     });
 
@@ -2298,9 +2331,10 @@ router.get('/students-for-scan', authenticate, async (req, res) => {
  */
 router.post('/manual-assign', authenticate, async (req, res) => {
   try {
-    const { studentId, detectedAnswers } = req.body as {
+    const { studentId, detectedAnswers, variantCode } = req.body as {
       studentId?: string;
       detectedAnswers?: Record<string, string>;
+      variantCode?: string; // Optional — agar berilsa shu variant ishlatiladi
     };
     if (!studentId) return res.status(400).json({ error: 'studentId kerak' });
 
@@ -2313,11 +2347,26 @@ router.post('/manual-assign', authenticate, async (req, res) => {
     const student = await Student.findById(studentId).lean();
     if (!student) return res.status(404).json({ error: 'Student topilmadi' });
 
-    // Eng yangi variant (active birinchi, keyin superseded lar)
-    const variantInfo = await StudentVariant.findOne({ studentId })
-      .sort({ superseded: 1, createdAt: -1 })
-      .populate('shuffledQuestions.subjectId', 'nameUzb')
-      .lean();
+    // Variant tanlash:
+    // - Agar variantCode berilgan bo'lsa → shu variantni topish (student bilan match)
+    // - Aks holda → eng yangi variant (active birinchi, keyin superseded)
+    let variantInfo;
+    if (variantCode) {
+      variantInfo = await StudentVariant.findOne({
+        studentId,
+        variantCode: { $regex: new RegExp(`^${variantCode.trim()}$`, 'i') },
+      })
+        .populate('shuffledQuestions.subjectId', 'nameUzb')
+        .lean();
+      if (!variantInfo) {
+        return res.status(404).json({ error: `Variant ${variantCode} bu studentga tegishli emas` });
+      }
+    } else {
+      variantInfo = await StudentVariant.findOne({ studentId })
+        .sort({ superseded: 1, createdAt: -1 })
+        .populate('shuffledQuestions.subjectId', 'nameUzb')
+        .lean();
+    }
 
     if (!variantInfo || !variantInfo.shuffledQuestions?.length) {
       return res.status(404).json({
