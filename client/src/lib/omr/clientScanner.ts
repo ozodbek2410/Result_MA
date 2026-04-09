@@ -84,14 +84,21 @@ export function scanOnDevice(
     const gray = toGrayscale(warpedImageData);
 
     // 4. QR o'qish (warped rasmda — perspective tuzatilgan = aniq QR)
-    let qrData = clientQr || null;
-    if (!qrData) {
-      try {
-        // readQRFromRegion canvas oladi, readQR imageData oladi
-        qrData = readQRFromRegion(warped.canvas) || readQR(warpedImageData);
-      } catch {
-        // QR o'qish xatosi — davom etamiz
-      }
+    // BUG FIX: clientQr berilgan bo'lsa ham warped rasmdan MAJBURIY qayta o'qish.
+    // Sabab: clientQr caller tomonidan berilsa (LiveScannerModal qrDataRef), u
+    // leaked stale ref bo'lishi mumkin (oldingi session'dan). Warped rasmda QR
+    // topilsa — shuni ishlatamiz (fresh, bu session'dan). Topilmasa clientQr
+    // fallback — lekin degraded warning bilan.
+    let qrData: QRData | null = null;
+    try {
+      qrData = readQRFromRegion(warped.canvas) || readQR(warpedImageData);
+    } catch {
+      // QR o'qish xatosi — clientQr fallback
+    }
+    if (!qrData && clientQr) {
+      // Warped dan topilmadi, clientQr bilan davom (lekin shubhali — warning)
+      qrData = clientQr;
+      warnings.push('QR warped rasmda topilmadi — client hint ishlatildi');
     }
 
     let totalQ: number | null = null;

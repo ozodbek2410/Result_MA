@@ -122,6 +122,26 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     qrNativeFrameCounterRef.current = 0;
   }, []);
 
+  // BUG FIX: Har session orasida to'liq state reset — ref leakage'ni oldini olish.
+  // Muammo: modal `isOpen=false` bo'lsa `return null` qaytaradi lekin React komponentni
+  // unmount QILMAYDI — refs qiymatlarini saqlaydi. 1-chi scan yakunlanib 2-chi scan
+  // ochilsa, eski qrDataRef.current qolib ketib, yangi corners bilan darhol capture
+  // triggerlanardi (eski variantCode bilan) → 2-chi o'quvchi rasmida 1-chi ism ko'rinardi.
+  const resetScanState = useCallback(() => {
+    cornersRef.current = null;
+    qrDataRef.current = null;
+    stableCountRef.current = 0;
+    capturingRef.current = false;
+    qrAttemptingRef.current = false;
+    qrNativeAttemptingRef.current = false;
+    qrNativeFrameCounterRef.current = 0;
+    savedOverlaySizeRef.current = null;
+    setCornerCount(0);
+    setQrFound(false);
+    setQrStudentName(null);
+    setAutoProgress(0);
+  }, []);
+
   // Guide frame rectangle
   const getFrame = useCallback((ow: number, oh: number) => {
     let fw = ow * FRAME_W_RATIO;
@@ -210,51 +230,53 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
         const qrFound = scanResult.qrCode.found && !!scanResult.qrCode.variantCode;
 
         if (scanResult.success && answeredPct >= 0.10 && qrFound) {
-          // Yetarli javob topildi — client natijasini ishlatish
-          const blob = await new Promise<Blob>(resolve =>
-            canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92),
-          );
-          const file = new File([blob], `omr-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
-
-          // Server format ga moslashtirish (OMRCheckerPage kutgan format)
-          const serverFormat = {
-            success: true,
-            detected_answers: scanResult.detectedAnswers,
-            stats: scanResult.stats,
-            qr_code: scanResult.qrCode.found ? {
-              found: true,
-              variant_code: scanResult.qrCode.variantCode,
-              total_questions: scanResult.qrCode.totalQuestions,
-            } : { found: false },
-            detection_rate: scanResult.stats.detectionRate,
-            warnings: scanResult.warnings,
-            _clientProcessed: true,
-            _processingTimeMs: scanResult.stats.processingTimeMs,
-          };
-
-          // Server ga QR variant orqali comparison olish (DB lookup)
-          if (scanResult.qrCode.found && scanResult.qrCode.variantCode) {
-            try {
-              const resp = await api.post('/omr/lookup-variant', {
-                variantCode: scanResult.qrCode.variantCode,
-                detectedAnswers: scanResult.detectedAnswers,
-                totalQuestions: scanResult.stats.total,
-              });
-              if (resp.data?.comparison) {
-                Object.assign(serverFormat, resp.data);
-              }
-            } catch {
-              // DB lookup xatosi — natija hali ham ko'rsatiladi
+          // Yetarli javob topildi — client natija + DB lookup
+          // BUG FIX: faqat lookup MUVAFFAQIYATLI bo'lsa (variantCode DB da topilsa)
+          // clientga qaytaramiz. Aks holda server fallback — pyzbar QR'ni qayta topadi
+          // va to'g'ri studentga moslashi mumkin.
+          let dbLookup: Record<string, unknown> | null = null;
+          try {
+            const resp = await api.post('/omr/lookup-variant', {
+              variantCode: scanResult.qrCode.variantCode,
+              detectedAnswers: scanResult.detectedAnswers,
+              totalQuestions: scanResult.stats.total,
+            });
+            if (resp.data?.found && resp.data?.qr_code) {
+              dbLookup = resp.data;
             }
+          } catch {
+            // DB xato — fallback ishlatiladi
           }
 
-          onResult(serverFormat as never, file);
-          setState('scanning');
-          setCapturedImage(null);
-          capturingRef.current = false;
-          stableCountRef.current = 0;
-          onClose();
-          return;
+          if (dbLookup) {
+            const blob = await new Promise<Blob>(resolve =>
+              canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92),
+            );
+            const file = new File([blob], `omr-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+            // OMRCheckerPage kutgan format (camelCase qr_code, qr_found boolean)
+            const serverFormat = {
+              success: true,
+              detected_answers: scanResult.detectedAnswers,
+              stats: scanResult.stats,
+              detection_rate: scanResult.stats.detectionRate,
+              warnings: scanResult.warnings,
+              _clientProcessed: true,
+              _processingTimeMs: scanResult.stats.processingTimeMs,
+              ...dbLookup, // qr_found, qr_code, comparison, total_questions — hammasi DB dan
+            };
+
+            onResult(serverFormat as never, file);
+            resetScanState();
+            setState('scanning');
+            setCapturedImage(null);
+            onClose();
+            return;
+          }
+          // dbLookup null → variantCode DB da topilmadi yoki stale/leaked ref edi
+          // Server fallback /omr/scan-v2 ga tushamiz — pyzbar QR'ni qayta topib
+          // to'g'ri studentga moslashi mumkin
+          console.warn('[OMR] Client QR did not match DB — falling back to server scan-v2');
         } else {
           // Client scan xato/answered < 10%/QR yo'q — server fallback
           // Server pyzbar QR detection client'dan ancha kuchli — past sifatli rasmda
@@ -283,10 +305,9 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
       setProcessingProgress(100);
       if (response.data.success) {
         onResult(response.data, file);
+        resetScanState();
         setState('scanning');
         setCapturedImage(null);
-        capturingRef.current = false;
-        stableCountRef.current = 0;
         onClose();
         return;
       } else {
@@ -300,7 +321,7 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     } finally {
       capturingRef.current = false;
     }
-  }, [stopCamera, onResult, onClose]);
+  }, [stopCamera, onResult, onClose, resetScanState]);
 
   // ---- DETECTION: corner marks + QR ----
   const detectFrame = useCallback(() => {
@@ -851,10 +872,19 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
     }
   }, [facingMode, stopCamera, startDetection]);
 
+  // BUG FIX: Modal har ochilganda refs to'liq reset (state leak oldini olish)
+  // Muammo: modal `return null` qaytaradi isOpen=false bo'lsa, lekin React
+  // komponentni unmount QILMAYDI. Bu refs (qrDataRef, cornersRef, ...) eski
+  // qiymatlarini keyingi session'ga olib borishiga olib keladi.
+  // Birinchi o'quvchi skan qilingandan keyin ikkinchi modal ochilganda eski QR
+  // leak'lanib, darhol capture triggerlanardi → 1-chi student ma'lumoti 2-chi da.
   useEffect(() => {
-    if (isOpen && state === 'scanning') startCamera();
+    if (isOpen) {
+      resetScanState();
+      if (state === 'scanning') startCamera();
+    }
     return () => { if (!isOpen) stopCamera(); };
-  }, [isOpen, state, startCamera, stopCamera]);
+  }, [isOpen, state, startCamera, stopCamera, resetScanState]);
 
   useEffect(() => {
     if (isOpen && state === 'scanning') { stopCamera(); startCamera(); }
@@ -875,18 +905,13 @@ export function LiveScannerModal({ isOpen, onClose, onResult }: LiveScannerModal
 
   const resetToScanning = () => {
     setState('scanning'); setCapturedImage(null); setCameraError(null);
-    setProcessingProgress(0); setAutoProgress(0); setCornerCount(0);
-    stableCountRef.current = 0; capturingRef.current = false;
-    cornersRef.current = null; qrDataRef.current = null;
-    qrAttemptingRef.current = false;
-    setQrFound(false); setQrStudentName(null);
+    setProcessingProgress(0);
+    resetScanState();
   };
 
   const handleClose = () => {
     stopCamera(); setState('scanning'); setCapturedImage(null); setCameraError(null);
-    capturingRef.current = false; stableCountRef.current = 0;
-    cornersRef.current = null; qrDataRef.current = null;
-    qrAttemptingRef.current = false;
+    resetScanState();
     onClose();
   };
 

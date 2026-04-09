@@ -1912,11 +1912,11 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
       'Noma\'lum';
 
     const detected: Record<string, string> = detectedAnswers || {};
-    // totalQ — student variant'idagi savol soni (skoring, comparison)
-    // sheetTotalQ — fizik varaqdagi bubble soni (qabul qilingan totalQuestions yoki sheet)
-    // Comparison loop totalQ ga asoslanadi — phantom javobsiz bug yo'q
+    // totalQ — student variant'idagi HAQIQIY savol soni
+    // sheetTotalQ = totalQ — phantom javoblarga yo'l qo'ymaslik (M-01 BUG FIX)
     const totalQ = Object.keys(correctAnswers).length;
-    const sheetTotalQ = sheetTotal > totalQ ? sheetTotal : totalQ;
+    const sheetTotalQ = totalQ;
+    void sheetTotal;
 
     // Comparison details FAQAT student'ning haqiqiy savollari uchun
     const details = Array.from({ length: totalQ }, (_, i) => {
