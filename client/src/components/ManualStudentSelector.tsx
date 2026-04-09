@@ -216,10 +216,14 @@ export function ManualStudentSelector({
                         <div className="font-semibold text-gray-900 text-sm truncate">
                           {student.fullName}
                         </div>
-                        {/* Guruh va ID */}
+                        {/* Variant testining guruhi (har variant alohida) + ID */}
                         <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5 flex-wrap">
-                          {student.groupNames && student.groupNames.length > 0 && (
-                            <span>👥 {student.groupNames.join(', ')}</span>
+                          {variant ? (
+                            <span>👥 {variant.testLabel}</span>
+                          ) : (
+                            student.groupNames && student.groupNames.length > 0 && (
+                              <span>👥 {student.groupNames.join(', ')}</span>
+                            )
                           )}
                           {student.studentCode && <span>• ID: {student.studentCode}</span>}
                           {!enabled && <span className="text-red-500">• variant yo'q</span>}
