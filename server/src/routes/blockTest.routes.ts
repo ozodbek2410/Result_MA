@@ -1593,6 +1593,26 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     for (const v of variants) { variantMap.set(v.studentId.toString(), v); }
     console.log('📊 EXCEL DEBUG: StudentVariants found =', variants.length);
 
+    // Per-student pointsConfig — har savol pozitsiyasi nechta ball berishini bilish uchun
+    const studentConfigs = await StudentTestConfig.find({ studentId: { $in: studentIds } })
+      .select('studentId pointsConfig')
+      .lean();
+    const pointsConfigMap = new Map<string, { from: number; to: number; points: number }[]>();
+    for (const cfg of studentConfigs) {
+      pointsConfigMap.set(cfg.studentId.toString(), cfg.pointsConfig || []);
+    }
+    console.log('📊 EXCEL DEBUG: StudentTestConfigs found =', studentConfigs.length);
+
+    // Helper: berilgan savol pozitsiyasi (1-based) uchun ball miqdorini topish.
+    // Agar pointsConfig bo'sh bo'lsa default 1 ball.
+    const getPointsForPos = (pos: number, cfg: { from: number; to: number; points: number }[]): number => {
+      if (!cfg || cfg.length === 0) return 1;
+      for (const pc of cfg) {
+        if (pos >= pc.from && pos <= pc.to) return pc.points;
+      }
+      return 0;
+    };
+
     // Debug: log first variant's shuffledQuestions subjectId format
     if (variants.length > 0) {
       const firstV = variants[0];
@@ -1631,8 +1651,10 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       return q.subjectId.toString();
     };
 
-    type SubjectScores = Map<string, { correct: number; total: number }>;
+    type SubjectScores = Map<string, { correct: number; total: number; earnedPoints: number; maxPoints: number; isCert: boolean; certPercent?: number }>;
     const studentSubjectScores = new Map<string, SubjectScores>();
+    // Header uchun representativ max points (har fan kolonkasi) — birinchi to'liq student'dan
+    const subjectMaxPoints = new Map<string, number>();
     for (const student of students) {
       const sid = student._id.toString();
       const result = resultMap.get(sid);
@@ -1643,19 +1665,57 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
         else if (!variant.shuffledQuestions?.length) console.log('📊 EXCEL DEBUG: empty shuffledQuestions for student', sid);
         continue;
       }
+      const stuPoints = pointsConfigMap.get(sid) || [];
+      // Sertifikat fanlar map
+      const certMap = new Map<string, number>();
+      if (variant.certSubjects && variant.certSubjects.length > 0) {
+        for (const cs of variant.certSubjects) {
+          const csid = (cs.subjectId as any)?.toString?.() || String(cs.subjectId);
+          if (csid) certMap.set(csid, cs.percentage);
+        }
+      }
+
       const scores: SubjectScores = new Map();
       for (let i = 0; i < variant.shuffledQuestions.length; i++) {
         const subId = getSubId(variant.shuffledQuestions[i]);
-        if (!scores.has(subId)) scores.set(subId, { correct: 0, total: 0 });
+        const isCert = certMap.has(subId);
+        const points = getPointsForPos(i + 1, stuPoints);
+
+        if (!scores.has(subId)) {
+          scores.set(subId, { correct: 0, total: 0, earnedPoints: 0, maxPoints: 0, isCert, certPercent: certMap.get(subId) });
+        }
         const entry = scores.get(subId)!;
         entry.total++;
-        if (result.answers?.[i]?.isCorrect) entry.correct++;
+        entry.maxPoints += points;
+        // Sertifikat bo'lmagan fanlar uchun OMR ni hisoblash
+        if (!isCert && result.answers?.[i]?.isCorrect) {
+          entry.correct++;
+          entry.earnedPoints += points;
+        }
       }
+
+      // Sertifikat fanlar uchun avto override: correct = round(total × certPercent / 100)
+      // earnedPoints = maxPoints × certPercent / 100
+      for (const entry of scores.values()) {
+        if (entry.isCert && entry.certPercent != null) {
+          entry.correct = Math.round(entry.total * entry.certPercent / 100);
+          entry.earnedPoints = Math.round(entry.maxPoints * entry.certPercent / 100 * 10) / 10;
+        }
+      }
+
       studentSubjectScores.set(sid, scores);
+
+      // Header maxPoints — birinchi to'liq studentdan olamiz (fixed reference)
+      for (const [subId, sc] of scores) {
+        if (!subjectMaxPoints.has(subId)) {
+          subjectMaxPoints.set(subId, Math.round(sc.maxPoints * 10) / 10);
+        }
+      }
+
       // Log first student's scores for debugging
       if (studentSubjectScores.size === 1) {
         console.log('📊 EXCEL DEBUG: first student scores:', student.fullName);
-        scores.forEach((v, k) => console.log('  subId:', k, '→', v.correct, '/', v.total));
+        scores.forEach((v, k) => console.log('  subId:', k, '→', v.correct, '/', v.total, '|', v.earnedPoints, 'ball/', v.maxPoints));
         console.log('📊 EXCEL DEBUG: subjectCols ids:', subjectCols.map(sc => sc.subjectIdStr));
       }
     }
@@ -1700,7 +1760,10 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
     const headerValues: string[] = ['№', "F.I.O"];
     subjectCols.forEach(sc => {
       const label = sc.groupLetter ? `${sc.name} (${sc.groupLetter})` : sc.name;
-      headerValues.push(`${label}\n(${sc.questionsCount} ta)`);
+      // Header format: "Fan\nMAX_BALL/QUESTIONCOUNT" (masalan: "Math\n93 ball/30")
+      const maxPts = subjectMaxPoints.get(sc.subjectIdStr) || sc.questionsCount;
+      const maxPtsStr = Number.isInteger(maxPts) ? String(maxPts) : maxPts.toFixed(1);
+      headerValues.push(`${label}\n${maxPtsStr} ball/${sc.questionsCount}`);
     });
     headerValues.push('Jami ball', 'Foiz (%)');
     const colHeaderRow = ws.addRow(headerValues);
@@ -1727,8 +1790,14 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
       subjectCols.forEach(sc => {
         if (perSubject) {
           const score = perSubject.get(sc.subjectIdStr);
-          rowValues.push(score ? score.correct : 0);
-        } else { rowValues.push(0); }
+          if (score) {
+            // Cell format: "EARNED ball/CORRECT" (masalan: "60 ball/20")
+            const earned = Number.isInteger(score.earnedPoints) ? String(score.earnedPoints) : score.earnedPoints.toFixed(1);
+            rowValues.push(`${earned} ball/${score.correct}`);
+          } else {
+            rowValues.push('0 ball/0');
+          }
+        } else { rowValues.push('0 ball/0'); }
       });
       if (result) {
         rowValues.push(`${result.totalPoints ?? 0}/${result.maxPoints ?? 0}`);
@@ -1745,7 +1814,11 @@ router.get('/:id/export-excel', authenticate, async (req: AuthRequest, res) => {
           const sc = subjectCols[i - 3]; const score = perSubject.get(sc.subjectIdStr);
           if (score && score.total > 0) {
             const pct = (score.correct / score.total) * 100;
-            if (pct >= 70) { row.getCell(i).fill = greenFill; row.getCell(i).font = { size: 10, color: { argb: 'FF166534' } }; }
+            // Sertifikat fan: amber rang
+            if (score.isCert) {
+              row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } } as ExcelJS.Fill;
+              row.getCell(i).font = { size: 10, bold: true, color: { argb: 'FF92400E' } };
+            } else if (pct >= 70) { row.getCell(i).fill = greenFill; row.getCell(i).font = { size: 10, color: { argb: 'FF166534' } }; }
             else if (pct < 40) { row.getCell(i).fill = redFill; row.getCell(i).font = { size: 10, color: { argb: 'FF991B1B' } }; }
           }
         }
