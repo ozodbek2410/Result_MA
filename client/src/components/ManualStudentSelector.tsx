@@ -162,24 +162,47 @@ export function ManualStudentSelector({
               O'quvchi topilmadi
             </div>
           )}
-          {!loading && students.length > 0 && (
-            <div className="divide-y divide-gray-100">
-              {students.map(s => {
-                const hasMultiple = (s.variants?.length || 0) > 1;
-                return (
-                  <div key={s.studentId} className={`p-3 sm:p-4 ${!s.hasVariant ? 'opacity-60' : ''}`}>
-                    <div className="flex items-start gap-3">
+          {!loading && students.length > 0 && (() => {
+            // Har student-variant juftligini ALOHIDA qator qilish (flatten).
+            // 2 ta variant bo'lsa → 2 ta qator. 0 ta variant bo'lsa → 1 ta disabled qator.
+            const rows: { student: StudentItem; variant: VariantInfo | null }[] = [];
+            for (const s of students) {
+              if (s.variants && s.variants.length > 0) {
+                for (const v of s.variants) {
+                  rows.push({ student: s, variant: v });
+                }
+              } else {
+                rows.push({ student: s, variant: null });
+              }
+            }
+
+            return (
+              <div className="divide-y divide-gray-100">
+                {rows.map((row, idx) => {
+                  const { student, variant } = row;
+                  const enabled = !!variant;
+                  return (
+                    <button
+                      key={`${student.studentId}-${variant?.variantCode || 'none'}-${idx}`}
+                      onClick={() => enabled && onSelect(student.studentId, variant!.variantCode)}
+                      disabled={!enabled}
+                      className={`w-full p-3 sm:p-4 flex items-center gap-3 text-left transition-colors ${
+                        enabled
+                          ? 'hover:bg-blue-50 active:bg-blue-100 cursor-pointer'
+                          : 'opacity-60 cursor-not-allowed'
+                      }`}
+                    >
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          s.hasVariant
-                            ? s.variantSuperseded
+                          enabled
+                            ? variant!.superseded
                               ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-green-100 text-green-700'
+                              : 'bg-blue-100 text-blue-700'
                             : 'bg-gray-100 text-gray-400'
                         }`}
                       >
-                        {s.hasVariant ? (
-                          s.variantSuperseded ? (
+                        {enabled ? (
+                          variant!.superseded ? (
                             <AlertTriangle className="w-5 h-5" />
                           ) : (
                             <CheckCircle className="w-5 h-5" />
@@ -189,72 +212,25 @@ export function ManualStudentSelector({
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-gray-900 text-sm">
-                          {s.fullName}
+                        {/* Ism familya */}
+                        <div className="font-semibold text-gray-900 text-sm truncate">
+                          {student.fullName}
                         </div>
+                        {/* Guruh va ID */}
                         <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5 flex-wrap">
-                          <span>{s.classNumber}-sinf</span>
-                          {s.studentCode && <span>• ID: {s.studentCode}</span>}
-                          {!s.hasVariant && <span className="text-red-500">• variant yo'q</span>}
+                          {student.groupNames && student.groupNames.length > 0 && (
+                            <span>👥 {student.groupNames.join(', ')}</span>
+                          )}
+                          {student.studentCode && <span>• ID: {student.studentCode}</span>}
+                          {!enabled && <span className="text-red-500">• variant yo'q</span>}
                         </div>
-                        {/* Guruh nomlari — CRM dublikatlarni aniqlash uchun */}
-                        {s.groupNames && s.groupNames.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {s.groupNames.map((gn, i) => (
-                              <span
-                                key={i}
-                                className="inline-flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded border border-blue-200"
-                              >
-                                👥 {gn}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                       </div>
-                    </div>
-
-                    {/* Variantlar ro'yxati — bittadan ko'p bo'lsa har birini alohida tugma */}
-                    {s.hasVariant && s.variants && s.variants.length > 0 && (
-                      <div className="mt-2 pl-13 space-y-1.5">
-                        {hasMultiple && (
-                          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-                            {s.variants.length} ta blok testdan variant — birini tanlang:
-                          </p>
-                        )}
-                        {s.variants.map((v, i) => (
-                          <button
-                            key={i}
-                            onClick={() => onSelect(s.studentId, v.variantCode)}
-                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
-                              v.superseded
-                                ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100'
-                                : 'bg-green-50 border-green-300 hover:bg-green-100'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <div className="text-xs font-semibold text-gray-800 truncate">
-                                  {v.testLabel}
-                                </div>
-                                <div className="text-[10px] text-gray-500 font-mono">
-                                  {v.variantCode}
-                                </div>
-                              </div>
-                              {v.superseded && (
-                                <span className="text-[9px] px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded font-bold whitespace-nowrap">
-                                  ESKIRGAN
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer */}
