@@ -1979,4 +1979,188 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/omr/students-for-scan
+ * Manual student selection uchun ro'yxat: sinf bo'yicha studentlar + variant holati.
+ * Frontend ModalSelector da qidirish va tanlash uchun ishlatiladi.
+ *
+ * Query params:
+ *   classNumber: 1-11 (ixtiyoriy filter)
+ *   search: string (ixtiyoriy — fullName qidiruvi)
+ *   hasVariant: 'yes' | 'no' | 'any' (default: 'any')
+ */
+router.get('/students-for-scan', authenticate, async (req, res) => {
+  try {
+    const Student = require('../models/Student').default;
+    const StudentVariant = require('../models/StudentVariant').default;
+
+    const classNumber = req.query.classNumber ? Number(req.query.classNumber) : undefined;
+    const search = (req.query.search as string || '').trim();
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+
+    const filter: Record<string, unknown> = {};
+    if (classNumber) filter.classNumber = classNumber;
+    if (search) filter.fullName = { $regex: search, $options: 'i' };
+
+    const students = await Student.find(filter)
+      .select('fullName classNumber studentCode')
+      .sort({ fullName: 1 })
+      .limit(limit)
+      .lean();
+
+    // Har bir student uchun variant holati (active/superseded/none)
+    const sids = students.map((s: { _id: unknown }) => s._id);
+    const variants = await StudentVariant.find({ studentId: { $in: sids } })
+      .select('studentId variantCode testId testType superseded createdAt')
+      .sort({ superseded: 1, createdAt: -1 }) // active birinchi, keyin eng yangi
+      .lean();
+
+    const varMap = new Map<string, { variantCode: string; superseded: boolean; testId: string; testType: string }>();
+    for (const v of variants) {
+      const sid = String(v.studentId);
+      if (!varMap.has(sid)) {
+        varMap.set(sid, {
+          variantCode: v.variantCode,
+          superseded: !!v.superseded,
+          testId: String(v.testId),
+          testType: v.testType,
+        });
+      }
+    }
+
+    const result = students.map((s: { _id: unknown; fullName: string; classNumber: number; studentCode?: number }) => {
+      const info = varMap.get(String(s._id));
+      return {
+        studentId: String(s._id),
+        fullName: s.fullName,
+        classNumber: s.classNumber,
+        studentCode: s.studentCode,
+        variantCode: info?.variantCode || null,
+        variantSuperseded: info?.superseded || false,
+        testId: info?.testId || null,
+        testType: info?.testType || null,
+        hasVariant: !!info,
+      };
+    });
+
+    res.json({ students: result, count: result.length });
+  } catch (err: unknown) {
+    console.error('[OMR students-for-scan] Error:', err);
+    res.status(500).json({ error: 'Studentlarni yuklashda xato' });
+  }
+});
+
+/**
+ * POST /api/omr/manual-assign
+ * Student manual tanlangan holat: QR topilmagan yoki variant noto'g'ri bo'lsa,
+ * o'qituvchi studentni tanlaydi → uning eng yangi variantiga (superseded bo'lsa
+ * ham) detectedAnswers bog'lanadi va comparison qaytariladi.
+ *
+ * Body:
+ *   studentId: string (REQUIRED)
+ *   detectedAnswers: Record<string, string> (REQUIRED)
+ */
+router.post('/manual-assign', authenticate, async (req, res) => {
+  try {
+    const { studentId, detectedAnswers } = req.body as {
+      studentId?: string;
+      detectedAnswers?: Record<string, string>;
+    };
+    if (!studentId) return res.status(400).json({ error: 'studentId kerak' });
+
+    const StudentVariant = require('../models/StudentVariant').default;
+    const Student = require('../models/Student').default;
+    const Test = require('../models/Test').default;
+    const BlockTest = require('../models/BlockTest').default;
+
+    // Studentni tekshirish
+    const student = await Student.findById(studentId).lean();
+    if (!student) return res.status(404).json({ error: 'Student topilmadi' });
+
+    // Eng yangi variant (active birinchi, keyin superseded lar)
+    const variantInfo = await StudentVariant.findOne({ studentId })
+      .sort({ superseded: 1, createdAt: -1 })
+      .lean();
+
+    if (!variantInfo || !variantInfo.shuffledQuestions?.length) {
+      return res.status(404).json({
+        error: 'Bu student uchun variant topilmadi. Variant qayta generatsiya qilinishi kerak.',
+      });
+    }
+
+    const correctAnswers: Record<string, string> = {};
+    variantInfo.shuffledQuestions.forEach((q: { correctAnswer: string }, i: number) => {
+      correctAnswers[(i + 1).toString()] = q.correctAnswer;
+    });
+
+    let testName = 'Test';
+    try {
+      if (variantInfo.testType === 'BlockTest') {
+        const bt = await BlockTest.findById(variantInfo.testId).select('date subjectTests');
+        if (bt) testName = `Blok Test - ${new Date(bt.date).toLocaleDateString('uz-UZ')}`;
+      } else {
+        const t = await Test.findById(variantInfo.testId).select('name');
+        if (t) testName = t.name;
+      }
+    } catch { /* ignore */ }
+
+    const studentName = student.fullName ||
+      `${student.firstName || ''} ${student.lastName || ''}`.trim() ||
+      'Noma\'lum';
+
+    const detected: Record<string, string> = detectedAnswers || {};
+    const totalQ = Object.keys(correctAnswers).length;
+
+    const details = Array.from({ length: totalQ }, (_, i) => {
+      const qStr = String(i + 1);
+      const studentAnswer = detected[qStr] || null;
+      const correctAnswer = correctAnswers[qStr] || '';
+      return {
+        question: i + 1,
+        student_answer: studentAnswer,
+        correct_answer: correctAnswer,
+        is_correct: !!studentAnswer && studentAnswer === correctAnswer,
+      };
+    });
+
+    const correct = details.filter(d => d.is_correct).length;
+    const unanswered = details.filter(d => !d.student_answer && d.correct_answer).length;
+    const incorrect = totalQ - correct - unanswered;
+    const scorePercent = totalQ > 0 ? (correct / totalQ) * 100 : 0;
+
+    res.json({
+      found: true,
+      manual: true, // Flag: bu manual assignment — student QR orqali emas
+      qr_found: true,
+      qr_code: {
+        variantCode: variantInfo.variantCode,
+        testId: String(variantInfo.testId),
+        studentId: String(studentId),
+        studentName,
+        testName,
+        totalQuestions: totalQ,
+        sheetTotalQuestions: totalQ,
+        correctAnswers,
+        supersededVariant: !!variantInfo.superseded,
+      },
+      comparison: {
+        correct,
+        incorrect,
+        unanswered,
+        total: totalQ,
+        score: scorePercent,
+        details,
+        warning: variantInfo.superseded
+          ? 'Eskirgan variant ishlatildi (manual tanlov)'
+          : 'Manual student tanlov',
+      },
+      total_questions: totalQ,
+      detected_answers: detected,
+    });
+  } catch (err: unknown) {
+    console.error('[OMR manual-assign] Error:', err);
+    res.status(500).json({ error: 'Manual assignment xatosi' });
+  }
+});
+
 export default router;

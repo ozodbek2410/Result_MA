@@ -5,6 +5,7 @@ import { Card } from '../../components/ui/Card';
 import { useToast } from '../../hooks/useToast';
 import { CameraModal } from '../../components/CameraModal';
 import { LiveScannerModal } from '../../components/LiveScannerModal';
+import { ManualStudentSelector } from '../../components/ManualStudentSelector';
 import api from '../../lib/api';
 
 interface CheckResult {
@@ -65,6 +66,7 @@ export default function OMRCheckerPage() {
   const [scanProgress, setScanProgress] = useState(0);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isLiveScannerOpen, setIsLiveScannerOpen] = useState(false);
+  const [isStudentSelectorOpen, setIsStudentSelectorOpen] = useState(false);
   const [duplicateModal, setDuplicateModal] = useState<{
     show: boolean;
     existingResult: { studentName: string; totalPoints: number; maxPoints: number; percentage: number; scannedAt: string } | null;
@@ -99,6 +101,39 @@ export default function OMRCheckerPage() {
     setResult(scanResult);
     if (scanResult.success) {
       setStep('review');
+    }
+  };
+
+  // Manual student tanlangan holat — /omr/manual-assign ga detectedAnswers yuborish
+  const handleManualStudentSelect = async (studentId: string) => {
+    if (!result?.detected_answers) {
+      toast('Avval skanerdan o\'tkazing', 'error');
+      return;
+    }
+    try {
+      // detected_answers — obyekt {1: "A", 2: "B", ...}
+      const response = await api.post('/omr/manual-assign', {
+        studentId,
+        detectedAnswers: result.detected_answers,
+      });
+      if (response.data?.found) {
+        // Mavjud result'ni manual natija bilan yangilash (rasm saqlanadi)
+        setResult(prev => ({
+          ...prev,
+          ...response.data,
+          // Eski rasmni saqlash
+          annotated_image: prev?.annotated_image,
+          uploaded_image: prev?.uploaded_image,
+          detection_rate: prev?.detection_rate,
+        }));
+        setIsStudentSelectorOpen(false);
+        toast('O\'quvchi tanlandi', 'success');
+      } else {
+        toast(response.data?.error || 'Bu student uchun variant topilmadi', 'error');
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast(msg || 'Manual tanlashda xato', 'error');
     }
   };
 
@@ -315,6 +350,11 @@ export default function OMRCheckerPage() {
         onClose={() => setIsLiveScannerOpen(false)}
         onResult={handleLiveScanResult}
       />
+      <ManualStudentSelector
+        isOpen={isStudentSelectorOpen}
+        onClose={() => setIsStudentSelectorOpen(false)}
+        onSelect={handleManualStudentSelect}
+      />
       
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
@@ -529,19 +569,25 @@ export default function OMRCheckerPage() {
               </Card>
             )}
             
-            {/* Warning if QR not found */}
+            {/* Warning if QR not found — endi "O'quvchini qo'lda tanlash" tugmasi bilan */}
             {!result.qr_found && (
               <Card className="border-0 shadow-lg overflow-hidden">
                 <div className="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 sm:p-6">
-                  <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="flex items-start gap-3 sm:gap-4">
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
                       <XCircle className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base sm:text-lg font-bold text-white mb-1">QR-kod topilmadi</h3>
-                      <p className="text-xs sm:text-sm text-white/90">
-                        Javob varag'ida QR-kod aniqlanmadi. Natijalarni qo'lda kiritishingiz kerak.
+                      <h3 className="text-base sm:text-lg font-bold text-white mb-1">QR-kod topilmadi yoki DB da yo'q</h3>
+                      <p className="text-xs sm:text-sm text-white/90 mb-3">
+                        Bu varaq eski variant yoki boshqa tizimdan chiqarilgan. O'quvchini qo'lda tanlashingiz mumkin.
                       </p>
+                      <button
+                        onClick={() => setIsStudentSelectorOpen(true)}
+                        className="px-4 py-2 bg-white hover:bg-gray-50 text-orange-600 font-semibold rounded-lg text-sm transition-colors shadow-sm"
+                      >
+                        O'quvchini qo'lda tanlash
+                      </button>
                     </div>
                   </div>
                 </div>
