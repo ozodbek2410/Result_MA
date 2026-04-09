@@ -81,6 +81,105 @@ function extractQrFields(qrResult: Record<string, unknown>): { variantCode: stri
   return parseQrData(String(qrResult.data || '').trim());
 }
 
+interface ShuffledQuestion {
+  correctAnswer: string;
+  subjectId?: { _id?: unknown; nameUzb?: string } | string | unknown;
+}
+interface VariantDetailItem {
+  question: number;
+  student_answer: string | null;
+  correct_answer: string;
+  is_correct: boolean;
+}
+interface CertSubject { subjectId: unknown; percentage: number }
+interface SubjectBreakdownItem {
+  subjectId: string;
+  name: string;
+  correct: number;
+  incorrect: number;
+  unanswered: number;
+  total: number;
+  score: number;
+  isCertificate: boolean;
+  certPercent?: number;
+}
+
+/**
+ * Fan bo'yicha natijalarni hisoblash (subjectBreakdown + unansweredQuestions).
+ * Barcha scan endpointlar (scan-v2, lookup-variant, manual-assign) shu yerdan foydalanadi.
+ *
+ * @param shuffledQuestions — variant.shuffledQuestions (har savolda subjectId bor)
+ * @param details — comparison.details (student_answer, correct_answer, is_correct)
+ * @param certSubjects — variant.certSubjects (sertifikat fanlar ro'yxati)
+ * @returns subjectBreakdown + unansweredQuestions raqamlari
+ */
+function buildSubjectBreakdown(
+  shuffledQuestions: ShuffledQuestion[] | undefined,
+  details: VariantDetailItem[],
+  certSubjects: CertSubject[] | undefined,
+): { subjectBreakdown: SubjectBreakdownItem[]; unansweredQuestions: number[] } {
+  const subjectMap: Record<string, SubjectBreakdownItem> = {};
+  const unansweredQuestions: number[] = [];
+
+  // Sertifikat fanlar map
+  const certMap = new Map<string, number>();
+  if (certSubjects && certSubjects.length > 0) {
+    for (const cs of certSubjects) {
+      const sid = (cs.subjectId as { toString?: () => string })?.toString?.() || String(cs.subjectId);
+      if (sid) certMap.set(sid, cs.percentage);
+    }
+  }
+
+  if (shuffledQuestions && shuffledQuestions.length > 0) {
+    for (let i = 0; i < details.length; i++) {
+      const sq = shuffledQuestions[i];
+      if (!sq) continue;
+      const sidRaw = (sq.subjectId as { _id?: unknown })?._id || sq.subjectId;
+      const sid = (sidRaw as { toString?: () => string })?.toString?.() || String(sidRaw || 'unknown');
+      const name = (sq.subjectId as { nameUzb?: string })?.nameUzb || 'Boshqa fan';
+
+      if (!subjectMap[sid]) {
+        const certPercent = certMap.get(sid);
+        subjectMap[sid] = {
+          subjectId: sid,
+          name,
+          correct: 0,
+          incorrect: 0,
+          unanswered: 0,
+          total: 0,
+          score: 0,
+          isCertificate: certMap.has(sid),
+          certPercent,
+        };
+      }
+      subjectMap[sid].total++;
+
+      const det = details[i];
+      if (!det) continue;
+      if (!det.student_answer) {
+        subjectMap[sid].unanswered++;
+        unansweredQuestions.push(det.question);
+      } else if (det.is_correct) {
+        subjectMap[sid].correct++;
+      } else {
+        subjectMap[sid].incorrect++;
+      }
+    }
+  } else {
+    // shuffledQuestions yo'q — faqat unanswered ro'yxat
+    for (const det of details) {
+      if (!det.student_answer) unansweredQuestions.push(det.question);
+    }
+  }
+
+  const subjectBreakdown = Object.values(subjectMap).map(s => ({
+    ...s,
+    score: s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0,
+  }));
+
+  return { subjectBreakdown, unansweredQuestions };
+}
+
 /**
  * POST /api/omr/upload
  * Загрузка изображения ответного листа
@@ -1790,7 +1889,9 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
 
         const variantInfo = await StudentVariant.findOne({
           variantCode: { $regex: new RegExp(`^${variantCode.trim()}$`, 'i') }
-        }).populate('studentId');
+        })
+          .populate('studentId')
+          .populate('shuffledQuestions.subjectId', 'nameUzb');
 
         if (variantInfo?.shuffledQuestions?.length > 0) {
           const correctAnswers: Record<string, string> = {};
@@ -1842,6 +1943,13 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
           const incorrect = totalQ - correct - unanswered;
           const scorePercent = totalQ > 0 ? (correct / totalQ) * 100 : 0;
 
+          // Fan bo'yicha tahlil + javobsiz savol raqamlari
+          const { subjectBreakdown, unansweredQuestions } = buildSubjectBreakdown(
+            variantInfo.shuffledQuestions,
+            details,
+            variantInfo.certSubjects,
+          );
+
           // backward-compatible fields (OMRCheckerPage format)
           result.qr_found = true;
           result.qr_code = {
@@ -1853,6 +1961,11 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             totalQuestions: totalQ,
             sheetTotalQuestions: sheetTotalQ,
             correctAnswers,
+            certSubjects: variantInfo.certSubjects?.map((cs: CertSubject) => ({
+              subjectId: String(cs.subjectId),
+              percentage: cs.percentage,
+              subjectName: subjectBreakdown.find(s => s.subjectId === String(cs.subjectId))?.name,
+            })),
           };
           result.comparison = {
             correct,
@@ -1861,6 +1974,8 @@ router.post('/scan-v2', authenticate, upload.single('image'), async (req, res) =
             total: totalQ,
             score: scorePercent,
             details,
+            subjectBreakdown,
+            unansweredQuestions,
           };
           // total_questions + stats.total = student'ning haqiqiy savollari (phantom yo'q)
           result.total_questions = totalQ;
@@ -1908,7 +2023,9 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
 
     const variantInfo = await StudentVariant.findOne({
       variantCode: { $regex: new RegExp(`^${variantCode.trim()}$`, 'i') }
-    }).populate('studentId');
+    })
+      .populate('studentId')
+      .populate('shuffledQuestions.subjectId', 'nameUzb');
 
     if (!variantInfo?.shuffledQuestions?.length) {
       return res.json({ found: false });
@@ -1962,6 +2079,13 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
     const unanswered = details.filter(d => !d.student_answer && d.correct_answer).length;
     const incorrect = totalQ - correct - unanswered;
 
+    // Fan bo'yicha tahlil + javobsiz savollar ro'yxati
+    const { subjectBreakdown, unansweredQuestions } = buildSubjectBreakdown(
+      variantInfo.shuffledQuestions,
+      details,
+      variantInfo.certSubjects,
+    );
+
     res.json({
       found: true,
       qr_found: true,
@@ -1974,6 +2098,11 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
         totalQuestions: totalQ,
         sheetTotalQuestions: sheetTotalQ,
         correctAnswers,
+        certSubjects: variantInfo.certSubjects?.map((cs: CertSubject) => ({
+          subjectId: String(cs.subjectId),
+          percentage: cs.percentage,
+          subjectName: subjectBreakdown.find(s => s.subjectId === String(cs.subjectId))?.name,
+        })),
       },
       comparison: {
         correct,
@@ -1982,6 +2111,8 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
         total: totalQ,
         score: totalQ > 0 ? (correct / totalQ) * 100 : 0,
         details,
+        subjectBreakdown,
+        unansweredQuestions,
       },
       // total_questions = student variant savol soni (sheetTotalQ EMAS)
       total_questions: totalQ,
@@ -2094,6 +2225,7 @@ router.post('/manual-assign', authenticate, async (req, res) => {
     // Eng yangi variant (active birinchi, keyin superseded lar)
     const variantInfo = await StudentVariant.findOne({ studentId })
       .sort({ superseded: 1, createdAt: -1 })
+      .populate('shuffledQuestions.subjectId', 'nameUzb')
       .lean();
 
     if (!variantInfo || !variantInfo.shuffledQuestions?.length) {
@@ -2142,6 +2274,13 @@ router.post('/manual-assign', authenticate, async (req, res) => {
     const incorrect = totalQ - correct - unanswered;
     const scorePercent = totalQ > 0 ? (correct / totalQ) * 100 : 0;
 
+    // Fan bo'yicha tahlil + javobsiz savollar
+    const { subjectBreakdown, unansweredQuestions } = buildSubjectBreakdown(
+      variantInfo.shuffledQuestions,
+      details,
+      variantInfo.certSubjects,
+    );
+
     res.json({
       found: true,
       manual: true, // Flag: bu manual assignment — student QR orqali emas
@@ -2156,6 +2295,11 @@ router.post('/manual-assign', authenticate, async (req, res) => {
         sheetTotalQuestions: totalQ,
         correctAnswers,
         supersededVariant: !!variantInfo.superseded,
+        certSubjects: variantInfo.certSubjects?.map((cs: CertSubject) => ({
+          subjectId: String(cs.subjectId),
+          percentage: cs.percentage,
+          subjectName: subjectBreakdown.find(s => s.subjectId === String(cs.subjectId))?.name,
+        })),
       },
       comparison: {
         correct,
@@ -2164,6 +2308,8 @@ router.post('/manual-assign', authenticate, async (req, res) => {
         total: totalQ,
         score: scorePercent,
         details,
+        subjectBreakdown,
+        unansweredQuestions,
         warning: variantInfo.superseded
           ? 'Eskirgan variant ishlatildi (manual tanlov)'
           : 'Manual student tanlov',

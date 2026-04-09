@@ -42,13 +42,18 @@ interface CheckResult {
       is_correct: boolean;
     }>;
     subjectBreakdown?: Array<{
+      subjectId?: string;
       name: string;
       correct: number;
       incorrect: number;
       unanswered: number;
       total: number;
       score: number;
+      isCertificate?: boolean;
+      certPercent?: number;
     }>;
+    /** Javobsiz savol raqamlari ro'yxati — UI da ko'rsatish uchun */
+    unansweredQuestions?: number[];
   };
 }
 
@@ -683,59 +688,101 @@ export default function OMRCheckerPage() {
               </div>
             )}
 
-            {/* Sertifikat fanlar ko'rsatish */}
-            {result.qr_code?.certSubjects && result.qr_code.certSubjects.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {result.qr_code.certSubjects.map((cert: any, idx: number) => (
-                  <div key={idx} className="rounded-xl border border-amber-300 bg-amber-50 p-3 sm:p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-gray-900">
-                        📜 {cert.subjectName || cert.subjectId}
-                      </span>
-                      <span className="text-sm font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                        {cert.percentage}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-amber-700">Sertifikat bilan avtomatik ball</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Subject Breakdown Cards */}
-            {result.comparison?.subjectBreakdown && result.comparison.subjectBreakdown.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {result.comparison.subjectBreakdown.map((subject, idx) => {
-                  const pct = subject.total > 0 ? Math.round((subject.correct / subject.total) * 100) : 0;
-                  const color = pct >= 70 ? 'green' : pct >= 40 ? 'yellow' : 'red';
-                  const colors: Record<string, { bg: string; bar: string; text: string; badge: string }> = {
-                    green: { bg: 'bg-green-50', bar: 'bg-green-500', text: 'text-green-700', badge: 'bg-green-100 text-green-700' },
-                    yellow: { bg: 'bg-yellow-50', bar: 'bg-yellow-500', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-700' },
-                    red: { bg: 'bg-red-50', bar: 'bg-red-500', text: 'text-red-700', badge: 'bg-red-100 text-red-700' },
-                  };
-                  const c = colors[color];
-                  return (
-                    <Card key={idx} className="border shadow-sm overflow-hidden">
-                      <div className={`${c.bg} p-3 sm:p-4`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-sm font-bold text-gray-900 truncate">{subject.name}</h3>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.badge}`}>{pct}%</span>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
-                          <span className="text-green-600 font-semibold">{subject.correct} to'g'ri</span>
-                          <span className="text-red-600 font-semibold">{subject.incorrect} xato</span>
-                          {subject.unanswered > 0 && (
-                            <span className="text-gray-400 font-semibold">{subject.unanswered} bo'sh</span>
-                          )}
-                          <span className="text-gray-500 ml-auto">{subject.total} ta</span>
-                        </div>
-                        <div className="h-1.5 bg-white/60 rounded-full overflow-hidden">
-                          <div className={`h-full ${c.bar} rounded-full transition-all`} style={{ width: `${pct}%` }} />
-                        </div>
+            {/* Javobsiz savol raqamlari — clickable badge list */}
+            {updatedComparison && (() => {
+              // Dinamik javobsiz raqamlar — tahrirlash bilan yangilanadi
+              const unansweredNums = result.comparison?.details
+                ?.filter(d => {
+                  const current = editedAnswers[d.question] ?? d.student_answer;
+                  return !current || current === '-';
+                })
+                .map(d => d.question) || [];
+              if (unansweredNums.length === 0) return null;
+              return (
+                <Card className="border border-gray-200 shadow-sm">
+                  <div className="px-4 py-3 sm:px-5 sm:py-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-700 text-xs font-bold">
+                        ?
                       </div>
-                    </Card>
-                  );
-                })}
+                      <p className="text-sm font-semibold text-gray-700">
+                        Javobsiz savollar ({unansweredNums.length} ta):
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {unansweredNums.map(n => (
+                        <button
+                          key={n}
+                          onClick={() => {
+                            const el = document.getElementById(`q-${n}`);
+                            if (el) {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              el.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+                              setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2'), 2000);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-gray-100 hover:bg-blue-100 active:bg-blue-200 text-gray-700 hover:text-blue-700 rounded-md text-xs font-semibold transition-colors"
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })()}
+
+            {/* Subject Breakdown Cards — har fan uchun: ball, to'g'ri, xato, javobsiz, sertifikat */}
+            {result.comparison?.subjectBreakdown && result.comparison.subjectBreakdown.length > 0 && (
+              <div>
+                <h2 className="text-sm font-bold text-gray-700 mb-2 sm:mb-3 px-1">Fanlar bo'yicha natijalar</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {result.comparison.subjectBreakdown.map((subject, idx) => {
+                    const pct = subject.total > 0 ? Math.round((subject.correct / subject.total) * 100) : 0;
+                    const isCert = subject.isCertificate;
+                    // Sertifikat bo'lsa — amber ranglar (o'quvchi javob bermagan bo'lsa ham avtomatik ball)
+                    const color = isCert ? 'amber' : pct >= 70 ? 'green' : pct >= 40 ? 'yellow' : 'red';
+                    const colors: Record<string, { bg: string; bar: string; badge: string; border: string }> = {
+                      amber: { bg: 'bg-amber-50', bar: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800', border: 'border-amber-300' },
+                      green: { bg: 'bg-green-50', bar: 'bg-green-500', badge: 'bg-green-100 text-green-700', border: 'border-gray-200' },
+                      yellow: { bg: 'bg-yellow-50', bar: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700', border: 'border-gray-200' },
+                      red: { bg: 'bg-red-50', bar: 'bg-red-500', badge: 'bg-red-100 text-red-700', border: 'border-gray-200' },
+                    };
+                    const c = colors[color];
+                    return (
+                      <Card key={idx} className={`border ${c.border} shadow-sm overflow-hidden`}>
+                        <div className={`${c.bg} p-3 sm:p-4`}>
+                          <div className="flex items-center justify-between mb-2 gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {isCert && <span className="text-base flex-shrink-0">📜</span>}
+                              <h3 className="text-sm font-bold text-gray-900 truncate">{subject.name}</h3>
+                            </div>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${c.badge}`}>
+                              {isCert ? `${subject.certPercent || pct}% sertifikat` : `${pct}%`}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-gray-700 mb-2 flex-wrap">
+                            <span className="text-green-600 font-semibold">{subject.correct} to'g'ri</span>
+                            <span className="text-red-600 font-semibold">{subject.incorrect} xato</span>
+                            {subject.unanswered > 0 && (
+                              <span className="text-gray-500 font-semibold">{subject.unanswered} javobsiz</span>
+                            )}
+                            <span className="text-gray-500 ml-auto">{subject.total} ta</span>
+                          </div>
+                          <div className="h-1.5 bg-white/60 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${c.bar} rounded-full transition-all`}
+                              style={{ width: `${isCert ? (subject.certPercent || pct) : pct}%` }}
+                            />
+                          </div>
+                          {isCert && (
+                            <p className="text-[10px] text-amber-700 mt-1.5">Sertifikat — avtomatik ball, OMR ta'sirsiz</p>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -786,10 +833,11 @@ export default function OMRCheckerPage() {
                         return (
                           <div
                             key={questionNum}
-                            className={`flex items-center gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg border ${
-                              isEdited 
+                            id={`q-${questionNum}`}
+                            className={`flex items-center gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg border transition-shadow ${
+                              isEdited
                                 ? 'bg-blue-50 border-blue-300' :
-                              isCorrect 
+                              isCorrect
                                 ? 'bg-green-50 border-green-200' :
                               currentAnswer === '-'
                                 ? 'bg-gray-50 border-gray-200' :
