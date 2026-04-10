@@ -48,7 +48,7 @@ router.get('/group/:groupId', authenticate, async (req: AuthRequest, res) => {
     const studentGroups = await StudentGroup.find({ groupId })
       .populate({
         path: 'studentId',
-        select: 'fullName _id profileToken studentCode'
+        select: 'fullName _id profileToken studentCode room'
       })
       .lean();
     
@@ -118,11 +118,11 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         }
       }
       
-      // Get students for group - МИНИМАЛЬНАЯ ЗАГРУЗКА
+      // Get students for group - МИНИМАЛЬНАЯ ЗАГРУЗКА (room ham kerak — Xona ustuni uchun)
       const studentGroups = await StudentGroup.find({ groupId })
         .populate({
           path: 'studentId',
-          select: 'fullName _id profileToken phone studentCode'
+          select: 'fullName _id profileToken phone studentCode room'
         })
         .lean()
         .exec();
@@ -176,7 +176,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const skip = (pageNum - 1) * limitNum;
     
     const students = await Student.find(filter)
-      .select('fullName classNumber phone directionId branchId _id profileToken subjectIds studentCode')
+      .select('fullName classNumber phone directionId branchId _id profileToken subjectIds studentCode room')
       .populate('directionId', 'nameUzb')
       .populate('branchId', 'name')
       .populate('subjectIds', 'nameUzb')
@@ -212,8 +212,10 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         directionId: student.directionId,
         branchId: student.branchId,
         subjectIds: student.subjectIds,
-        groupId: group || null, // Добавляем информацию о группе
-        groupLetter: group?.letter || null // Добавляем букву группы
+        studentCode: student.studentCode,
+        room: student.room || null, // Xona — Xona ustuni va PDF titul varoq uchun
+        groupId: group || null,
+        groupLetter: group?.letter || null,
       };
     });
     
