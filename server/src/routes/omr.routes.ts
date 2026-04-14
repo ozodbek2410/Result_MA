@@ -5,7 +5,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import fsSync from 'fs';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthRequest } from '../middleware/auth';
 import { invalidateCache } from '../middleware/cache';
 
 const router = express.Router();
@@ -2188,7 +2188,7 @@ router.post('/lookup-variant', authenticate, async (req, res) => {
  * Bir studentning classNumber=7 lekin guruhi 6-03 bo'lishi mumkin (CRM dublikat) —
  * groupName filter shu holatlarni ham topadi.
  */
-router.get('/students-for-scan', authenticate, async (req, res) => {
+router.get('/students-for-scan', authenticate, async (req: AuthRequest, res) => {
   try {
     const Student = require('../models/Student').default;
     const StudentVariant = require('../models/StudentVariant').default;
@@ -2199,6 +2199,13 @@ router.get('/students-for-scan', authenticate, async (req, res) => {
     const groupName = (req.query.groupName as string || '').trim();
     const search = (req.query.search as string || '').trim();
     const limit = Math.min(Number(req.query.limit) || 200, 500);
+
+    // FILIAL FILTER: teacher/FIL_ADMIN faqat O'Z filialidagi studentlarni ko'radi.
+    // Shu orqali CRM dan kelgan boshqa filialdagi dublikatlar ro'yxatda chiqmaydi —
+    // qo'lda qo'shilgan studentlar va CRM studentlar chalkashmaydi.
+    // SUPER_ADMIN barcha filiallarni ko'radi.
+    const userRole = req.user?.role;
+    const userBranchId = req.user?.branchId;
 
     // groupName bo'yicha filter — avval guruh ID larini topib, keyin
     // shu guruhlardagi studentlarni Student modelidan olamiz
@@ -2220,6 +2227,10 @@ router.get('/students-for-scan', authenticate, async (req, res) => {
     if (classNumber) filter.classNumber = classNumber;
     if (search) filter.fullName = { $regex: search, $options: 'i' };
     if (groupStudentIds !== null) filter._id = { $in: groupStudentIds };
+    // SUPER_ADMIN dan boshqa barcha rollar uchun — o'z filialida cheklash
+    if (userRole !== 'SUPER_ADMIN' && userBranchId) {
+      filter.branchId = userBranchId;
+    }
 
     const students = await Student.find(filter)
       .select('fullName classNumber studentCode')
