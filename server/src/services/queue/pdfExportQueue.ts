@@ -221,7 +221,7 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
       : { testId: new Types.ObjectId(testId), studentId: { $in: studentIds.map(id => new Types.ObjectId(id)) } };
     
     const variants = await StudentVariant.find(variantQuery)
-      .populate('studentId', 'fullName')
+      .populate('studentId', 'fullName room')
       .lean();
     
     console.log(`✅ [PDF Worker ${process.pid}] Loaded ${variants.length} variants`);
@@ -260,8 +260,11 @@ async function processPDFExport(job: Job<PDFExportJobData>): Promise<PDFExportJo
           };
         });
         
+        const stu = variant.studentId as { fullName?: string; room?: string } | null;
+        const name = stu?.fullName || 'Student';
+        const studentName = stu?.room ? `🏫 ${stu.room} — ${name}` : name;
         return {
-          studentName: (variant.studentId as any)?.fullName || 'Student',
+          studentName,
           variantCode: variant.variantCode || 'A',
           questions
         };

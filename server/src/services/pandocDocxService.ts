@@ -577,14 +577,13 @@ export class PandocDocxService {
       if (idx > 0) md += '\n\n```{=openxml}\n<w:p><w:r><w:br w:type="page"/></w:r></w:p>\n```\n\n';
 
       const className = data.className || `${test.classNumber}-${test.groupLetter}`;
-      md += `# ${student.fullName} | Variant: ${student.variantCode} | ${className}\n\n`;
+      const nameWithRoom = student.room
+        ? `🏫 ${student.room} — ${student.fullName}`
+        : student.fullName;
+      md += `# ${nameWithRoom} | Variant: ${student.variantCode} | ${className}\n\n`;
 
       if (test.subjectName) {
         md += `**Fan:** ${test.subjectName} &nbsp;&nbsp; **Savollar soni:** ${totalQuestions}\n\n`;
-      }
-
-      if (student.room) {
-        md += `**🏫 Xona:** **${student.room}**\n\n`;
       }
 
       // Build 2-column answer table
