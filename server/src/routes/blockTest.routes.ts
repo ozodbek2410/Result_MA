@@ -1071,8 +1071,12 @@ router.get('/:id/export-pdf', authenticate, async (req: AuthRequest, res) => {
         return null;
       }
 
+      // Ism familya oldiga xona qo'shish — titul varoqda ko'rsatish uchun
+      const nameWithRoom = student.room
+        ? `🏫 ${student.room} — ${student.fullName}`
+        : student.fullName;
       return {
-        studentName: student.fullName,
+        studentName: nameWithRoom,
         variantCode: studentVariants[0]?.variantCode || student._id.toString().slice(-8).toUpperCase(),
         questions
       };
@@ -2013,8 +2017,12 @@ router.get('/:id/export-docx', authenticate, async (req: AuthRequest, res) => {
         return null;
       }
 
+      // Ism familya oldiga xona qo'shish — titul varoqda ko'rsatish uchun
+      const nameWithRoom = student.room
+        ? `🏫 ${student.room} — ${student.fullName}`
+        : student.fullName;
       return {
-        studentName: student.fullName,
+        studentName: nameWithRoom,
         variantCode: studentVariants[0]?.variantCode || student._id.toString().slice(-8).toUpperCase(),
         questions
       };

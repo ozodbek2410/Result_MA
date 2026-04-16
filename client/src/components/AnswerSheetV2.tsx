@@ -178,7 +178,23 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
               JAVOB VARAQASI
             </div>
             <div style={{ marginBottom: '0.8mm' }}>
-              <b>O&#39;quvchi:</b> {student.fullName}
+              <b>O&#39;quvchi:</b>{' '}
+              {student.room && (
+                <span style={{
+                  display: 'inline-block',
+                  background: '#fff3cd',
+                  border: '1.2px solid #ffc107',
+                  padding: '0.2mm 2mm',
+                  borderRadius: '1.5mm',
+                  fontWeight: 'bold',
+                  color: '#8b5a00',
+                  fontSize: '10pt',
+                  marginRight: '2mm',
+                }}>
+                  🏫 {student.room}
+                </span>
+              )}
+              {student.fullName}
             </div>
             {test.subjectName && (
               <div style={{ marginBottom: '0.8mm' }}><b>Fan:</b> {test.subjectName}</div>
@@ -193,16 +209,6 @@ function AnswerSheetV2({ student, test, questions, qrData, testType = 'test' }: 
                 <>&nbsp;&nbsp;<b>Davr:</b>&nbsp;{MONTHS[test.periodMonth - 1]} {test.periodYear}</>
               )}
             </div>
-            {student.room && (
-              <div style={{
-                background: '#fff3cd', border: '1.5px solid #ffc107',
-                padding: '1mm 2mm', borderRadius: '2mm',
-                fontSize: '10pt', display: 'inline-block', marginTop: '0.5mm',
-              }}>
-                <b>🏫 Xona:</b>&nbsp;
-                <span style={{ fontWeight: 'bold', fontSize: '11pt', color: '#8b5a00' }}>{student.room}</span>
-              </div>
-            )}
             <div style={{
               background: '#f4f4f4', padding: '1mm 2mm',
               border: '1px solid #ccc', fontSize: '7pt', marginTop: '1mm',

@@ -789,8 +789,16 @@ export default function TestPrintPage() {
                       {/* Student info */}
                       <div className={`${spacingClasses.header}`}>
                         <div className={`flex items-center gap-3 ${testsPerPage > 1 ? 'text-sm' : ''}`}>
-                          <h2 className={`font-bold ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
-                            {student.fullName}
+                          <h2 className={`font-bold flex items-center gap-2 ${testsPerPage > 1 ? 'text-base' : ''}`} style={{ fontSize: testsPerPage > 1 ? `${fontSize}px` : `${fontSize + 4}px` }}>
+                            {student.room && (
+                              <span
+                                className="inline-flex items-center bg-amber-100 border border-amber-400 text-amber-800 font-bold rounded px-2 py-0.5"
+                                style={{ fontSize: `${fontSize}px` }}
+                              >
+                                🏫 {student.room}
+                              </span>
+                            )}
+                            <span>{student.fullName}</span>
                           </h2>
                           <span style={{ fontSize: `${fontSize - 2}px` }}>| ID: {student.studentCode || variantCode}</span>
                           {isBlockTest ? (
@@ -1017,7 +1025,14 @@ export default function TestPrintPage() {
               <div className="flex justify-between items-start mb-6">
                 <div className="text-center flex-1">
                   <h1 className="text-2xl font-bold mb-2">Javoblar kaliti</h1>
-                  <p className="text-lg">{student.fullName}</p>
+                  <p className="text-lg flex items-center justify-center gap-2">
+                    {student.room && (
+                      <span className="inline-flex items-center bg-amber-100 border border-amber-400 text-amber-800 font-bold rounded px-2 py-0.5 text-base">
+                        🏫 {student.room}
+                      </span>
+                    )}
+                    <span>{student.fullName}</span>
+                  </p>
                   <p className="text-sm">ID: {student.studentCode || variantCode}</p>
                 </div>
               </div>

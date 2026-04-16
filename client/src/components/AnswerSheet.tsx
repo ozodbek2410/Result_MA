@@ -332,7 +332,23 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
           </h1>
           <div style={{ fontSize: '10pt' }}>
             <div style={{ margin: '1mm 0' }}>
-              <span style={{ fontWeight: 600 }}>O'quvchi:</span> {student.fullName}
+              <span style={{ fontWeight: 600 }}>O'quvchi:</span>{' '}
+              {student.room && (
+                <span style={{
+                  display: 'inline-block',
+                  background: '#fff3cd',
+                  border: '1.2px solid #ffc107',
+                  padding: '0.5mm 2mm',
+                  borderRadius: '1.5mm',
+                  fontWeight: 'bold',
+                  color: '#8b5a00',
+                  fontSize: '10pt',
+                  marginRight: '2mm',
+                }}>
+                  🏫 {student.room}
+                </span>
+              )}
+              {student.fullName}
             </div>
             {test.subjectName && (
               <div style={{ margin: '1mm 0' }}>
@@ -353,20 +369,6 @@ function AnswerSheet({ student, test, questions, qrData }: AnswerSheetProps) {
                 <span style={{ marginLeft: '5mm', fontWeight: 600 }}>Savollar soni: {totalQuestions}</span>
               )}
             </div>
-            {student.room && (
-              <div style={{
-                margin: '1.5mm 0',
-                display: 'inline-block',
-                background: '#fff3cd',
-                border: '1.5px solid #ffc107',
-                padding: '1mm 3mm',
-                borderRadius: '2mm',
-                fontSize: '11pt',
-              }}>
-                <span style={{ fontWeight: 600 }}>🏫 Xona:</span>{' '}
-                <span style={{ fontWeight: 'bold', fontSize: '12pt', color: '#8b5a00' }}>{student.room}</span>
-              </div>
-            )}
           </div>
         </div>
         {qrData && (
