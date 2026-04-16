@@ -1,49 +1,46 @@
-const mongoose = require('mongoose');
-require('dotenv').config();
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/resultma';
+const mongoose = require("mongoose");
+require("dotenv").config();
 
-mongoose.connect(MONGODB_URI).then(async () => {
-  require('./dist/models/Student');
-  const SV = require('./dist/models/StudentVariant').default;
-  const Test = require('./dist/models/Test').default;
+mongoose.connect(process.env.MONGODB_URI).then(async () => {
+  require("./dist/models/Student");
+  require("./dist/models/Subject");
+  const SV = require("./dist/models/StudentVariant").default;
+  const BT = require("./dist/models/BlockTest").default;
 
-  const v = await SV.findOne({ variantCode: '33F64BDC' }).lean();
-  if (!v) { console.log('NOT FOUND'); process.exit(0); }
+  const codes = ["67FFAE43", "25C7E1BC"];
 
-  console.log('TestId:', v.testId);
-  console.log('Total shuffled:', v.shuffledQuestions?.length);
-  console.log('');
+  for (const code of codes) {
+    console.log("\n====", code, "====");
+    const v = await SV.findOne({ variantCode: new RegExp("^" + code + "$", "i") })
+      .populate("studentId", "fullName")
+      .populate("shuffledQuestions.subjectId", "nameUzb")
+      .lean();
 
-  // Load original test
-  const test = await Test.findById(v.testId).lean();
-  if (!test) { console.log('TEST NOT FOUND'); process.exit(0); }
+    if (!v) { console.log("TOPILMADI"); continue; }
 
-  console.log('=== ORIGINAL TEST questions (first 10) ===');
-  (test.questions || []).slice(0, 10).forEach((q, i) => {
-    const vText = (q.variants || []).map(v => v.letter + ':' + (typeof v.text === 'string' ? v.text.substring(0, 25) : 'OBJ')).join(' | ');
-    console.log('Q' + (i+1) + ': correct=' + q.correctAnswer + '  [' + vText + ']');
-  });
+    console.log("Student:", v.studentId?.fullName);
+    console.log("testId:", v.testId);
+    console.log("shuffledQuestions count:", v.shuffledQuestions?.length || 0);
 
-  console.log('');
-  console.log('=== SHUFFLED VARIANT questions (first 10) ===');
-  (v.shuffledQuestions || []).slice(0, 10).forEach((q, i) => {
-    const origIdx = q.originalQuestionIndex;
-    const vText = (q.variants || []).map(v => v.letter + ':' + (typeof v.text === 'string' ? v.text.substring(0, 25) : 'OBJ')).join(' | ');
-    console.log('Q' + (i+1) + ' (orig#' + origIdx + '): correct=' + q.correctAnswer + '  [' + vText + ']');
+    const subjMap = new Map();
+    (v.shuffledQuestions || []).forEach((q) => {
+      const sid = q.subjectId?._id?.toString() || q.subjectId?.toString() || 'UNKNOWN';
+      const name = q.subjectId?.nameUzb || 'NO NAME';
+      const key = sid + '|' + name;
+      subjMap.set(key, (subjMap.get(key) || 0) + 1);
+    });
+    console.log("Fanlar shuffledQuestions ichida:");
+    subjMap.forEach((cnt, key) => console.log("  " + key + " => " + cnt + " savol"));
 
-    // Verify: find original question and check if correct variant text matches
-    if (origIdx !== undefined && test.questions[origIdx]) {
-      const origQ = test.questions[origIdx];
-      const origCorrectVariant = origQ.variants.find(v => v.letter === origQ.correctAnswer);
-      const shuffCorrectVariant = q.variants.find(v => v.letter === q.correctAnswer);
+    console.log("certSubjects:", JSON.stringify(v.certSubjects));
 
-      const origText = origCorrectVariant ? (typeof origCorrectVariant.text === 'string' ? origCorrectVariant.text.substring(0, 40) : JSON.stringify(origCorrectVariant.text).substring(0, 40)) : 'N/A';
-      const shuffText = shuffCorrectVariant ? (typeof shuffCorrectVariant.text === 'string' ? shuffCorrectVariant.text.substring(0, 40) : JSON.stringify(shuffCorrectVariant.text).substring(0, 40)) : 'N/A';
-
-      const match = origText === shuffText;
-      console.log('   VERIFY: orig="' + origText + '" shuf="' + shuffText + '" MATCH=' + match);
+    const bt = await BT.findById(v.testId).populate("subjectTests.subjectId", "nameUzb").lean();
+    if (bt) {
+      console.log("BlockTest fanlari:");
+      (bt.subjectTests || []).forEach(st => {
+        console.log("  " + st.subjectId?.nameUzb + " => " + (st.questions?.length || 0) + " savol");
+      });
     }
-  });
-
+  }
   process.exit(0);
 }).catch(e => { console.error(e); process.exit(1); });

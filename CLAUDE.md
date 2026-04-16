@@ -125,6 +125,21 @@ Authorization: Bearer <JWT_TOKEN>
 - `res.send()` o'rniga `res.json()` ishlat (API route'larda)
 - Test/BlockTest model'ni o'zgartirganda migration kerak bo'lishi mumkin — ehtiyot bo'l
 
+## Teacher scoping (o'qituvchi-guruh-fan biriktirish)
+- `TeacherGroupAssignment` kolleksiyasi — har teacher qaysi fan+guruhni o'qitishini saqlaydi (CRM `teacher.groups[]` dan)
+- Manual override (`isManualOverride: true`) — CRM sync o'zgartirmaydi
+- Permission middleware: `server/src/middleware/teacherScoping.ts` — `requireSubject`, `requireGroupSubject`, `requireEverySubjectTest`
+- Feature flaglar: `TEACHER_SCOPING_READ`, `TEACHER_SCOPING_WRITE`, `TEACHER_SCOPING_TEACHER_IDS`
+- 403 audit: `PermissionAuditLog` (90 kun TTL)
+- Hujjat: [docs/teacher-scoping/README.md](docs/teacher-scoping/README.md)
+- Migration: `cd server && npm run migrate-teacher-assignments -- --dry-run|--apply|--rollback`
+
+## Parol siyosati
+- CRM dan kelgan teacher `mustChangePassword: true` bilan yaratiladi (default `teacher123`)
+- Birinchi login `/change-password` sahifasiga yo'naltiradi
+- Qoidalar: min 8 belgi, 1 katta harf, 1 raqam — `server/src/utils/passwordPolicy.ts`
+- Admin reset: `POST /api/auth/admin/reset-password`
+
 ## CRM Integratsiya
 - **CRM API**: `crm.mathacademy.uz/api` — POST endpointlar (`/students-list`, `/teachers-list`, `/specialty-list`, `/groups-list`)
 - **Auth**: `X-API-KEY` + `Authorization: Bearer token` headerlari

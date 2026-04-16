@@ -7,6 +7,13 @@ export interface ISyncResult {
   teachers: { created: number; updated: number };
   groups: { created: number; updated: number; deactivated: number };
   students: { created: number; updated: number; deactivated: number };
+  assignments: {
+    created: number;
+    reactivated: number;
+    deactivated: number;
+    skippedManualOverride: number;
+    skippedEmptyGroups: number;
+  };
   duration: number;
   syncErrors: string[];
 }
@@ -48,6 +55,13 @@ const SyncResultSchema = new Schema<ISyncResult>({
     created: { type: Number, default: 0 },
     updated: { type: Number, default: 0 },
     deactivated: { type: Number, default: 0 },
+  },
+  assignments: {
+    created: { type: Number, default: 0 },
+    reactivated: { type: Number, default: 0 },
+    deactivated: { type: Number, default: 0 },
+    skippedManualOverride: { type: Number, default: 0 },
+    skippedEmptyGroups: { type: Number, default: 0 },
   },
   duration: { type: Number, default: 0 },
   syncErrors: [String],

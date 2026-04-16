@@ -38,7 +38,8 @@
     "test-tables": "tsx src/scripts/testTableExtraction.ts",
     "cleanup-media": "tsx src/scripts/cleanupMedia.ts",
     "generate-student-codes": "tsx src/scripts/generateStudentCodes.ts",
-    "sync-groups": "tsx src/scripts/syncGroupsFromExcel.ts"
+    "sync-groups": "tsx src/scripts/syncGroupsFromExcel.ts",
+    "migrate-teacher-assignments": "tsx src/scripts/migrateTeacherAssignments.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",

@@ -38,6 +38,9 @@ import './models/Role';
 import './models/Application';
 import './models/SyncLog';
 import './models/StudentSubjectCertificate';
+import './models/TeacherGroupAssignment';
+import './models/GroupSubjectConfig';
+import './models/PermissionAuditLog';
 
 import authRoutes from './routes/auth.routes';
 import branchRoutes from './routes/branch.routes';
@@ -67,6 +70,9 @@ import healthRoutes from './routes/health.routes';
 import applicationRoutes from './routes/application.routes';
 import crmRoutes from './routes/crm.routes';
 import studentCertificateRoutes from './routes/studentCertificate.routes';
+import meRoutes from './routes/me.routes';
+import teacherAssignmentRoutes from './routes/teacherAssignments.routes';
+import permissionAuditRoutes from './routes/permissionAudit.routes';
 
 // Validate environment variables
 const env = validateEnv();
@@ -172,6 +178,9 @@ app.use('/api/roles', roleRoutes);
 app.use('/api/test-results', testResultRoutes);
 app.use('/api/activity-logs', studentActivityLogRoutes);
 app.use('/api/student-certificates', studentCertificateRoutes);
+app.use('/api/me', meRoutes);
+app.use('/api/admin/teacher-assignments', teacherAssignmentRoutes);
+app.use('/api/admin/permission-audit', permissionAuditRoutes);
 
 // Custom role routes
 app.use('/api/manager', managerRoutes);

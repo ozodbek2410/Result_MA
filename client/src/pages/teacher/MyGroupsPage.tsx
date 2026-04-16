@@ -51,6 +51,15 @@ export default function MyGroupsPage() {
   const fetchGroups = async () => {
     try {
       setLoading(true);
+      // Prefer the new /api/me/groups endpoint (per-subject assignments).
+      // Fall back to legacy /teacher/my-groups when the backend is older.
+      try {
+        const { data } = await api.get('/me/groups');
+        setGroups(data);
+        return;
+      } catch {
+        // legacy fallback
+      }
       const { data } = await api.get('/teacher/my-groups');
       setGroups(data);
     } catch (error) {
@@ -278,15 +287,24 @@ export default function MyGroupsPage() {
                       </div>
                     </div>
 
-                    {/* Subject */}
-                    {group.subjectId && (
+                    {/* Subjects — new API returns array; legacy returns subjectId */}
+                    {(Array.isArray(group.subjects) && group.subjects.length > 0) ? (
+                      <div className="flex flex-wrap items-center gap-1.5 p-3 bg-slate-50 rounded-xl mb-4">
+                        <BookOpen className="w-4 h-4 text-slate-600 flex-shrink-0" />
+                        {group.subjects.map((s: { _id: string; nameUzb?: string }) => (
+                          <Badge key={s._id} className="bg-white border border-slate-200 text-slate-700 text-xs">
+                            {s.nameUzb || '—'}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : group.subjectId ? (
                       <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl mb-4">
                         <BookOpen className="w-4 h-4 text-slate-600" />
                         <span className="text-sm font-semibold text-slate-700">
                           {group.subjectId.nameUzb}
                         </span>
                       </div>
-                    )}
+                    ) : null}
 
                     {/* Stats */}
                     <div className="flex items-center gap-2 text-slate-600">
@@ -335,12 +353,19 @@ export default function MyGroupsPage() {
                           </Badge>
                         </div>
 
-                        {group.subjectId && (
+                        {(Array.isArray(group.subjects) && group.subjects.length > 0) ? (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 mb-1 min-w-0">
+                            <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="font-medium truncate">
+                              {group.subjects.map((s: { nameUzb?: string }) => s.nameUzb).filter(Boolean).join(', ')}
+                            </span>
+                          </div>
+                        ) : group.subjectId ? (
                           <div className="flex items-center gap-1.5 text-xs text-slate-600 mb-1">
                             <BookOpen className="w-3.5 h-3.5" />
                             <span className="font-medium truncate">{group.subjectId.nameUzb}</span>
                           </div>
-                        )}
+                        ) : null}
 
                         <div className="flex items-center gap-1.5 text-xs text-slate-600">
                           <GraduationCap className="w-3.5 h-3.5" />

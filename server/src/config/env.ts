@@ -14,6 +14,9 @@ interface EnvConfig {
   REDIS_HOST?: string;
   REDIS_PORT?: number;
   REDIS_PASSWORD?: string;
+  TEACHER_SCOPING_READ: boolean;
+  TEACHER_SCOPING_WRITE: boolean;
+  TEACHER_SCOPING_TEACHER_IDS: string[];
 }
 
 /**
@@ -48,6 +51,14 @@ export function validateEnv(): EnvConfig {
   const redisEnabled = process.env.REDIS_ENABLED === 'true';
   const redisPort = process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379;
 
+  // Teacher scoping feature flags (staged rollout)
+  const teacherScopingRead = process.env.TEACHER_SCOPING_READ === 'true';
+  const teacherScopingWrite = process.env.TEACHER_SCOPING_WRITE === 'true';
+  const teacherScopingTeacherIds = (process.env.TEACHER_SCOPING_TEACHER_IDS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
   const config: EnvConfig = {
     PORT: port,
     MONGODB_URI: process.env.MONGODB_URI!,
@@ -59,6 +70,9 @@ export function validateEnv(): EnvConfig {
     REDIS_HOST: process.env.REDIS_HOST,
     REDIS_PORT: redisPort,
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+    TEACHER_SCOPING_READ: teacherScopingRead,
+    TEACHER_SCOPING_WRITE: teacherScopingWrite,
+    TEACHER_SCOPING_TEACHER_IDS: teacherScopingTeacherIds,
   };
 
   // Log configuration (without sensitive data)
@@ -70,6 +84,11 @@ export function validateEnv(): EnvConfig {
   console.log(`   UPLOAD_DIR: ${config.UPLOAD_DIR}`);
   console.log(`   GROQ_API_KEY: ${config.GROQ_API_KEY ? `✓ Set (${config.GROQ_API_KEY.split(',').length} keys)` : '✗ Not set'}`);
   console.log(`   REDIS: ${config.REDIS_ENABLED ? `✓ Enabled (${config.REDIS_HOST}:${config.REDIS_PORT})` : '✗ Disabled'}`);
+  const scopingLabel = config.TEACHER_SCOPING_TEACHER_IDS.length
+    ? `(only ${config.TEACHER_SCOPING_TEACHER_IDS.length} teachers)`
+    : '(all teachers)';
+  console.log(`   TEACHER_SCOPING_READ:  ${config.TEACHER_SCOPING_READ ? `✓ ON ${scopingLabel}` : '✗ OFF'}`);
+  console.log(`   TEACHER_SCOPING_WRITE: ${config.TEACHER_SCOPING_WRITE ? `✓ ON ${scopingLabel}` : '✗ OFF'}`);
   console.log('');
 
   return config;

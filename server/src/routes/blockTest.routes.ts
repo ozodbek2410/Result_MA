@@ -9,7 +9,9 @@ import StudentTestConfig from '../models/StudentTestConfig';
 import GroupSubjectConfig from '../models/GroupSubjectConfig';
 import TestResult from '../models/TestResult';
 import StudentSubjectCertificate from '../models/StudentSubjectCertificate';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { UserRole } from '../models/User';
+import { requireSubject, requireEverySubjectTest } from '../middleware/teacherScoping';
 import { v4 as uuidv4 } from 'uuid';
 import { PDFExportService } from '../services/pdfExportService';
 import { PDFGeneratorService } from '../services/pdfGeneratorService';
@@ -25,7 +27,12 @@ import fs from 'fs/promises';
 const router = express.Router();
 
 // Import block test from file
-router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
+router.post(
+  '/import/confirm',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMIN, UserRole.METHODIST, UserRole.TEACHER),
+  requireSubject({ action: 'blockTest.importConfirm', source: 'body', field: 'subjectId' }),
+  async (req: AuthRequest, res) => {
   try {
     console.log('📥 Import request body:', JSON.stringify(req.body, null, 2));
     
@@ -182,9 +189,15 @@ router.post('/import/confirm', authenticate, async (req: AuthRequest, res) => {
     console.error('❌ Error stack:', error.stack);
     res.status(500).json({ message: 'Saqlashda xatolik', error: error.message });
   }
-});
+  }
+);
 
-router.post('/', authenticate, async (req: AuthRequest, res) => {
+router.post(
+  '/',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMIN, UserRole.METHODIST, UserRole.TEACHER),
+  requireEverySubjectTest({ action: 'blockTest.create', arrayField: 'subjectTests', subjectField: 'subjectId' }),
+  async (req: AuthRequest, res) => {
   try {
     const { classNumber, periodMonth, periodYear, subjectTests } = req.body;
 
@@ -223,7 +236,8 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     console.error('Error creating block test:', error);
     res.status(500).json({ message: 'Server xatosi', error: error.message });
   }
-});
+  }
+);
 
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {

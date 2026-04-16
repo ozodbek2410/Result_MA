@@ -64,10 +64,34 @@ export interface CrmTeacher {
   subjects: CrmSubject[];
   groups: Array<{
     id: number;
-    level: string;
-    name: string;
-    subject: CrmSubject;
+    level?: string;
+    /** Some CRM responses use `name`, others `group_name` / `full_name` */
+    name?: string;
+    group_name?: string;
+    full_name?: string;
+    subject?: CrmSubject;
   }>;
+}
+
+/** Normalized teacher-group assignment shape used by sync code */
+export interface CrmTeacherGroupLink {
+  crmGroupId: number;
+  groupLabel: string;
+  subjectCrmId?: number;
+}
+
+export function normalizeTeacherGroups(teacher: CrmTeacher): CrmTeacherGroupLink[] {
+  const links: CrmTeacherGroupLink[] = [];
+  for (const g of teacher.groups || []) {
+    if (!g || typeof g.id !== 'number') continue;
+    const label = g.full_name || g.group_name || g.name || g.level || `#${g.id}`;
+    links.push({
+      crmGroupId: g.id,
+      groupLabel: label,
+      subjectCrmId: g.subject?.id,
+    });
+  }
+  return links;
 }
 
 export interface CrmSpecialty {

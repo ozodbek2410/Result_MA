@@ -126,3 +126,4 @@ test/
 media/
 guruhlar/
 mongo_dump/
+.claude/worktrees/

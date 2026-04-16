@@ -8,12 +8,14 @@ interface User {
   branchId?: string;
   permissions?: string[];
   roleDisplayName?: string; // Добавлено для отображения названия роли
+  mustChangePassword?: boolean;
 }
 
 interface AuthState {
   user: User | null;
   token: string | null;
   setAuth: (user: User, token: string) => void;
+  setMustChangePassword: (value: boolean) => void;
   logout: () => void;
 }
 
@@ -23,6 +25,9 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       setAuth: (user, token) => set({ user, token }),
+      setMustChangePassword: (value) => set(state => ({
+        user: state.user ? { ...state.user, mustChangePassword: value } : state.user,
+      })),
       logout: () => {
         set({ user: null, token: null });
         // Redirect to landing page

@@ -8,10 +8,13 @@ import { useToast } from '@/hooks/useToast';
 import TestEditor from '@/components/TestEditor';
 import { ArrowLeft, Save, BookOpen } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
 
 export default function CreateBlockTestPage() {
   const navigate = useNavigate();
   const { success, error } = useToast();
+  const { user } = useAuthStore();
+  const isTeacher = user?.role === 'TEACHER';
   const [loading, setLoading] = useState(false);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [step, setStep] = useState(1);
@@ -33,14 +36,31 @@ export default function CreateBlockTestPage() {
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
-        const { data } = await api.get('/subjects');
-        setSubjects(data);
+        const { data: all } = await api.get('/subjects');
+        if (!isTeacher) {
+          setSubjects(all);
+          return;
+        }
+        try {
+          const { data: myGroups } = await api.get('/me/groups');
+          const myIds = new Set<string>();
+          for (const g of myGroups || []) {
+            for (const s of (g.subjects || [])) if (s._id) myIds.add(s._id);
+            if (g.subjectId?._id) myIds.add(g.subjectId._id);
+          }
+          const filtered = myIds.size > 0
+            ? (all || []).filter((s: { _id: string }) => myIds.has(s._id))
+            : all;
+          setSubjects(filtered);
+        } catch {
+          setSubjects(all);
+        }
       } catch (err) {
         console.error('Error fetching subjects:', err);
       }
     };
     fetchSubjects();
-  }, []);
+  }, [isTeacher]);
 
   const handleNextStep = () => {
     if (step === 1) {

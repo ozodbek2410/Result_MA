@@ -53,6 +53,7 @@ const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'
 const SubjectsPage = lazy(() => import('../pages/admin/SubjectsPage'));
 const DirectionsPage = lazy(() => import('../pages/admin/DirectionsPage'));
 const AdminGroupsPage = lazy(() => import('../pages/admin/GroupsPage'));
+const TeacherAssignmentsPage = lazy(() => import('../pages/admin/TeacherAssignmentsPage'));
 
 interface MenuItem {
   path: string;
@@ -69,6 +70,7 @@ const adminMenuDef: MenuItem[] = [
   { path: '/teacher/admin/subjects', label: 'Fanlar', icon: BookMarked },
   { path: '/teacher/admin/directions', label: 'Yo\'nalishlar', icon: Compass },
   { path: '/teacher/admin/groups', label: 'Guruhlar', icon: GraduationCap },
+  { path: '/teacher/admin/teacher-assignments', label: 'Biriktirmalar', icon: UserCog },
 ];
 
 // Teacher menu — teaching features only
@@ -354,6 +356,7 @@ export default function TeacherLayout() {
               <Route path="/admin/subjects" element={<SubjectsPage />} />
               <Route path="/admin/directions" element={<DirectionsPage />} />
               <Route path="/admin/groups" element={<AdminGroupsPage />} />
+              <Route path="/admin/teacher-assignments" element={<TeacherAssignmentsPage />} />
             </Routes>
           </Suspense>
         </div>

@@ -4,8 +4,9 @@ import StudentVariant from '../models/StudentVariant';
 import StudentGroup from '../models/StudentGroup';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { UserRole } from '../models/User';
+import { requireSubject } from '../middleware/teacherScoping';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -223,7 +224,12 @@ router.get('/:id/student/:studentId', authenticate, async (req, res) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res) => {
+router.post(
+  '/',
+  authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.FIL_ADMIN, UserRole.METHODIST, UserRole.TEACHER),
+  requireSubject({ action: 'test.create', source: 'body', field: 'subjectId' }),
+  async (req: AuthRequest, res) => {
   try {
     const test = new Test({
       ...req.body,
@@ -289,7 +295,8 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Server xatosi' });
   }
-});
+  }
+);
 
 // Helper function to shuffle answer variants (A, B, C, D) - SAME AS BLOCK TESTS
 router.post('/:id/generate-variants', authenticate, async (req, res) => {

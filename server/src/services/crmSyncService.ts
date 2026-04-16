@@ -1,6 +1,6 @@
 ﻿import { logger } from '../config/logger';
 import { cacheService } from '../utils/cache';
-import { CrmApiService, CrmStudent, CrmTeacher, CrmGroup, CrmSpecialty } from './crmApiService';
+import { CrmApiService, CrmStudent, CrmTeacher, CrmGroup, CrmSpecialty, normalizeTeacherGroups } from './crmApiService';
 import Branch from '../models/Branch';
 import Subject from '../models/Subject';
 import Direction from '../models/Direction';
@@ -9,9 +9,18 @@ import Group from '../models/Group';
 import Student from '../models/Student';
 import StudentGroup from '../models/StudentGroup';
 import SyncLog, { ISyncResult } from '../models/SyncLog';
+import TeacherGroupAssignment, { AssignmentSource } from '../models/TeacherGroupAssignment';
 import { Types } from 'mongoose';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+
+interface AssignmentSyncStats {
+  created: number;
+  reactivated: number;
+  deactivated: number;
+  skippedManualOverride: number;
+  skippedEmptyGroups: number;
+}
 
 interface EntitySyncStats {
   created: number;
@@ -75,6 +84,13 @@ class CrmSyncServiceClass {
       teachers: { created: 0, updated: 0 },
       groups: { created: 0, updated: 0, deactivated: 0 },
       students: { created: 0, updated: 0, deactivated: 0 },
+      assignments: {
+        created: 0,
+        reactivated: 0,
+        deactivated: 0,
+        skippedManualOverride: 0,
+        skippedEmptyGroups: 0,
+      },
       duration: 0,
       syncErrors: [],
     };
@@ -126,6 +142,15 @@ class CrmSyncServiceClass {
 
       // 2f: Students
       result.students = await this.syncStudents(crmStudents);
+
+      // 2g: Teacher-Group-Subject assignments (depends on teachers, groups, subjects)
+      try {
+        result.assignments = await this.syncTeacherGroupAssignments(crmTeachers);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        result.syncErrors.push(`Assignments sync error: ${errMsg}`);
+        logger.error('Teacher-group assignments sync failed', err instanceof Error ? err : new Error(errMsg), 'CRM_SYNC');
+      }
 
       result.duration = Date.now() - startTime;
 
@@ -440,6 +465,7 @@ class CrmSyncServiceClass {
           username,
           password: hashedPassword,
           role: UserRole.TEACHER,
+          mustChangePassword: true,
           ...newTeacherData,
         });
         stats.created++;
@@ -447,6 +473,150 @@ class CrmSyncServiceClass {
     }
 
     logger.info(`Teachers: +${stats.created} ~${stats.updated}`, 'CRM_SYNC');
+    return stats;
+  }
+
+  /**
+   * Sync TeacherGroupAssignment entries from CRM teacher.groups[].
+   *
+   * Rules:
+   *   - Upsert active assignment for each (teacher, group, subject) triple present in CRM.
+   *   - If a previously CRM-sourced assignment is no longer in CRM, deactivate it.
+   *   - Manual overrides (isManualOverride=true) are NEVER modified by sync.
+   *   - If a teacher returns groups: [] but previously had assignments, LOG A WARNING and
+   *     SKIP deactivation for that teacher — this prevents a CRM bug from wiping all links.
+   */
+  private async syncTeacherGroupAssignments(
+    teachers: CrmTeacher[]
+  ): Promise<AssignmentSyncStats> {
+    const stats: AssignmentSyncStats = {
+      created: 0,
+      reactivated: 0,
+      deactivated: 0,
+      skippedManualOverride: 0,
+      skippedEmptyGroups: 0,
+    };
+
+    // Collect every (teacherCrmId, groupCrmId, subjectCrmId) triple seen in CRM.
+    // Map teacher crmId -> User._id once up front.
+    const teacherByCrmId = new Map<number, Types.ObjectId>();
+    const teacherCrmIds = teachers.map(t => t.id);
+    const userDocs = await User.find({ crmId: { $in: teacherCrmIds }, role: UserRole.TEACHER })
+      .select('_id crmId')
+      .lean();
+    for (const u of userDocs) {
+      if (typeof u.crmId === 'number') {
+        teacherByCrmId.set(u.crmId, u._id as Types.ObjectId);
+      }
+    }
+
+    // Process each teacher independently so one bad record can't poison the set.
+    for (const t of teachers) {
+      const teacherOid = teacherByCrmId.get(t.id);
+      if (!teacherOid) continue;
+
+      const links = normalizeTeacherGroups(t);
+
+      // Defensive: if CRM returned no groups for a teacher that previously had active
+      // assignments, this is suspicious. Log and skip deactivation for this teacher.
+      if (links.length === 0) {
+        const hadActive = await TeacherGroupAssignment.exists({
+          teacherId: teacherOid,
+          source: AssignmentSource.CRM_SYNC,
+          isActive: true,
+        });
+        if (hadActive) {
+          logger.warn(
+            `Teacher ${t.full_name} (crmId=${t.id}) has active CRM assignments but CRM returned groups: []. Skipping deactivation to protect data.`,
+            'CRM_SYNC'
+          );
+          stats.skippedEmptyGroups++;
+        }
+        continue;
+      }
+
+      // Resolve group + subject OIDs for each link (batched per teacher).
+      const triples: Array<{ groupOid: Types.ObjectId; subjectOid: Types.ObjectId }> = [];
+      for (const link of links) {
+        if (!link.subjectCrmId) continue;
+        const [group, subject] = await Promise.all([
+          Group.findOne({ crmId: link.crmGroupId }).select('_id').lean(),
+          Subject.findOne({ crmId: link.subjectCrmId }).select('_id').lean(),
+        ]);
+        if (!group?._id || !subject?._id) continue;
+        triples.push({
+          groupOid: group._id as Types.ObjectId,
+          subjectOid: subject._id as Types.ObjectId,
+        });
+      }
+
+      const activeKeys = new Set(triples.map(t => `${t.groupOid}:${t.subjectOid}`));
+
+      // Upsert each (teacher, group, subject) triple.
+      for (const { groupOid, subjectOid } of triples) {
+        const existing = await TeacherGroupAssignment.findOne({
+          teacherId: teacherOid,
+          groupId: groupOid,
+          subjectId: subjectOid,
+        });
+
+        if (!existing) {
+          await TeacherGroupAssignment.create({
+            teacherId: teacherOid,
+            groupId: groupOid,
+            subjectId: subjectOid,
+            crmGroupId: links.find(l => true)?.crmGroupId, // stored for audit
+            source: AssignmentSource.CRM_SYNC,
+            isManualOverride: false,
+            isActive: true,
+          });
+          stats.created++;
+        } else if (existing.isManualOverride) {
+          stats.skippedManualOverride++;
+        } else if (!existing.isActive) {
+          await TeacherGroupAssignment.updateOne(
+            { _id: existing._id },
+            {
+              $set: { isActive: true, source: AssignmentSource.CRM_SYNC },
+              $unset: { deactivatedAt: '', deactivatedBy: '', deactivatedReason: '' },
+            }
+          );
+          stats.reactivated++;
+        }
+      }
+
+      // Deactivate CRM-sourced assignments for this teacher that are no longer in CRM.
+      const stale = await TeacherGroupAssignment.find({
+        teacherId: teacherOid,
+        isActive: true,
+        isManualOverride: false,
+        source: AssignmentSource.CRM_SYNC,
+      })
+        .select('_id groupId subjectId')
+        .lean();
+
+      for (const s of stale) {
+        const key = `${s.groupId}:${s.subjectId}`;
+        if (activeKeys.has(key)) continue;
+        await TeacherGroupAssignment.updateOne(
+          { _id: s._id },
+          {
+            $set: {
+              isActive: false,
+              deactivatedAt: new Date(),
+              deactivatedReason: 'Not present in CRM sync',
+            },
+          }
+        );
+        stats.deactivated++;
+      }
+    }
+
+    logger.info(
+      `Assignments: +${stats.created} ~${stats.reactivated} -${stats.deactivated} ` +
+        `(manual overrides skipped: ${stats.skippedManualOverride}, empty-groups protected: ${stats.skippedEmptyGroups})`,
+      'CRM_SYNC'
+    );
     return stats;
   }
 

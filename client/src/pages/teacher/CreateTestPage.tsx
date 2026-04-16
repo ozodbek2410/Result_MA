@@ -8,10 +8,13 @@ import { Select } from '@/components/ui/Select';
 import { useToast } from '@/hooks/useToast';
 import TestEditor from '@/components/TestEditor';
 import { ArrowLeft, FileText, Save } from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
 
 export default function CreateTestPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user } = useAuthStore();
+  const isTeacher = user?.role === 'TEACHER';
   const [groups, setGroups] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<Array<{ _id: string; nameUzb: string }>>([]);
   const [loading, setLoading] = useState(false);
@@ -49,8 +52,26 @@ export default function CreateTestPage() {
 
   const fetchSubjects = async () => {
     try {
-      const { data } = await api.get('/subjects');
-      setSubjects(data);
+      const { data: all } = await api.get('/subjects');
+      if (!isTeacher) {
+        setSubjects(all);
+        return;
+      }
+      // For teachers, restrict the selector to subjects they actually teach.
+      try {
+        const { data: myGroups } = await api.get('/me/groups');
+        const myIds = new Set<string>();
+        for (const g of myGroups || []) {
+          for (const s of (g.subjects || [])) if (s._id) myIds.add(s._id);
+          if (g.subjectId?._id) myIds.add(g.subjectId._id);
+        }
+        const filtered = myIds.size > 0
+          ? (all || []).filter((s: { _id: string }) => myIds.has(s._id))
+          : all;
+        setSubjects(filtered);
+      } catch {
+        setSubjects(all);
+      }
     } catch (err) {
       console.error('Error fetching subjects');
     }

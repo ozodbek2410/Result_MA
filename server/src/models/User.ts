@@ -24,6 +24,8 @@ export interface IUser extends Document {
   teacherSubjects?: mongoose.Types.ObjectId[];
   tgChatId?: string;
   isActive: boolean;
+  mustChangePassword?: boolean;
+  passwordChangedAt?: Date;
   lastSyncedAt?: Date;
   createdAt: Date;
 }
@@ -44,6 +46,8 @@ const UserSchema = new Schema<IUser>({
   teacherSubjects: [{ type: Schema.Types.ObjectId, ref: 'Subject' }],
   tgChatId: String,
   isActive: { type: Boolean, default: true },
+  mustChangePassword: { type: Boolean, default: false },
+  passwordChangedAt: Date,
   lastSyncedAt: Date,
   createdAt: { type: Date, default: Date.now }
 });
